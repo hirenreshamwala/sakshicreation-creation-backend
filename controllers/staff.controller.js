@@ -1,13 +1,34 @@
 const Staff = require("../models/staff.model");
-const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const Role = require("../models/role.model");
 const Order = require("../models/order.model");
 const mongoose = require("mongoose");
 const CompanyName = require("../models/companyName.model");
-const path = require('path');
-const fs = require('fs');
-const csv = require('csv-parser');
+const path = require("path");
+const fs = require("fs");
+const csv = require("csv-parser");
+var CryptoJS = require("crypto-js");
+
+const SECRET_KEY = process.env.CRYPTO_SECRET || "your-secret-key";
+// Encrypt function
+const encryptData = (text) => {
+  return CryptoJS.AES.encrypt(text, SECRET_KEY).toString();
+};
+
+// Decrypt function
+const decryptData = (ciphertext) => {
+  var bytes = CryptoJS.AES.decrypt(ciphertext, SECRET_KEY);
+  var originalText = bytes.toString(CryptoJS.enc.Utf8);
+  console.log(originalText, "originalText");
+  return originalText;
+};
+
+// Compare function (like bcrypt.compare)
+const compareData = (plainText, cipherText) => {
+  const decrypted = decryptData(cipherText);
+  return decrypted === plainText;
+};
+
 // Create a new Staff
 exports.createStaff = async (req, res) => {
   try {
@@ -21,7 +42,7 @@ exports.createStaff = async (req, res) => {
       "joiningDate",
       "password",
       "role",
-      "companyName",
+      "CompanyName",
       "aadharFiles", // Added as required
     ];
 
@@ -89,7 +110,7 @@ exports.createStaff = async (req, res) => {
         message: "Invalid role ID. No matching role found.",
       });
     }
-    const companyId = req.body.companyName;
+    const companyId = req.body.CompanyName;
     if (!mongoose.Types.ObjectId.isValid(companyId)) {
       return res.status(400).json({
         success: false,
@@ -103,7 +124,7 @@ exports.createStaff = async (req, res) => {
         message: "Invalid company ID. No matching company found.",
       });
     }
-    const hashedPassword = await bcrypt.hash(req.body.password, 10);
+    const hashedPassword = encryptData(req.body.password);
 
     const staffData = {
       firstName: req.body.firstName,
@@ -171,8 +192,8 @@ exports.getStaffById = async (req, res) => {
   try {
     const staff = await Staff.findById(req.params.id)
       .populate("role")
-      .populate("CompanyName")
-      .select("-password");
+      .populate("CompanyName");
+    // .select("-password");
 
     if (staff) {
       res.status(200).json({
@@ -253,7 +274,7 @@ exports.updateStaff = async (req, res) => {
 
     // Hash password if provided
     if (req.body.password) {
-      req.body.password = await bcrypt.hash(req.body.password, 10);
+      req.body.password = encryptData(req.body.password);
     }
 
     // Convert date fields if provided
@@ -391,7 +412,7 @@ exports.loginStaff = async (req, res) => {
     }
 
     // Verify password
-    const isMatch = await bcrypt.compare(password, staff.password);
+    const isMatch = compareData(password, staff.password);
     if (!isMatch) {
       return res.status(401).json({
         success: false,
@@ -704,7 +725,7 @@ exports.bulkCreateStaff = async (req, res) => {
             }
 
             // Hash password
-            const hashedPassword = await bcrypt.hash(password, 10);
+            const hashedPassword = encryptData(password);
 
             staffMembers.push({
               firstName,
@@ -783,7 +804,7 @@ exports.updateStaffPassword = async (req, res) => {
     }
 
     // Verify current password
-    const isMatch = await bcrypt.compare(currentPassword, staff.password);
+    const isMatch = compareData(currentPassword, staff.password);
     if (!isMatch) {
       return res.status(401).json({
         success: false,
@@ -792,7 +813,7 @@ exports.updateStaffPassword = async (req, res) => {
     }
 
     // Hash new password
-    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    const hashedPassword = encryptData(newPassword);
 
     // Update password
     staff.password = hashedPassword;
@@ -807,6 +828,76 @@ exports.updateStaffPassword = async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Failed to update password",
+      error: error.message,
+    });
+  }
+};
+
+exports.getStaffPermission = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Check for required fields
+    if (!id) {
+      return res.status(400).json({
+        success: false,
+        message: "id is required",
+      });
+    }
+
+    // Find staff by ID and populate role
+    const staff = await Staff.findById(id).populate("role");
+    if (!staff) {
+      return res.status(404).json({
+        success: false,
+        message: "Staff not found",
+      });
+    }
+
+    // Return only role and permissions
+    res.status(200).json({
+      success: true,
+      message: "Staff role permissions fetched successfully",
+      data: staff.role?.permissions,
+    });
+  } catch (error) {
+    console.error("Error fetching staff permissions:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch staff permissions",
+      error: error.message,
+    });
+  }
+};
+
+exports.updateStaffAttachments = async (req, res) => {
+  try {
+    console.log("Api caled for update attachments");
+    const updatedStaff = await Staff.findByIdAndUpdate(
+      req.params.id,
+      req.body,
+      { new: true, runValidators: true }
+    )
+      .populate("role")
+      .select("-password");
+
+    if (updatedStaff) {
+      res.status(200).json({
+        success: true,
+        message: "Staff updated successfully",
+        data: updatedStaff,
+      });
+    } else {
+      res.status(404).json({
+        success: false,
+        message: "Staff not found",
+      });
+    }
+  } catch (error) {
+    console.error("Error updating staff:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to update staff",
       error: error.message,
     });
   }
