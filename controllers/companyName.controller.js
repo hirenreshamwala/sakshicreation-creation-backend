@@ -71,7 +71,7 @@ exports.createCompanyName = async (req, res) => {
 exports.getAllCompanyNames = async (req, res) => {
   try {
     // Get all company names sorted by newest first
-    const companyNames = await CompanyName.find().select("companyName avatar").sort({ createdAt: -1 });
+    const companyNames = await CompanyName.find().select("companyName avatar default").sort({ createdAt: -1 });
 
     // Return success response
     res.status(200).json({
@@ -186,9 +186,25 @@ exports.updateCompanyName = async (req, res) => {
       }
     }
 
+    // If setting this company as default, find and update the current default company
+    if (req.body.default === true) {
+      const currentDefaultCompany = await CompanyName.findOne({ default: true });
+      
+      // If there's an existing default company and it's not the one being updated
+      if (currentDefaultCompany && currentDefaultCompany._id.toString() !== req.params.id) {
+        // Update the previous default company to false
+        await CompanyName.findByIdAndUpdate(
+          currentDefaultCompany._id,
+          { default: false },
+          { new: true, runValidators: true }
+        );
+      }
+    }
+
     // Prepare update data
     const updateData = {
       companyName: req.body.companyName,
+      default: req.body.default,
       ...(req.body.avatar && { avatar: req.body.avatar }), // Only include avatar if provided
     };
 

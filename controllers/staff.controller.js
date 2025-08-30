@@ -9,7 +9,7 @@ const fs = require("fs");
 const csv = require("csv-parser");
 var CryptoJS = require("crypto-js");
 
-const SECRET_KEY = process.env.CRYPTO_SECRET || "your-secret-key";
+const SECRET_KEY = process.env.CRYPTO_SECRET || "xghvyusdvf";
 // Encrypt function
 const encryptData = (text) => {
   return CryptoJS.AES.encrypt(text, SECRET_KEY).toString();

@@ -30,4 +30,6 @@ router.post(
   StaffController.bulkCreateStaff
 );
 router.patch("/updatepassword/:id", authenticateToken,StaffController.updateStaffPassword);
+router.get("/permissions/:id", StaffController.getStaffPermission);
+router.post('/updateattachments/:id',authenticateToken,StaffController.updateStaffAttachments)
 module.exports = router;
