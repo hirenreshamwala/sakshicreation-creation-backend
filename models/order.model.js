@@ -27,6 +27,20 @@ const orderSchema = new mongoose.Schema(
       trim: true,
       default: "",
     },
+    pType: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+    binding: {
+      type: Boolean,
+      default: false,
+    },
+    bindingType: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "BinderType",
+      required: false,
+    },
     filePaths: [
       {
         path: {
@@ -217,12 +231,12 @@ const orderSchema = new mongoose.Schema(
         paperName: {
           type: String,
           required: true,
-          trim: true
+          trim: true,
         },
         numberOfSheetsUsed: {
           type: String,
           trim: true,
-          required: true,
+          required: false,
         },
         sheetSize: {
           type: String,
@@ -239,19 +253,23 @@ const orderSchema = new mongoose.Schema(
           trim: true,
           required: true,
         },
+        materialSize:{
+          type: String,
+          trim: true,
+        },
         ratePerUnit: {
           type: String,
           trim: true,
           required: true,
-        }
-      }
+        },
+      },
     ],
     binderPapers: [
       {
         paperName: {
           type: String,
           required: true,
-          trim: true
+          trim: true,
         },
         numberOfSheetsUsed: {
           type: String,
@@ -277,8 +295,8 @@ const orderSchema = new mongoose.Schema(
           type: String,
           trim: true,
           // required: true,
-        }
-      }
+        },
+      },
     ],
     bookletPapers: [
       {
@@ -312,8 +330,8 @@ const orderSchema = new mongoose.Schema(
           type: String,
           trim: true,
           required: true,
-        }
-      }
+        },
+      },
     ],
 
     // File uploads for each stage
@@ -551,27 +569,27 @@ const orderSchema = new mongoose.Schema(
   },
   {
     timestamps: true,
-  },
-)
+  }
+);
 
 // Indexes for better query performance
-orderSchema.index({ companyName: 1, party: 1 })
-orderSchema.index({ status: 1 })
-orderSchema.index({ designer: 1 })
-orderSchema.index({ printer: 1 })
-orderSchema.index({ binder: 1 })
-orderSchema.index({ bookletBinder: 1 })
-orderSchema.index({ createdAt: -1 })
+orderSchema.index({ companyName: 1, party: 1 });
+orderSchema.index({ status: 1 });
+orderSchema.index({ designer: 1 });
+orderSchema.index({ printer: 1 });
+orderSchema.index({ binder: 1 });
+orderSchema.index({ bookletBinder: 1 });
+orderSchema.index({ createdAt: -1 });
 
-orderSchema.pre('save', async function(next) {
+orderSchema.pre("save", async function (next) {
   try {
     // Only proceed if this is a new order (not an update)
     if (this.isNew) {
-      const Party = mongoose.model('Party');
-      
+      const Party = mongoose.model("Party");
+
       // Find the party associated with this order
       const party = await Party.findById(this.party);
-      
+
       if (party && party.partyTag === "New") {
         // Update the party tag to "Customer"
         party.partyTag = "Customer";
@@ -586,6 +604,5 @@ orderSchema.pre('save', async function(next) {
   }
 });
 
-
-const Order = mongoose.model("Order", orderSchema)
-module.exports = Order
+const Order = mongoose.model("Order", orderSchema);
+module.exports = Order;

@@ -56,7 +56,7 @@ exports.createAssignTask = async (req, res) => {
 
     // Populate the task for the response
     const populatedTask = await AssignTask.findById(newAssignTask._id)
-      .populate("companyName", "companyName")
+      .populate("companyName", "companyName avatar")
       .populate("partyName", "partyName address ownerName personMobileNo")
       .populate("assignTo", "firstName lastName");
 
@@ -412,7 +412,7 @@ exports.updateAssignTask = async (req, res) => {
 
         // Populate the new task for the response
         populatedNewTask = await AssignTask.findById(newTask._id)
-          .populate("companyName", "companyName")
+          .populate("companyName", "companyName avatar")
           .populate("partyName", "partyName address ownerName personMobileNo")
           .populate("assignTo", "firstName lastName");
       } else {
@@ -425,7 +425,7 @@ exports.updateAssignTask = async (req, res) => {
       new: true,
       runValidators: true,
     })
-      .populate("companyName", "companyName")
+      .populate("companyName", "companyName avatar")
       .populate("partyName", "partyName address ownerName personMobileNo")
       .populate("assignTo", "firstName lastName");
 

@@ -110,7 +110,7 @@ exports.createLead = async (req, res) => {
 
     // Populate referenced fields
     const populatedTask = await Lead.findById(savedTask._id)
-      .populate("companyName", "companyName")
+      .populate("companyName", "companyName avatar")
       .populate(
         "partyName",
         "partyName ownerName ownerMobileNo ownerWhatsAppNo contactPerson personMobileNo personWhatsAppNo contactForPayment contactMobileNo contactWhatsAppNo GSTNo partyTag address createdAt updatedAt"

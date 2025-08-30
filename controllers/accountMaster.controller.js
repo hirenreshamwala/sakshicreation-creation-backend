@@ -153,7 +153,7 @@ exports.createAccountMaster = async (req, res) => {
     const newAccountMaster = await AccountMaster.create(accountMasterData);
 
     const populatedAccountMaster = await AccountMaster.findById(newAccountMaster._id)
-      .populate("companyName", "companyName")
+      .populate("companyName", "companyName avatar")
       .populate("party")
       .populate("createdBy", "firstName lastName email");
 
@@ -430,7 +430,7 @@ exports.getAllAccountMasters = async (req, res) => {
 //     session.endSession();
 
 //     const populatedAccountMasters = await AccountMaster.find({ _id: { $in: accountMasters.map(am => am._id) } })
-//       .populate("companyName", "companyName")
+//       .populate("companyName", "companyName avatar")
 //       .populate("party")
 //       .populate("createdBy", "firstName lastName email");
 
@@ -568,7 +568,7 @@ exports.bulkCreateAccountMasters = async (req, res) => {
 
     // Populate and return the created AccountMasters
     const populatedAccountMasters = await AccountMaster.find({ _id: { $in: accountMasters.map(am => am._id) } })
-      .populate("companyName", "companyName")
+      .populate("companyName", "companyName avatar")
       .populate("party")
       .populate("createdBy", "firstName lastName email");
 
@@ -795,7 +795,7 @@ if (req.body.companyName || req.body.partyName || req.body.ownerWhatsAppNo) {
       accountMasterUpdateData,
       { new: true, runValidators: true }
     )
-      .populate("companyName", "companyName")
+      .populate("companyName", "companyName avatar")
       .populate("party")
       .populate("createdBy", "firstName lastName email");
 
@@ -1116,7 +1116,7 @@ exports.approveParty = async (req, res) => {
     await party.save();
 
     const accountMaster = await AccountMaster.findOne({ party: id })
-      .populate("companyName", "companyName")
+      .populate("companyName", "companyName avatar")
       .populate("party")
       .populate("createdBy", "firstName lastName email");
 

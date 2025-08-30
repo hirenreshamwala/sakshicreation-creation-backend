@@ -80,10 +80,15 @@ exports.createOrder = async (req, res) => {
       });
     }
 
-    if (isLamination && laminationType && !["Matte", "Gloss"].includes(laminationType)) {
+    if (
+      isLamination &&
+      laminationType &&
+      !["Matte", "Gloss"].includes(laminationType)
+    ) {
       return res.status(400).json({
         success: false,
-        message: "Lamination type must be either 'Matte' or 'Gloss' when lamination is selected",
+        message:
+          "Lamination type must be either 'Matte' or 'Gloss' when lamination is selected",
       });
     }
 
@@ -155,13 +160,14 @@ exports.createOrder = async (req, res) => {
       orderNumber,
       isGst: isGst !== false,
       size: size || "",
+      pType: req.body.pType,
+      binding: req.body.binding,
+      bindingType: req.body.bindingType,
       rate: rate !== undefined ? Number.parseFloat(rate) : undefined,
       rateType: rateType || undefined,
       isLamination: isLamination !== undefined ? isLamination : false,
       laminationType: isLamination ? laminationType || "" : "",
     };
-
-    console.log("Creating order with data:", orderData);
 
     const order = new Order(orderData);
     await order.save();
@@ -174,13 +180,12 @@ exports.createOrder = async (req, res) => {
     }
     // Populate the order for response
     const populatedOrder = await Order.findById(order._id)
-      .populate("companyName", "companyName")
+      .populate("companyName", "companyName avatar")
       .populate("party", "partyName")
       .populate("productItem", "itemName")
       .populate("createdBy")
-      .populate("designer", "name");
-
-    console.log("✅ Order created successfully:", populatedOrder._id);
+      .populate("designer", "name")
+      .populate("bindingType",'name');
 
     res.status(201).json({
       success: true,
@@ -300,7 +305,7 @@ exports.getOrderById = async (req, res) => {
     }
 
     const order = await Order.findById(id)
-      .populate("companyName", "companyName")
+      .populate("companyName", "companyName avatar")
       .populate("party")
       .populate("productItem", "itemName")
       .populate("createdBy")
@@ -309,7 +314,8 @@ exports.getOrderById = async (req, res) => {
       .populate("deliveryStaff", "name")
       .populate("binder", "name")
       .populate("bookletBinder", "name")
-      .populate("reworkHistory.createdBy", "name");
+      .populate("reworkHistory.createdBy", "name")
+      .populate('bindingType',"name");
 
     // order = order.map((order) => {
     //   if (!order.isGst && order.party) {
@@ -436,7 +442,9 @@ exports.updateOrder = async (req, res) => {
           message: "Booklet Binder Wasted Sheet must be a non-negative number",
         });
       }
-      updateData.bookletBinderWastedSheet = Number.parseInt(bookletBinderWastedSheet);
+      updateData.bookletBinderWastedSheet = Number.parseInt(
+        bookletBinderWastedSheet
+      );
     }
 
     if (updateData.designerId) {
@@ -449,20 +457,22 @@ exports.updateOrder = async (req, res) => {
       updateData.designer = updateData.designerId;
       delete updateData.designerId;
     }
-     if (printerPapers) {
+    if (printerPapers) {
       if (!Array.isArray(printerPapers)) {
         return res.status(400).json({
           success: false,
           message: "Printer papers must be an array",
         });
       }
-      updateData.printerPapers = printerPapers.map(paper => ({
-        paperName: paper.paperName || `Paper-${Math.floor(Math.random() * 1000)}`,
+      updateData.printerPapers = printerPapers.map((paper) => ({
+        paperName:
+          paper.paperName || `Paper-${Math.floor(Math.random() * 1000)}`,
         numberOfSheetsUsed: paper.numberOfSheetsUsed || "",
         sheetSize: paper.sheetSize || "",
+        materialSize: paper.materialSize || "",
         paperType: paper.paperType || "",
         gsm: paper.gsm || "",
-        ratePerUnit: paper.ratePerUnit || ""
+        ratePerUnit: paper.ratePerUnit || "",
       }));
     }
 
@@ -473,13 +483,14 @@ exports.updateOrder = async (req, res) => {
           message: "Binder papers must be an array",
         });
       }
-      updateData.binderPapers = binderPapers.map(paper => ({
-        paperName: paper.paperName || `Binder-Paper-${Math.floor(Math.random() * 1000)}`,
+      updateData.binderPapers = binderPapers.map((paper) => ({
+        paperName:
+          paper.paperName || `Binder-Paper-${Math.floor(Math.random() * 1000)}`,
         numberOfSheetsUsed: paper.numberOfSheetsUsed || "",
         sheetSize: paper.sheetSize || "",
         paperType: paper.paperType || "",
         gsm: paper.gsm || "",
-        ratePerUnit: paper.ratePerUnit || ""
+        ratePerUnit: paper.ratePerUnit || "",
       }));
     }
 
@@ -490,13 +501,15 @@ exports.updateOrder = async (req, res) => {
           message: "Booklet papers must be an array",
         });
       }
-      updateData.bookletPapers = bookletPapers.map(paper => ({
-        paperName: paper.paperName || `Booklet-Paper-${Math.floor(Math.random() * 1000)}`,
+      updateData.bookletPapers = bookletPapers.map((paper) => ({
+        paperName:
+          paper.paperName ||
+          `Booklet-Paper-${Math.floor(Math.random() * 1000)}`,
         numberOfSheetsUsed: paper.numberOfSheetsUsed || "",
         sheetSize: paper.sheetSize || "",
         paperType: paper.paperType || "",
         gsm: paper.gsm || "",
-        ratePerUnit: paper.ratePerUnit || ""
+        ratePerUnit: paper.ratePerUnit || "",
       }));
     }
     // Validate ObjectIds if they are being updated
@@ -570,7 +583,8 @@ exports.updateOrder = async (req, res) => {
       if (!["Matte", "Gloss"].includes(laminationType)) {
         return res.status(400).json({
           success: false,
-          message: "Lamination type must be either 'Matte' or 'Gloss' when lamination is selected",
+          message:
+            "Lamination type must be either 'Matte' or 'Gloss' when lamination is selected",
         });
       }
       updateData.laminationType = laminationType;
@@ -634,7 +648,7 @@ exports.updateOrder = async (req, res) => {
       new: true,
       runValidators: true,
     })
-      .populate("companyName", "companyName")
+      .populate("companyName", "companyName avatar")
       .populate("party", "partyName")
       .populate("productItem", "itemName")
       .populate("createdBy")
@@ -739,7 +753,7 @@ exports.getOrdersByCompanyAndParty = async (req, res) => {
       companyName: companyId,
       party: partyId,
     })
-      .populate("companyName", "companyName")
+      .populate("companyName", "companyName avatar")
       .populate("party", "partyName")
       .populate("productItem", "itemName")
       .populate("createdBy")
@@ -777,7 +791,7 @@ exports.getDesignerById = async (req, res) => {
     }
 
     const orders = await Order.find({ designer: id })
-      .populate("companyName", "companyName")
+      .populate("companyName", "companyName avatar")
       .populate("party", "partyName contactPerson personWhatsAppNo GSTNo")
       .populate("productItem", "itemName")
       .populate("createdBy")
@@ -819,7 +833,7 @@ exports.getPrinterById = async (req, res) => {
     }
 
     const orders = await Order.find({ printer: id })
-      .populate("companyName", "companyName")
+      .populate("companyName", "companyName avatar")
       .populate("party", "partyName contactPerson personWhatsAppNo GSTNo")
       .populate("productItem", "itemName")
       .populate("createdBy")
@@ -862,7 +876,7 @@ exports.getBinderById = async (req, res) => {
     }
 
     const orders = await Order.find({ binder: id })
-      .populate("companyName", "companyName")
+      .populate("companyName", "companyName avatar")
       .populate("party", "partyName contactPerson personWhatsAppNo GSTNo")
       .populate("productItem", "itemName")
       .populate("createdBy")
@@ -908,7 +922,7 @@ exports.getBookletBinderById = async (req, res) => {
     }
 
     const orders = await Order.find({ bookletBinder: id })
-      .populate("companyName", "companyName")
+      .populate("companyName", "companyName avatar")
       .populate("party", "partyName contactPerson personWhatsAppNo GSTNo")
       .populate("productItem", "itemName")
       .populate("createdBy")
@@ -1070,7 +1084,7 @@ exports.updateStaffStatus = async (req, res) => {
     const updatedOrder = await Order.findByIdAndUpdate(orderId, updateData, {
       new: true,
     })
-      .populate("companyName", "companyName")
+      .populate("companyName", "companyName avatar")
       .populate("party", "partyName")
       .populate("productItem", "itemName");
 
