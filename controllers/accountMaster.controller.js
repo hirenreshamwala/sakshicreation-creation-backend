@@ -1,7 +1,7 @@
 const mongoose = require("mongoose");
 const AccountMaster = require("../models/accountMaster.model");
 const Lead = require("../models/lead.model");
-const xlsx = require("xlsx"); 
+const xlsx = require("xlsx");
 const AssignTask = require("../models/assignTask.model");
 const Order = require("../models/order.model");
 const Staff = require("../models/staff.model");
@@ -24,7 +24,7 @@ exports.createAccountMaster = async (req, res) => {
       // "contactMobileNo",
       // "contactWhatsAppNo",
       // "GSTNo",
-      "address"
+      "address",
     ];
 
     for (const field of partyRequiredFields) {
@@ -36,7 +36,13 @@ exports.createAccountMaster = async (req, res) => {
       }
     }
 
-    const requiredAddressFields = ["unitNo", "marketName", "streetAddress", "area", "pincode"];
+    const requiredAddressFields = [
+      "unitNo",
+      "marketName",
+      "streetAddress",
+      "area",
+      "pincode",
+    ];
     for (const field of requiredAddressFields) {
       if (!req.body.address[field]) {
         return res.status(400).json({
@@ -54,10 +60,15 @@ exports.createAccountMaster = async (req, res) => {
       });
     }
 
-    if (!req.body.companyName || !req.body.reasonToVisit || !req.body.createdBy) {
+    if (
+      !req.body.companyName ||
+      !req.body.reasonToVisit ||
+      !req.body.createdBy
+    ) {
       return res.status(400).json({
         success: false,
-        message: "Missing required fields: companyName, reasonToVisit, or createdBy",
+        message:
+          "Missing required fields: companyName, reasonToVisit, or createdBy",
       });
     }
     const emailRegex = /^\S+@\S+\.\S+$/;
@@ -67,23 +78,34 @@ exports.createAccountMaster = async (req, res) => {
         message: "Invalid owner email format",
       });
     }
-    if (req.body.contactPersonEmail && !emailRegex.test(req.body.contactPersonEmail)) {
+    if (
+      req.body.contactPersonEmail &&
+      !emailRegex.test(req.body.contactPersonEmail)
+    ) {
       return res.status(400).json({
         success: false,
         message: "Invalid contact person email format",
       });
     }
-    if (req.body.contactForPaymentEmail && !emailRegex.test(req.body.contactForPaymentEmail)) {
+    if (
+      req.body.contactForPaymentEmail &&
+      !emailRegex.test(req.body.contactForPaymentEmail)
+    ) {
       return res.status(400).json({
         success: false,
         message: "Invalid contact for payment email format",
       });
     }
 
-    if (!req.body.companyName || !req.body.reasonToVisit || !req.body.createdBy) {
+    if (
+      !req.body.companyName ||
+      !req.body.reasonToVisit ||
+      !req.body.createdBy
+    ) {
       return res.status(400).json({
         success: false,
-        message: "Missing required fields: companyName, reasonToVisit, or createdBy",
+        message:
+          "Missing required fields: companyName, reasonToVisit, or createdBy",
       });
     }
 
@@ -105,17 +127,17 @@ exports.createAccountMaster = async (req, res) => {
 
     const existingParty = await Party.findOne({
       $and: [
-      { companyName: req.body.companyName },
+        { companyName: req.body.companyName },
         { partyName: req.body.partyName },
-        { ownerWhatsAppNo: req.body.ownerWhatsAppNo }
-      ]
+        { ownerWhatsAppNo: req.body.ownerWhatsAppNo },
+      ],
     });
 
-     if (existingParty) {
+    if (existingParty) {
       return res.status(400).json({
         success: false,
-        message: "A party with this company, name and mobile number already exists",
-
+        message:
+          "A party with this company, name and mobile number already exists",
       });
     }
 
@@ -138,7 +160,7 @@ exports.createAccountMaster = async (req, res) => {
       GSTNo: req.body.GSTNo || null,
       address: req.body.address,
       reference: req.body.reference,
-      statusApproval: req.body.isRequestMode ? "Pending" : "Approved" // Set based on isRequestMode
+      statusApproval: req.body.isRequestMode ? "Pending" : "Approved", // Set based on isRequestMode
     };
 
     const newParty = await Party.create(partyData);
@@ -147,12 +169,14 @@ exports.createAccountMaster = async (req, res) => {
       companyName: req.body.companyName,
       party: newParty._id,
       reasonToVisit: req.body.reasonToVisit,
-      createdBy: req.body.createdBy
+      createdBy: req.body.createdBy,
     };
 
     const newAccountMaster = await AccountMaster.create(accountMasterData);
 
-    const populatedAccountMaster = await AccountMaster.findById(newAccountMaster._id)
+    const populatedAccountMaster = await AccountMaster.findById(
+      newAccountMaster._id
+    )
       .populate("companyName", "companyName avatar")
       .populate("party")
       .populate("createdBy", "firstName lastName email");
@@ -162,7 +186,6 @@ exports.createAccountMaster = async (req, res) => {
       message: "Account master created successfully",
       data: populatedAccountMaster,
     });
-
   } catch (error) {
     console.error("Error creating account master:", error);
     // if (error.code === 11000) {
@@ -195,30 +218,32 @@ exports.getAllAccountMasters = async (req, res) => {
       .populate({
         path: "party",
         select: "-__v",
-        match: statusApproval ? { statusApproval } : {} // Filter by statusApproval
+        match: statusApproval ? { statusApproval } : {}, // Filter by statusApproval
       })
       .sort({ createdAt: -1 });
 
     // Filter out null parties (in case some don't match the statusApproval)
-    const filteredAccountMasters = accountMasters.filter(account => account.party !== null);
+    const filteredAccountMasters = accountMasters.filter(
+      (account) => account.party !== null
+    );
 
     const assignTasks = await AssignTask.aggregate([
       {
-        $sort: { createdAt: -1 }
+        $sort: { createdAt: -1 },
       },
       {
         $group: {
           _id: {
             partyName: "$partyName",
-            companyName: "$companyName"
+            companyName: "$companyName",
           },
-          latestTask: { $first: "$$ROOT" }
-        }
-      }
+          latestTask: { $first: "$$ROOT" },
+        },
+      },
     ]);
 
     const taskMap = {};
-    assignTasks.forEach(task => {
+    assignTasks.forEach((task) => {
       const key = `${task._id.partyName}_${task._id.companyName}`;
       taskMap[key] = task.latestTask;
     });
@@ -231,19 +256,19 @@ exports.getAllAccountMasters = async (req, res) => {
         let taskDetails = {
           assignedTo: account.createdBy,
           remarks: "NA",
-          status: "Not Started"
+          status: "Not Started",
         };
 
         if (latestTask) {
           const populatedTask = await AssignTask.populate(latestTask, {
-            path: 'assignTo',
-            select: 'firstName lastName email'
+            path: "assignTo",
+            select: "firstName lastName email",
           });
 
           taskDetails = {
             assignedTo: populatedTask.assignTo || account.createdBy,
             remarks: populatedTask.remarks || "NA",
-            status: populatedTask.status || "Not Started"
+            status: populatedTask.status || "Not Started",
           };
         }
 
@@ -252,7 +277,7 @@ exports.getAllAccountMasters = async (req, res) => {
           companyName: {
             _id: account.companyName?._id,
             name: account.companyName?.companyName,
-            avatar:account.companyName?.avatar
+            avatar: account.companyName?.avatar,
           },
           reasonToVisit: account.reasonToVisit,
           createdAt: account.createdAt,
@@ -272,15 +297,16 @@ exports.getAllAccountMasters = async (req, res) => {
             contactForPayment: account.party.contactForPayment,
             contactMobileNo: account.party.contactMobileNo,
             contactWhatsAppNo: account.party.contactWhatsAppNo,
-            contactForPaymentEmail: account.party.contactForPaymentEmail || "N/A",
+            contactForPaymentEmail:
+              account.party.contactForPaymentEmail || "N/A",
             GSTNo: account.party.GSTNo,
             address: account.party.address,
             partyTag: account.party.partyTag,
             statusApproval: account.party.statusApproval, // Include statusApproval
             createdAt: account.party.createdAt,
-            updatedAt: account.party.updatedAt
+            updatedAt: account.party.updatedAt,
           },
-          assignment: taskDetails
+          assignment: taskDetails,
         };
       })
     );
@@ -288,15 +314,14 @@ exports.getAllAccountMasters = async (req, res) => {
     res.status(200).json({
       success: true,
       count: enrichedAccountMasters.length,
-      data: enrichedAccountMasters
+      data: enrichedAccountMasters,
     });
-
   } catch (error) {
     console.error("Error getting account masters:", error);
     res.status(500).json({
       success: false,
       message: "Failed to fetch account masters",
-      error: error.message
+      error: error.message,
     });
   }
 };
@@ -490,6 +515,20 @@ exports.bulkCreateAccountMasters = async (req, res) => {
 
     // Process each row in the CSV
     for (const row of data) {
+      // Handle partyTag logic
+      let partyTag = "New"; // Default value
+      if (row.partyTag) {
+        const partyTagValue = String(row.partyTag).trim();
+
+        // Case-insensitive matching
+        if (partyTagValue.toLowerCase() === "customer") {
+          partyTag = "Customer";
+        } else if (partyTagValue.toLowerCase() === "new") {
+          partyTag = "New";
+        }
+        // If any other value is provided, it will remain "New" (default)
+      }
+
       // Prepare party data from CSV row
       const partyData = {
         companyName: globalCompanyName,
@@ -518,10 +557,13 @@ exports.bulkCreateAccountMasters = async (req, res) => {
         reference: row.reference || null,
         statusApproval: row.isRequestMode === "TRUE" ? "Pending" : "Approved",
         createdBy: globalCreatedBy,
+        partyTag: partyTag, // Add the determined partyTag
       };
 
       // Validate companyName
-      const company = await CompanyName.findById(globalCompanyName).session(session);
+      const company = await CompanyName.findById(globalCompanyName).session(
+        session
+      );
       if (!company) {
         errors.push(`Invalid companyName ID for row: ${JSON.stringify(row)}`);
         continue;
@@ -544,10 +586,13 @@ exports.bulkCreateAccountMasters = async (req, res) => {
         reasonToVisit: row.reasonToVisit || null,
         reference: row.reference || null,
         createdBy: globalCreatedBy,
+        partyTag: partyTag, // Also add partyTag to AccountMaster if needed
       };
 
       // Create new AccountMaster
-      const newAccountMaster = await AccountMaster.create([accountMasterData], { session });
+      const newAccountMaster = await AccountMaster.create([accountMasterData], {
+        session,
+      });
       accountMasters.push(newAccountMaster[0]);
     }
 
@@ -567,7 +612,9 @@ exports.bulkCreateAccountMasters = async (req, res) => {
     session.endSession();
 
     // Populate and return the created AccountMasters
-    const populatedAccountMasters = await AccountMaster.find({ _id: { $in: accountMasters.map(am => am._id) } })
+    const populatedAccountMasters = await AccountMaster.find({
+      _id: { $in: accountMasters.map((am) => am._id) },
+    })
       .populate("companyName", "companyName avatar")
       .populate("party")
       .populate("createdBy", "firstName lastName email");
@@ -716,13 +763,19 @@ exports.updateAccountMaster = async (req, res) => {
         message: "Invalid owner email format",
       });
     }
-    if (req.body.contactPersonEmail && !emailRegex.test(req.body.contactPersonEmail)) {
+    if (
+      req.body.contactPersonEmail &&
+      !emailRegex.test(req.body.contactPersonEmail)
+    ) {
       return res.status(400).json({
         success: false,
         message: "Invalid contact person email format",
       });
     }
-    if (req.body.contactForPaymentEmail && !emailRegex.test(req.body.contactForPaymentEmail)) {
+    if (
+      req.body.contactForPaymentEmail &&
+      !emailRegex.test(req.body.contactForPaymentEmail)
+    ) {
       return res.status(400).json({
         success: false,
         message: "Invalid contact for payment email format",
@@ -748,31 +801,45 @@ exports.updateAccountMaster = async (req, res) => {
       address: req.body.address,
       reference: req.body.reference,
       // Preserve existing statusApproval unless explicitly updated
-      statusApproval: req.body.statusApproval || (await Party.findById(partyId)).statusApproval,
+      statusApproval:
+        req.body.statusApproval ||
+        (await Party.findById(partyId)).statusApproval,
     };
 
-if (req.body.companyName || req.body.partyName || req.body.ownerWhatsAppNo) {
+    if (
+      req.body.companyName ||
+      req.body.partyName ||
+      req.body.ownerWhatsAppNo
+    ) {
       const existingParty = await Party.findOne({
         $and: [
           { _id: { $ne: partyId } }, // Exclude current party
           { companyName: req.body.companyName || accountMaster.companyName },
           { partyName: req.body.partyName || accountMaster.party.partyName },
-          { ownerWhatsAppNo: req.body.ownerWhatsAppNo || accountMaster.party.ownerWhatsAppNo }
-        ]
+          {
+            ownerWhatsAppNo:
+              req.body.ownerWhatsAppNo || accountMaster.party.ownerWhatsAppNo,
+          },
+        ],
       });
 
       if (existingParty) {
         return res.status(400).json({
           success: false,
-          message: "A party with this company, name and mobile number already exists",
+          message:
+            "A party with this company, name and mobile number already exists",
         });
       }
     }
 
-    const updatedParty = await Party.findByIdAndUpdate(partyId, partyUpdateData, {
-      new: true,
-      runValidators: true,
-    });
+    const updatedParty = await Party.findByIdAndUpdate(
+      partyId,
+      partyUpdateData,
+      {
+        new: true,
+        runValidators: true,
+      }
+    );
 
     if (!updatedParty) {
       return res.status(404).json({
@@ -863,7 +930,9 @@ exports.updateAccountMasterStatus = async (req, res) => {
     }
 
     // Find the latest assign task for this party
-    const latestTask = await AssignTask.findOne({ partyName: updatedAccountMaster.partyName })
+    const latestTask = await AssignTask.findOne({
+      partyName: updatedAccountMaster.partyName,
+    })
       .sort({ createdAt: -1 })
       .populate("assignTo", "firstName lastName email");
 
@@ -906,7 +975,9 @@ exports.updateAccountMasterStatus = async (req, res) => {
       createdBy: updatedAccountMaster.createdBy
         ? `${updatedAccountMaster.createdBy.firstName} ${updatedAccountMaster.createdBy.lastName}`
         : "",
-      createdById: updatedAccountMaster.createdBy ? updatedAccountMaster.createdBy._id : null,
+      createdById: updatedAccountMaster.createdBy
+        ? updatedAccountMaster.createdBy._id
+        : null,
       assignedTo: assignedTo
         ? {
             _id: assignedTo._id,
@@ -935,7 +1006,6 @@ exports.updateAccountMasterStatus = async (req, res) => {
   }
 };
 
-
 exports.deleteAccountMaster = async (req, res) => {
   const session = await mongoose.startSession();
   session.startTransaction();
@@ -945,9 +1015,9 @@ exports.deleteAccountMaster = async (req, res) => {
 
     // 1. Find the AccountMaster with party details
     const accountMaster = await AccountMaster.findById(accountMasterId)
-      .populate('party')
+      .populate("party")
       .session(session);
-    
+
     if (!accountMaster) {
       await session.abortTransaction();
       session.endSession();
@@ -974,17 +1044,16 @@ exports.deleteAccountMaster = async (req, res) => {
       message: "Account master and associated party deleted successfully",
       deletedCounts: {
         accountMaster: 1,
-        party: 1
+        party: 1,
       },
     });
-
   } catch (error) {
     await session.abortTransaction();
     session.endSession();
-    
+
     console.error("Error in deleteAccountMaster:", error);
-    
-    if (error.name === 'CastError') {
+
+    if (error.name === "CastError") {
       return res.status(400).json({
         success: false,
         message: "Invalid ID format",
@@ -1002,10 +1071,10 @@ exports.deleteAccountMaster = async (req, res) => {
 // Get all Staff for createdBy dropdown
 exports.getAllStaff = async (req, res) => {
   try {
-    const staff = await Staff.find({}, 'firstName lastName _id');
-    const formattedStaff = staff.map(s => ({
+    const staff = await Staff.find({}, "firstName lastName _id");
+    const formattedStaff = staff.map((s) => ({
       id: s._id,
-      name: `${s.firstName} ${s.lastName}`
+      name: `${s.firstName} ${s.lastName}`,
     }));
 
     res.status(200).json({
@@ -1020,42 +1089,42 @@ exports.getAllStaff = async (req, res) => {
   }
 };
 
-
 exports.getAccountMasterByCompanyAndParty = async (req, res) => {
   try {
-
-    const {companyId , partyId} = req.body
+    const { companyId, partyId } = req.body;
     // Validate both IDs
-    if (!mongoose.Types.ObjectId.isValid(companyId) || 
-        !mongoose.Types.ObjectId.isValid(partyId)) {
+    if (
+      !mongoose.Types.ObjectId.isValid(companyId) ||
+      !mongoose.Types.ObjectId.isValid(partyId)
+    ) {
       return res.status(400).json({
         success: false,
-        message: "Invalid ID format(s)"
+        message: "Invalid ID format(s)",
       });
     }
 
     // Find account master where both company and party match
     const accountMaster = await AccountMaster.findOne({
       companyName: companyId,
-      party: partyId
+      party: partyId,
     })
-    .populate({
-      path: "companyName",
-      select: "-__v" // All company fields except version
-    })
-    .populate({
-      path: "party",
-      select: "-__v" // All party fields except version
-    })
-    .populate({
-      path: "createdBy",
-      select: "-__v -password" // All staff fields except version and password
-    });
+      .populate({
+        path: "companyName",
+        select: "-__v", // All company fields except version
+      })
+      .populate({
+        path: "party",
+        select: "-__v", // All party fields except version
+      })
+      .populate({
+        path: "createdBy",
+        select: "-__v -password", // All staff fields except version and password
+      });
 
     if (!accountMaster) {
       return res.status(404).json({
         success: false,
-        message: "No account found matching these company and party IDs"
+        message: "No account found matching these company and party IDs",
       });
     }
 
@@ -1070,17 +1139,16 @@ exports.getAccountMasterByCompanyAndParty = async (req, res) => {
           updatedAt: accountMaster.updatedAt,
           company: accountMaster.companyName.toObject(),
           party: accountMaster.party.toObject(),
-          createdBy: accountMaster.createdBy.toObject()
-        }
-      }
+          createdBy: accountMaster.createdBy.toObject(),
+        },
+      },
     });
-
   } catch (error) {
     console.error("Error fetching account:", error);
     res.status(500).json({
       success: false,
       message: "Failed to fetch account data",
-      error: error.message
+      error: error.message,
     });
   }
 };
@@ -1125,7 +1193,6 @@ exports.approveParty = async (req, res) => {
       message: "Party approved successfully",
       data: accountMaster,
     });
-
   } catch (error) {
     console.error("Error approving party:", error);
     res.status(500).json({
@@ -1139,8 +1206,8 @@ exports.approveParty = async (req, res) => {
 exports.getAccountMasterByStaffId = async (req, res) => {
   try {
     const { id } = req.params;
-    console.log("🚀 ~ req:", req.params)
-    console.log("🚀 ~ staffId:", id)
+    console.log("🚀 ~ req:", req.params);
+    console.log("🚀 ~ staffId:", id);
 
     // Validate staffId
     if (!mongoose.Types.ObjectId.isValid(id)) {
@@ -1176,21 +1243,21 @@ exports.getAccountMasterByStaffId = async (req, res) => {
     // Fetch latest tasks for each party and company combination
     const assignTasks = await AssignTask.aggregate([
       {
-        $sort: { createdAt: -1 }
+        $sort: { createdAt: -1 },
       },
       {
         $group: {
           _id: {
             partyName: "$partyName",
-            companyName: "$companyName"
+            companyName: "$companyName",
           },
-          latestTask: { $first: "$$ROOT" }
-        }
-      }
+          latestTask: { $first: "$$ROOT" },
+        },
+      },
     ]);
 
     const taskMap = {};
-    assignTasks.forEach(task => {
+    assignTasks.forEach((task) => {
       const key = `${task._id.partyName}_${task._id.companyName}`;
       taskMap[key] = task.latestTask;
     });
@@ -1204,19 +1271,19 @@ exports.getAccountMasterByStaffId = async (req, res) => {
         let taskDetails = {
           assignedTo: account.createdBy,
           remarks: "NA",
-          status: "Not Started"
+          status: "Not Started",
         };
 
         if (latestTask) {
           const populatedTask = await AssignTask.populate(latestTask, {
-            path: 'assignTo',
-            select: 'firstName lastName email'
+            path: "assignTo",
+            select: "firstName lastName email",
           });
 
           taskDetails = {
             assignedTo: populatedTask.assignTo || account.createdBy,
             remarks: populatedTask.remarks || "NA",
-            status: populatedTask.status || "Not Started"
+            status: populatedTask.status || "Not Started",
           };
         }
 
@@ -1224,7 +1291,7 @@ exports.getAccountMasterByStaffId = async (req, res) => {
           _id: account._id,
           companyName: {
             _id: account.companyName?._id,
-            name: account.companyName?.companyName
+            name: account.companyName?.companyName,
           },
           reasonToVisit: account.reasonToVisit,
           createdAt: account.createdAt,
@@ -1247,9 +1314,9 @@ exports.getAccountMasterByStaffId = async (req, res) => {
             partyTag: account.party?.partyTag,
             statusApproval: account.party?.statusApproval,
             createdAt: account.party?.createdAt,
-            updatedAt: account.party?.updatedAt
+            updatedAt: account.party?.updatedAt,
           },
-          assignment: taskDetails
+          assignment: taskDetails,
         };
       })
     );
@@ -1259,7 +1326,6 @@ exports.getAccountMasterByStaffId = async (req, res) => {
       count: enrichedAccountMasters.length,
       data: enrichedAccountMasters,
     });
-
   } catch (error) {
     console.error("Error fetching account masters by staff ID:", error);
     res.status(500).json({
@@ -1273,9 +1339,9 @@ exports.getAccountMasterByStaffId = async (req, res) => {
 exports.searchParties = async (req, res) => {
   try {
     const { q } = req.query;
-    const query = q ? { partyName: { $regex: q, $options: 'i' } } : {};
+    const query = q ? { partyName: { $regex: q, $options: "i" } } : {};
     const parties = await Party.find(query).limit(20).sort({ partyName: 1 });
-    
+
     res.status(200).json({
       success: true,
       data: parties,
