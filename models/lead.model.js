@@ -50,7 +50,10 @@ const leadSchema = new mongoose.Schema({
   originalLeadId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "Lead"
-  }
+  },
+  callHistory:[{
+    type:String,
+  }]
 }, { timestamps: true });
 
 // Pre-save hook to handle custom reason

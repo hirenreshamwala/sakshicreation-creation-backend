@@ -201,12 +201,12 @@ exports.getAllLeads = async (req, res) => {
     const validLeads = leads.filter(
       (lead) => lead.partyName && lead.companyName
     );
- if (validLeads.length === 0) {
+    if (validLeads.length === 0) {
       return res.status(200).json({
         success: true,
         count: 0,
         data: [],
-        message: "No leads found"
+        message: "No leads found",
       });
     }
     // Fetch AccountMaster records to get createdBy for each valid lead
@@ -252,7 +252,7 @@ exports.bulkCreateLeads = async (req, res) => {
     if (!Array.isArray(leadsData) || leadsData.length === 0) {
       return res.status(400).json({
         success: false,
-        message: 'Expected an array of lead data',
+        message: "Expected an array of lead data",
       });
     }
 
@@ -269,7 +269,7 @@ exports.bulkCreateLeads = async (req, res) => {
           assignedTo,
           date,
           time,
-          status = 'pending',
+          status = "pending",
           remark,
           callFeedback,
           rescheduleDate,
@@ -281,10 +281,16 @@ exports.bulkCreateLeads = async (req, res) => {
         if (!companyName || !partyName || !reason || !assignedTo || !date) {
           errors.push({
             partyName,
-            message: 'Missing required fields',
+            message: "Missing required fields",
             missingFields: { companyName, partyName, reason, assignedTo, date },
           });
-          console.log(`Validation failed for partyName: ${partyName}`, { companyName, partyName, reason, assignedTo, date });
+          console.log(`Validation failed for partyName: ${partyName}`, {
+            companyName,
+            partyName,
+            reason,
+            assignedTo,
+            date,
+          });
           continue;
         }
 
@@ -296,10 +302,14 @@ exports.bulkCreateLeads = async (req, res) => {
         ) {
           errors.push({
             partyName,
-            message: 'Invalid ID format',
+            message: "Invalid ID format",
             invalidFields: { companyName, partyName, assignedTo },
           });
-          console.log(`Invalid ID format for partyName: ${partyName}`, { companyName, partyName, assignedTo });
+          console.log(`Invalid ID format for partyName: ${partyName}`, {
+            companyName,
+            partyName,
+            assignedTo,
+          });
           continue;
         }
 
@@ -307,23 +317,32 @@ exports.bulkCreateLeads = async (req, res) => {
         const [company, party, staff] = await Promise.all([
           CompanyName.findById(companyName),
           Party.findById(partyName),
-          Staff.findById(assignedTo)
+          Staff.findById(assignedTo),
         ]);
 
         if (!company) {
-          errors.push({ partyName, message: `Company not found for ID: ${companyName}` });
+          errors.push({
+            partyName,
+            message: `Company not found for ID: ${companyName}`,
+          });
           console.log(`Company not found for ID: ${companyName}`);
           continue;
         }
 
         if (!party) {
-          errors.push({ partyName, message: `Party not found for ID: ${partyName}` });
+          errors.push({
+            partyName,
+            message: `Party not found for ID: ${partyName}`,
+          });
           console.log(`Party not found for ID: ${partyName}`);
           continue;
         }
 
         if (!staff) {
-          errors.push({ partyName, message: `Staff not found for ID: ${assignedTo}` });
+          errors.push({
+            partyName,
+            message: `Staff not found for ID: ${assignedTo}`,
+          });
           console.log(`Staff not found for ID: ${assignedTo}`);
           continue;
         }
@@ -335,21 +354,25 @@ exports.bulkCreateLeads = async (req, res) => {
           if (!dateRegex.test(date)) {
             errors.push({
               partyName,
-              message: 'Invalid date format. Use DD-MM-YYYY or YYYY-MM-DD.',
+              message: "Invalid date format. Use DD-MM-YYYY or YYYY-MM-DD.",
             });
-            console.log(`Invalid date format for partyName: ${partyName}`, { date });
+            console.log(`Invalid date format for partyName: ${partyName}`, {
+              date,
+            });
             continue;
           }
-          
-          let [year, month, day] = date.split('-');
+
+          let [year, month, day] = date.split("-");
           if (date.match(/^\d{2}-\d{2}-\d{4}$/)) {
-            [day, month, year] = date.split('-');
+            [day, month, year] = date.split("-");
           }
           normalizedDate = new Date(`${year}-${month}-${day}`);
-          
+
           if (isNaN(normalizedDate.getTime())) {
-            errors.push({ partyName, message: 'Invalid date provided' });
-            console.log(`Invalid date provided for partyName: ${partyName}`, { date });
+            errors.push({ partyName, message: "Invalid date provided" });
+            console.log(`Invalid date provided for partyName: ${partyName}`, {
+              date,
+            });
             continue;
           }
         }
@@ -358,8 +381,8 @@ exports.bulkCreateLeads = async (req, res) => {
         const lead = new Lead({
           companyName,
           partyName,
-          reason: reason === 'Other' ? customReason : reason,
-          customReason: reason === 'Other' ? customReason : undefined,
+          reason: reason === "Other" ? customReason : reason,
+          customReason: reason === "Other" ? customReason : undefined,
           assignedTo,
           date: normalizedDate,
           time,
@@ -372,29 +395,27 @@ exports.bulkCreateLeads = async (req, res) => {
         const savedLead = await lead.save();
         createdLeads.push(savedLead);
         console.log(`Successfully created lead for partyName: ${partyName}`);
-
       } catch (error) {
         console.error(`Error processing lead:`, error);
         errors.push({
           partyName: leadData.partyName,
-          message: error.message || 'Error processing lead'
+          message: error.message || "Error processing lead",
         });
       }
     }
 
     return res.status(201).json({
       success: true,
-      message: 'Bulk lead creation completed',
+      message: "Bulk lead creation completed",
       data: createdLeads,
       errors: errors.length > 0 ? errors : undefined,
       count: createdLeads.length,
     });
-
   } catch (error) {
-    console.error('Error in bulk lead creation:', error);
+    console.error("Error in bulk lead creation:", error);
     return res.status(500).json({
       success: false,
-      message: 'Server error while creating leads',
+      message: "Server error while creating leads",
       error: error.message,
     });
   }
@@ -457,7 +478,6 @@ exports.getLeadById = async (req, res) => {
   }
 };
 
-
 exports.updateLeadById = async (req, res) => {
   try {
     const { id } = req.params;
@@ -478,7 +498,7 @@ exports.updateLeadById = async (req, res) => {
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({
         success: false,
-        message: 'Invalid lead ID format',
+        message: "Invalid lead ID format",
       });
     }
 
@@ -487,7 +507,7 @@ exports.updateLeadById = async (req, res) => {
     if (!lead) {
       return res.status(404).json({
         success: false,
-        message: 'Lead not found',
+        message: "Lead not found",
       });
     }
 
@@ -496,14 +516,14 @@ exports.updateLeadById = async (req, res) => {
       if (!mongoose.Types.ObjectId.isValid(companyName)) {
         return res.status(400).json({
           success: false,
-          message: 'Invalid companyName ID format',
+          message: "Invalid companyName ID format",
         });
       }
       const company = await CompanyName.findById(companyName);
       if (!company) {
         return res.status(404).json({
           success: false,
-          message: 'Company not found',
+          message: "Company not found",
         });
       }
     }
@@ -512,14 +532,14 @@ exports.updateLeadById = async (req, res) => {
       if (!mongoose.Types.ObjectId.isValid(partyName)) {
         return res.status(400).json({
           success: false,
-          message: 'Invalid partyName ID format',
+          message: "Invalid partyName ID format",
         });
       }
       const party = await Party.findById(partyName);
       if (!party) {
         return res.status(404).json({
           success: false,
-          message: 'Party not found',
+          message: "Party not found",
         });
       }
     }
@@ -528,33 +548,38 @@ exports.updateLeadById = async (req, res) => {
       if (!mongoose.Types.ObjectId.isValid(assignedTo)) {
         return res.status(400).json({
           success: false,
-          message: 'Invalid assignedTo ID format',
+          message: "Invalid assignedTo ID format",
         });
       }
       const staff = await Staff.findById(assignedTo);
       if (!staff) {
         return res.status(404).json({
           success: false,
-          message: 'Staff member not found',
+          message: "Staff member not found",
         });
       }
     }
 
     if (status) {
-      const validStatuses = ['pending', 'completed', 'cancelled', 'rescheduled'];
+      const validStatuses = [
+        "pending",
+        "completed",
+        "cancelled",
+        "rescheduled",
+      ];
       if (!validStatuses.includes(status)) {
         return res.status(400).json({
           success: false,
-          message: 'Invalid status provided',
+          message: "Invalid status provided",
         });
       }
     }
 
-      // Validate callFeedback for updates
-    if (callFeedback === undefined || callFeedback === '') {
+    // Validate callFeedback for updates
+    if (callFeedback === undefined || callFeedback === "") {
       return res.status(400).json({
         success: false,
-        message: 'Call feedback is required for updates',
+        message: "Call feedback is required for updates",
       });
     }
 
@@ -562,18 +587,18 @@ exports.updateLeadById = async (req, res) => {
     if (time && !/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/.test(time)) {
       return res.status(400).json({
         success: false,
-        message: 'Invalid time format. Use HH:MM (24-hour format)',
+        message: "Invalid time format. Use HH:MM (24-hour format)",
       });
     }
 
     // Validate date format if provided
-     let normalizedDate = null;
+    let normalizedDate = null;
     if (date) {
       normalizedDate = new Date(date);
       if (isNaN(normalizedDate.getTime())) {
         return res.status(400).json({
           success: false,
-          message: 'Invalid date format. Use a valid date (e.g., YYYY-MM-DD)',
+          message: "Invalid date format. Use a valid date (e.g., YYYY-MM-DD)",
         });
       }
     }
@@ -581,11 +606,11 @@ exports.updateLeadById = async (req, res) => {
     let populatedNewLead = null;
     let originalCreatedAt = lead.createdAt; // Default to current lead's createdAt
 
-    if (status === 'rescheduled') {
+    if (status === "rescheduled") {
       if (!rescheduleDate || isNaN(new Date(rescheduleDate).getTime())) {
         return res.status(400).json({
           success: false,
-          message: 'Valid reschedule date is required for rescheduled status',
+          message: "Valid reschedule date is required for rescheduled status",
         });
       }
 
@@ -595,7 +620,7 @@ exports.updateLeadById = async (req, res) => {
       if (rescheduleDateObj < today) {
         return res.status(400).json({
           success: false,
-          message: 'Reschedule date must be a future date',
+          message: "Reschedule date must be a future date",
         });
       }
 
@@ -606,7 +631,7 @@ exports.updateLeadById = async (req, res) => {
         if (!rootLead) {
           return res.status(404).json({
             success: false,
-            message: 'Original lead not found',
+            message: "Original lead not found",
           });
         }
       }
@@ -621,7 +646,7 @@ exports.updateLeadById = async (req, res) => {
         assignedTo: lead.assignedTo,
         date: rescheduleDateObj,
         time: lead.time,
-        status: 'pending',
+        status: "pending",
         callFeedback,
         isRescheduledCall: true,
         originalLeadId: lead._id,
@@ -631,12 +656,12 @@ exports.updateLeadById = async (req, res) => {
 
       // Populate the new lead for the response
       populatedNewLead = await Lead.findById(newLead._id)
-        .populate('companyName', 'companyName')
+        .populate("companyName", "companyName")
         .populate(
-          'partyName',
-          'partyName ownerName ownerMobileNo ownerWhatsAppNo contactPerson personMobileNo personWhatsAppNo contactForPayment contactMobileNo contactWhatsAppNo GSTNo partyTag address createdAt updatedAt'
+          "partyName",
+          "partyName ownerName ownerMobileNo ownerWhatsAppNo contactPerson personMobileNo personWhatsAppNo contactForPayment contactMobileNo contactWhatsAppNo GSTNo partyTag address createdAt updatedAt"
         )
-        .populate('assignedTo', 'firstName lastName email')
+        .populate("assignedTo", "firstName lastName email")
         .lean();
     }
 
@@ -645,13 +670,19 @@ exports.updateLeadById = async (req, res) => {
       ...(companyName && { companyName }),
       ...(partyName && { partyName }),
       ...(reason && { reason }),
-      ...(reason === 'Other' && customReason ? { customReason } : reason !== 'Other' ? { customReason: undefined } : {}),
+      ...(reason === "Other" && customReason
+        ? { customReason }
+        : reason !== "Other"
+        ? { customReason: undefined }
+        : {}),
       ...(assignedTo && { assignedTo }),
       ...(status && { status }),
       ...(normalizedDate && { date: normalizedDate }),
       ...(time && { time }),
       ...(callFeedback && { callFeedback }),
-      ...(status === 'rescheduled' ? { rescheduleDate: new Date(rescheduleDate) } : { rescheduleDate: null }),
+      ...(status === "rescheduled"
+        ? { rescheduleDate: new Date(rescheduleDate) }
+        : { rescheduleDate: null }),
       updatedAt: new Date(),
     };
 
@@ -659,12 +690,12 @@ exports.updateLeadById = async (req, res) => {
     const updatedLead = await Lead.findByIdAndUpdate(id, updateData, {
       new: true,
     })
-      .populate('companyName', 'companyName')
+      .populate("companyName", "companyName")
       .populate(
-        'partyName',
-        'partyName ownerName ownerMobileNo ownerWhatsAppNo contactPerson personMobileNo personWhatsAppNo contactForPayment contactMobileNo contactWhatsAppNo GSTNo partyTag address createdAt updatedAt'
+        "partyName",
+        "partyName ownerName ownerMobileNo ownerWhatsAppNo contactPerson personMobileNo personWhatsAppNo contactForPayment contactMobileNo contactWhatsAppNo GSTNo partyTag address createdAt updatedAt"
       )
-      .populate('assignedTo', 'firstName lastName email')
+      .populate("assignedTo", "firstName lastName email")
       .lean();
 
     // Fetch createdBy from AccountMaster
@@ -672,7 +703,7 @@ exports.updateLeadById = async (req, res) => {
       party: updatedLead.partyName._id,
       companyName: updatedLead.companyName._id,
     })
-      .populate('createdBy', 'firstName lastName')
+      .populate("createdBy", "firstName lastName")
       .lean();
 
     // Attach createdBy to partyName
@@ -689,9 +720,9 @@ exports.updateLeadById = async (req, res) => {
       originalLead: populatedLead,
     };
 
-    if (status === 'rescheduled' && populatedNewLead) {
+    if (status === "rescheduled" && populatedNewLead) {
       responseData.newLead = {
-        message: 'New lead created with rescheduled date',
+        message: "New lead created with rescheduled date",
         rescheduledDate: rescheduleDate,
         data: {
           ...populatedNewLead,
@@ -705,34 +736,35 @@ exports.updateLeadById = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: status === 'rescheduled'
-        ? 'Lead rescheduled successfully and new lead created'
-        : 'Lead updated successfully',
+      message:
+        status === "rescheduled"
+          ? "Lead rescheduled successfully and new lead created"
+          : "Lead updated successfully",
       data: responseData,
     });
   } catch (error) {
-    console.error('Error updating lead:', error);
+    console.error("Error updating lead:", error);
     if (error.code === 11000) {
       return res.status(400).json({
         success: false,
-        message: 'Duplicate lead detected',
+        message: "Duplicate lead detected",
       });
     }
-    if (error.message.includes('Custom reason is required')) {
+    if (error.message.includes("Custom reason is required")) {
       return res.status(400).json({
         success: false,
         message: 'Custom reason is required when reason is "Other"',
       });
     }
-    if (error.message.includes('Call feedback is required')) {
+    if (error.message.includes("Call feedback is required")) {
       return res.status(400).json({
         success: false,
-        message: 'Call feedback is required for updates',
+        message: "Call feedback is required for updates",
       });
     }
     return res.status(500).json({
       success: false,
-      message: 'Server error while updating lead',
+      message: "Server error while updating lead",
       error: error.message,
     });
   }
@@ -876,16 +908,19 @@ exports.getLeadsByStaffId = async (req, res) => {
         select: "firstName lastName email",
       })
       .populate({
-      path: "originalLeadId",
-      select: "date createdAt", // Updated
-    })
+        path: "originalLeadId",
+        select: "date createdAt", // Updated
+      })
       .sort({ createdAt: -1 })
       .lean();
 
     // 4. Filter out leads with null companyName or partyName
-    const validLeads = leads.filter(lead => 
-      lead.companyName && lead.partyName && 
-      lead.companyName._id && lead.partyName._id
+    const validLeads = leads.filter(
+      (lead) =>
+        lead.companyName &&
+        lead.partyName &&
+        lead.companyName._id &&
+        lead.partyName._id
     );
 
     if (validLeads.length === 0) {
@@ -900,30 +935,30 @@ exports.getLeadsByStaffId = async (req, res) => {
     // 5. Fetch AccountMaster for each lead to get createdBy
     const leadsWithCreatedBy = await Promise.all(
       validLeads.map(async (lead) => {
-      try {
-        const accountMaster = await AccountMaster.findOne({
-          companyName: lead.companyName._id,
-          party: lead.partyName._id,
-        })
-          .populate("createdBy", "firstName lastName")
-          .lean();
+        try {
+          const accountMaster = await AccountMaster.findOne({
+            companyName: lead.companyName._id,
+            party: lead.partyName._id,
+          })
+            .populate("createdBy", "firstName lastName")
+            .lean();
 
-        return {
-          ...lead,
-          partyName: {
-            ...lead.partyName,
-            createdBy: accountMaster ? accountMaster.createdBy : null,
-          },
-        };
-      } catch (error) {
-        console.error(`Error processing lead ${lead._id}:`, error);
-        return null;
-      }
+          return {
+            ...lead,
+            partyName: {
+              ...lead.partyName,
+              createdBy: accountMaster ? accountMaster.createdBy : null,
+            },
+          };
+        } catch (error) {
+          console.error(`Error processing lead ${lead._id}:`, error);
+          return null;
+        }
       })
     );
 
     // Filter out any null entries from the mapping
-    const filteredLeads = leadsWithCreatedBy.filter(lead => lead !== null);
+    const filteredLeads = leadsWithCreatedBy.filter((lead) => lead !== null);
 
     // 6. Return the leads
     res.status(200).json({
@@ -937,6 +972,45 @@ exports.getLeadsByStaffId = async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Failed to fetch leads",
+      error: error.message,
+    });
+  }
+};
+
+exports.addLeadCallHistory = async (req, res) => {
+  try {
+    const { date } = req.body;
+
+    if (!date) {
+      return res.status(400).json({
+        success: false,
+        message: "Date is required to add call history",
+      });
+    }
+
+    const lead = await Lead.findByIdAndUpdate(
+      req.params.id,
+      { $push: { callHistory: date } },
+      { new: true } // Return updated document
+    );
+
+    if (!lead) {
+      return res.status(404).json({
+        success: false,
+        message: "Lead not found",
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Call history added successfully",
+      data: { callHistory: lead.callHistory },
+    });
+  } catch (error) {
+    console.error("Error adding call history:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to add call history",
       error: error.message,
     });
   }

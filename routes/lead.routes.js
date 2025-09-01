@@ -25,4 +25,6 @@ router.delete("/delete/:id", LeadController.deleteLead);
 // Get party names by company
 router.get("/party-names", LeadController.getPartyNamesByCompany);
 
+router.post("/add-callhistory/:id", LeadController.addLeadCallHistory);
+
 module.exports = router;
