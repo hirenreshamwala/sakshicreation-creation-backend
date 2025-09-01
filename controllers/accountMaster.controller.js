@@ -1198,7 +1198,7 @@ exports.getAccountMasterByStaffId = async (req, res) => {
     // Enrich account masters with task details
     const enrichedAccountMasters = await Promise.all(
       accountMasters.map(async (account) => {
-        const taskKey = `${account.party._id}_${account.companyName._id}`;
+        const taskKey = `${account?.party?._id}_${account?.companyName?._id}`;
         const latestTask = taskMap[taskKey];
 
         let taskDetails = {
@@ -1231,23 +1231,23 @@ exports.getAccountMasterByStaffId = async (req, res) => {
           updatedAt: account.updatedAt,
           createdBy: account.createdBy,
           party: {
-            _id: account.party._id,
-            partyName: account.party.partyName,
-            ownerName: account.party.ownerName,
-            ownerMobileNo: account.party.ownerMobileNo,
-            ownerWhatsAppNo: account.party.ownerWhatsAppNo,
-            contactPerson: account.party.contactPerson,
-            personMobileNo: account.party.personMobileNo,
-            personWhatsAppNo: account.party.personWhatsAppNo,
-            contactForPayment: account.party.contactForPayment,
-            contactMobileNo: account.party.contactMobileNo,
-            contactWhatsAppNo: account.party.contactWhatsAppNo,
-            GSTNo: account.party.GSTNo,
-            address: account.party.address,
-            partyTag: account.party.partyTag,
-            statusApproval: account.party.statusApproval,
-            createdAt: account.party.createdAt,
-            updatedAt: account.party.updatedAt
+            _id: account?.party?._id,
+            partyName: account.party?.partyName,
+            ownerName: account.party?.ownerName,
+            ownerMobileNo: account.party?.ownerMobileNo,
+            ownerWhatsAppNo: account.party?.ownerWhatsAppNo,
+            contactPerson: account.party?.contactPerson,
+            personMobileNo: account.party?.personMobileNo,
+            personWhatsAppNo: account.party?.personWhatsAppNo,
+            contactForPayment: account.party?.contactForPayment,
+            contactMobileNo: account.party?.contactMobileNo,
+            contactWhatsAppNo: account.party?.contactWhatsAppNo,
+            GSTNo: account.party?.GSTNo,
+            address: account.party?.address,
+            partyTag: account.party?.partyTag,
+            statusApproval: account.party?.statusApproval,
+            createdAt: account.party?.createdAt,
+            updatedAt: account.party?.updatedAt
           },
           assignment: taskDetails
         };
