@@ -20,6 +20,8 @@ const RoleDepartmentCompanyRouter = require("./roleDepartmentCompany.routes");
 const performanceInvoiceRoutes = require("./performanceInvoice.route");
 const Vendor = require("./vendor.routes");
 const BinderTypeRoutes = require("./binderType.routes");
+const QpOrderRoutes = require("./qpOrder.routes");
+const packagingOptions = require("./packagingOption.routes");
 
 router.use("/company", CompanyRouter);
 router.use("/staff", StaffRouter);
@@ -35,6 +37,8 @@ router.use("/productItem", productItem);
 router.use("/fileUpload", fileUpload);
 router.use("/status", status);
 router.use("/role", Roles);
+router.use("/qporder", QpOrderRoutes);
+router.use("/packagingOptions", packagingOptions);
 router.use("/filedownload", filedownloadRouter);
 router.use("/material", MaterialRouter);
 router.use("/roleDepartment", RoleDepartmentRouter);
