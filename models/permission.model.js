@@ -31,6 +31,14 @@ const permissionSchema = new mongoose.Schema(
       edit: { type: Boolean },
       delete: { type: Boolean },
     },
+    // for quality packaging company
+    order_factory: {
+      view_global: { type: Boolean },
+      view_own: { type: Boolean },
+      create: { type: Boolean },
+      edit: { type: Boolean },
+      delete: { type: Boolean },
+    },
     quality_packaging: {
       view_global: { type: Boolean },
       view_own: { type: Boolean },
@@ -66,14 +74,14 @@ const permissionSchema = new mongoose.Schema(
       edit: { type: Boolean },
       delete: { type: Boolean },
     },
-    task:{
+    task: {
       view_global: { type: Boolean },
       view_own: { type: Boolean },
       create: { type: Boolean },
       edit: { type: Boolean },
       delete: { type: Boolean },
     },
-    history:{
+    history: {
       view_global: { type: Boolean },
       view_own: { type: Boolean },
       create: { type: Boolean },
