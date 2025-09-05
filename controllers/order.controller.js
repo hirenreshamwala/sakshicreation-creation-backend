@@ -169,6 +169,18 @@ exports.createOrder = async (req, res) => {
       laminationType: isLamination ? laminationType || "" : "",
     };
 
+    if(req.body.number === 'Yes')
+    {
+      orderData.number = req.body.number
+      orderData.endNumber= req.body.endNumber
+      orderData.startNumber= req.body.startNumber
+    }
+
+    if(req.body.color !== "")
+    {
+      orderData.color = req.body.color
+    }
+
     const order = new Order(orderData);
     await order.save();
     const partyDoc = await Party.findById(party);
