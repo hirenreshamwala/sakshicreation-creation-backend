@@ -158,6 +158,7 @@ exports.createAccountMaster = async (req, res) => {
       contactWhatsAppNo: req.body.contactWhatsAppNo,
       contactForPaymentEmail: req.body.contactForPaymentEmail || null,
       GSTNo: req.body.GSTNo || null,
+      partyTag: req.body.partyTag || "New",
       address: req.body.address,
       reference: req.body.reference,
       statusApproval: req.body.isRequestMode ? "Pending" : "Approved", // Set based on isRequestMode

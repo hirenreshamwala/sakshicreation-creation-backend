@@ -1,3 +1,4 @@
+const { default: mongoose } = require("mongoose");
 const QpData = require("../models/qpOrder.model"); // Adjust path to your model
 const Staff = require("../models/staff.model");
 
