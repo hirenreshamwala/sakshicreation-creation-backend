@@ -37,7 +37,7 @@ exports.createMarket = async (req, res) => {
 // ✅ Get all Markets
 exports.getAllMarkets = async (req, res) => {
   try {
-    const markets = await Market.find().sort({ createdAt: -1 });
+    const markets = await Market.find().select("marketName area streetAddress landmark pincode").sort({ createdAt: -1 });
     return res.status(200).json({ data: markets });
   } catch (error) {
     return res.status(500).json({
@@ -82,6 +82,7 @@ exports.deleteMarket = async (req, res) => {
 
     const deletedMarket = await Market.findByIdAndDelete(id);
 
+    console.log(deletedMarket,'deletedMarket')
     if (!deletedMarket) {
       return res.status(404).json({ message: "Market not found" });
     }
@@ -102,8 +103,10 @@ exports.bulkUploadMarkets = async (req, res) => {
       return res.status(400).json({ message: "No file uploaded" });
     }
 
+    
     const fileContent = req.file.buffer.toString("utf8");
-
+    console.log(fileContent,'fileContent')
+    
     if (!fileContent) {
       return res.status(400).json({ message: "Uploaded file is empty" });
     }

@@ -28,6 +28,7 @@ const marketSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+marketSchema.index({ createdAt: -1 });
 
 const Market = mongoose.model("Market", marketSchema);
 module.exports = Market;
