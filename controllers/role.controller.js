@@ -72,7 +72,7 @@ const processPermissions = (permissions) => {
 
 // CREATE role
 exports.createRole = async (req, res) => {
-  const { roleName, permissions } = req.body;
+  const { roleName, permissions,company } = req.body;
 
   try {
     // Validate roleName
@@ -97,16 +97,18 @@ exports.createRole = async (req, res) => {
     const newRole = new Role({
       roleName,
       permissions: permissions,
+      company:company,
       isDelete: false,
       totalUser: 0,
     });
 
     await newRole.save();
+    const populatedRole = await Role.findById(newRole._id).populate('company')
 
     res.status(200).json({
       success: true,
       message: "Role created successfully",
-      data: newRole,
+      data: populatedRole,
     });
   } catch (error) {
     console.error("Error creating role:", error);
@@ -120,7 +122,7 @@ exports.createRole = async (req, res) => {
 // GET all roles
 exports.getAllRoles = async (req, res) => {
   try {
-    const roles = await Role.find({ isDelete: false }).select(
+    const roles = await Role.find({ isDelete: false }).populate('company').select(
       "-__v -updatedAt"
     );
 
@@ -144,7 +146,7 @@ exports.getRoleById = async (req, res) => {
     const role = await Role.findOne({
       _id: req.params.id,
       isDelete: false,
-    }).select("-__v -updatedAt");
+    }).populate('company').select("-__v -updatedAt");
 
     if (!role) {
       return res.status(404).json({
@@ -169,7 +171,7 @@ exports.getRoleById = async (req, res) => {
 
 // UPDATE role by ID
 exports.updateRoleById = async (req, res) => {
-  const { roleName, permissions } = req.body;
+  const { roleName, permissions,company } = req.body;
 
   try {
     const role = await Role.findOne({
@@ -207,6 +209,7 @@ exports.updateRoleById = async (req, res) => {
 
     // Update fields
     role.roleName = roleName || role.roleName;
+    role.company = company || role.company;
     if (permissions) {
       role.permissions = permissions; // Directly use permissions without processing
     }
@@ -215,7 +218,7 @@ exports.updateRoleById = async (req, res) => {
     await role.save();
 
     // Fetch the updated role with all fields
-    const updatedRole = await Role.findById(role._id).select("-__v -updatedAt");
+    const updatedRole = await Role.findById(role._id).populate('company').select("-__v -updatedAt");
 
     res.status(200).json({
       success: true,

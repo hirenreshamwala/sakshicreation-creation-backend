@@ -395,7 +395,13 @@ exports.loginStaff = async (req, res) => {
     }
 
     // Find staff by email and populate role
-    const staff = await Staff.findOne({ email }).populate("role");
+    const staff = await Staff.findOne({ email }).populate("role").populate({
+    path: "role",
+    populate: {
+      path: "company", // field in Role schema
+      model: "CompanyName", // optional if Mongoose infers
+    },
+  });
     if (!staff) {
       return res.status(401).json({
         success: false,

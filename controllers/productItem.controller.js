@@ -208,6 +208,7 @@ exports.bulkCreateProductItems = async (req, res) => {
   try {
     const file = req.file;
     if (!file) {
+   
       return res.status(400).json({
         success: false,
         message: 'No file uploaded',

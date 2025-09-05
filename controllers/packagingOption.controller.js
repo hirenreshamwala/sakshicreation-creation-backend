@@ -1,4 +1,5 @@
 const PackagingOption = require("../models/packagingOption.model");
+const Papa = require("papaparse");
 
 // ✅ Create a new Packaging Option
 exports.createPackagingOption = async (req, res) => {
@@ -17,7 +18,9 @@ exports.createPackagingOption = async (req, res) => {
       data: newOption,
     });
   } catch (error) {
-    return res.status(500).json({ message: "Server Error", error: error.message });
+    return res
+      .status(500)
+      .json({ message: "Server Error", error: error.message });
   }
 };
 
@@ -27,7 +30,9 @@ exports.getAllPackagingOptions = async (req, res) => {
     const options = await PackagingOption.find().sort({ createdAt: -1 });
     return res.status(200).json({ data: options });
   } catch (error) {
-    return res.status(500).json({ message: "Server Error", error: error.message });
+    return res
+      .status(500)
+      .json({ message: "Server Error", error: error.message });
   }
 };
 
@@ -52,7 +57,9 @@ exports.updatePackagingOption = async (req, res) => {
       data: updatedOption,
     });
   } catch (error) {
-    return res.status(500).json({ message: "Server Error", error: error.message });
+    return res
+      .status(500)
+      .json({ message: "Server Error", error: error.message });
   }
 };
 
@@ -67,8 +74,56 @@ exports.deletePackagingOption = async (req, res) => {
       return res.status(404).json({ message: "Packaging option not found" });
     }
 
-    return res.status(200).json({ message: "Packaging option deleted successfully" });
+    return res
+      .status(200)
+      .json({ message: "Packaging option deleted successfully" });
   } catch (error) {
-    return res.status(500).json({ message: "Server Error", error: error.message });
+    return res
+      .status(500)
+      .json({ message: "Server Error", error: error.message });
+  }
+};
+
+exports.bulkUploadPackagingOptions = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ message: "No file uploaded" });
+    }
+
+    const fileContent = req.file.buffer.toString("utf8");
+
+    if (!fileContent) {
+      return res.status(400).json({ message: "Uploaded file is empty" });
+    }
+
+    const parsedData = Papa.parse(fileContent, {
+      header: true,
+      skipEmptyLines: true,
+    });
+
+    const records = parsedData.data;
+
+    const validRecords = [];
+    for (const row of records) {
+      const { ply, size, gsm, deckal } = row;
+      if (!ply || !size || !gsm || !deckal) {
+        return res
+          .status(400)
+          .json({ message: "All fields are required in every row" });
+      }
+      validRecords.push({ ply, size, gsm, deckal });
+    }
+
+    const insertedOptions = await PackagingOption.insertMany(validRecords);
+
+    return res.status(201).json({
+      message: "Bulk upload successful",
+      insertedCount: insertedOptions.length,
+      data: insertedOptions,
+    });
+  } catch (error) {
+    return res
+      .status(500)
+      .json({ message: "Server Error", error: error.message });
   }
 };
