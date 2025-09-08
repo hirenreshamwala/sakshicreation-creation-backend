@@ -52,13 +52,13 @@ exports.createAccountMaster = async (req, res) => {
       }
     }
 
-    const pincodeRegex = /^[0-9]{6}$/;
-    if (!pincodeRegex.test(req.body.address.pincode)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid pincode format. Must be 6 digits.",
-      });
-    }
+    // const pincodeRegex = /^[0-9]{6}$/;
+    // if (!pincodeRegex.test(req.body.address.pincode)) {
+    //   return res.status(400).json({
+    //     success: false,
+    //     message: "Invalid pincode format. Must be 6 digits.",
+    //   });
+    // }
 
     if (
       !req.body.companyName ||
@@ -180,6 +180,37 @@ exports.createAccountMaster = async (req, res) => {
     )
       .populate("companyName", "companyName avatar")
       .populate("party")
+      .populate({
+        path: "party",
+        select: "-__v",
+        populate: [
+          {
+            path: "address.marketName",
+            model: "Market",
+            select: "marketName", // only marketName
+          },
+          {
+            path: "address.streetAddress",
+            model: "Market",
+            select: "streetAddress", // only streetAddress
+          },
+          {
+            path: "address.landMark",
+            model: "Market",
+            select: "landmark", // only landMark
+          },
+          {
+            path: "address.area",
+            model: "Market",
+            select: "area", // only area
+          },
+          {
+            path: "address.pincode",
+            model: "Market",
+            select: "pincode", // only pincode
+          },
+        ],
+      })
       .populate("createdBy", "firstName lastName email");
 
     res.status(201).json({
@@ -219,7 +250,33 @@ exports.getAllAccountMasters = async (req, res) => {
       .populate({
         path: "party",
         select: "-__v",
-        match: statusApproval ? { statusApproval } : {}, // Filter by statusApproval
+        populate: [
+          {
+            path: "address.marketName",
+            model: "Market",
+            select: "marketName", // only marketName
+          },
+          {
+            path: "address.streetAddress",
+            model: "Market",
+            select: "streetAddress", // only streetAddress
+          },
+          {
+            path: "address.landMark",
+            model: "Market",
+            select: "landmark", // only landMark
+          },
+          {
+            path: "address.area",
+            model: "Market",
+            select: "area", // only area
+          },
+          {
+            path: "address.pincode",
+            model: "Market",
+            select: "pincode", // only pincode
+          },
+        ],
       })
       .sort({ createdAt: -1 });
 
@@ -618,6 +675,37 @@ exports.bulkCreateAccountMasters = async (req, res) => {
     })
       .populate("companyName", "companyName avatar")
       .populate("party")
+      .populate({
+        path: "party",
+        select: "-__v",
+        populate: [
+          {
+            path: "address.marketName",
+            model: "Market",
+            select: "marketName", // only marketName
+          },
+          {
+            path: "address.streetAddress",
+            model: "Market",
+            select: "streetAddress", // only streetAddress
+          },
+          {
+            path: "address.landMark",
+            model: "Market",
+            select: "landmark", // only landMark
+          },
+          {
+            path: "address.area",
+            model: "Market",
+            select: "area", // only area
+          },
+          {
+            path: "address.pincode",
+            model: "Market",
+            select: "pincode", // only pincode
+          },
+        ],
+      })
       .populate("createdBy", "firstName lastName email");
 
     res.status(201).json({
@@ -650,6 +738,37 @@ exports.getAccountMasterById = async (req, res) => {
     const accountMaster = await AccountMaster.findById(id)
       .populate("companyName") // Include _id for company selection
       .populate("party")
+      .populate({
+        path: "party",
+        select: "-__v",
+        populate: [
+          {
+            path: "address.marketName",
+            model: "Market",
+            select: "marketName", // only marketName
+          },
+          {
+            path: "address.streetAddress",
+            model: "Market",
+            select: "streetAddress", // only streetAddress
+          },
+          {
+            path: "address.landMark",
+            model: "Market",
+            select: "landmark", // only landMark
+          },
+          {
+            path: "address.area",
+            model: "Market",
+            select: "area", // only area
+          },
+          {
+            path: "address.pincode",
+            model: "Market",
+            select: "pincode", // only pincode
+          },
+        ],
+      })
       .populate("createdBy", "_id firstName lastName email"); // Include _id for createdBy selection
 
     if (!accountMaster) {
@@ -865,6 +984,37 @@ exports.updateAccountMaster = async (req, res) => {
     )
       .populate("companyName", "companyName avatar")
       .populate("party")
+      .populate({
+        path: "party",
+        select: "-__v",
+        populate: [
+          {
+            path: "address.marketName",
+            model: "Market",
+            select: "marketName", // only marketName
+          },
+          {
+            path: "address.streetAddress",
+            model: "Market",
+            select: "streetAddress", // only streetAddress
+          },
+          {
+            path: "address.landMark",
+            model: "Market",
+            select: "landmark", // only landMark
+          },
+          {
+            path: "address.area",
+            model: "Market",
+            select: "area", // only area
+          },
+          {
+            path: "address.pincode",
+            model: "Market",
+            select: "pincode", // only pincode
+          },
+        ],
+      })
       .populate("createdBy", "firstName lastName email");
 
     if (!updatedAccountMaster) {
@@ -1116,6 +1266,17 @@ exports.getAccountMasterByCompanyAndParty = async (req, res) => {
       .populate({
         path: "party",
         select: "-__v", // All party fields except version
+      })
+      .populate({
+        path: "party",
+        select: "-__v",
+        populate: [
+          {
+            path: "address.marketName",
+            model: "Market",
+            select: "marketName", // only marketName
+          },
+        ],
       })
       .populate({
         path: "createdBy",

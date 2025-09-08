@@ -275,14 +275,20 @@ exports.getPartywithCompany = async (req, res) => {
 
     // Find all account masters that belong to the specified company
     const accountMasters = await AccountMaster.find({ 
-      companyName: id 
-    })
-    .populate({
-      path: 'party',
-      match: { statusApproval: "Approved" }, // Only get approved parties
-      select: 'partyName _id statusApproval address.unitNo address.marketName' // Include unitNo and marketName
-    })
-    .sort({ 'party.partyName': 1 });
+    companyName: id 
+  })
+  .populate({
+    path: 'party',
+    match: { statusApproval: "Approved" },
+    select: 'partyName _id statusApproval address.unitNo address.marketName',
+    populate: {
+      path: 'address.marketName', // nested populate
+      model: 'Market',            // the referenced model
+      select: 'marketName _id'    // pick fields you need
+    }
+  })
+  .sort({ 'party.partyName': 1 });
+
 
     // Filter out any account masters where party is null (due to the match condition)
     const filteredAccounts = accountMasters.filter(account => account.party !== null);
@@ -292,7 +298,7 @@ exports.getPartywithCompany = async (req, res) => {
       _id: account.party._id,
       partyName: account.party.partyName,
       unitNo: account.party.address.unitNo,
-      marketName: account.party.address.marketName
+      marketName: account.party.address.marketName?.marketName
     }));
 
     res.status(200).json({

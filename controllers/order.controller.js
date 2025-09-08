@@ -325,6 +325,7 @@ exports.getOrderById = async (req, res) => {
       .populate("printer", "name")
       .populate("deliveryStaff", "name")
       .populate("binder", "name")
+      .populate("printer","firstName lastName")
       .populate("bookletBinder", "name")
       .populate("reworkHistory.createdBy", "name")
       .populate('bindingType',"name");
