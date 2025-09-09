@@ -99,6 +99,37 @@ exports.getAllAssignTasks = async (req, res) => {
         path: "originalTaskId",
         // select: "date status"
       })
+      .populate({
+        path: "partyName",
+        select: "-__v",
+        populate: [
+          {
+            path: "address.marketName",
+            model: "Market",
+            select: "marketName", // only marketName
+          },
+          {
+            path: "address.streetAddress",
+            model: "Market",
+            select: "streetAddress", // only streetAddress
+          },
+          {
+            path: "address.landMark",
+            model: "Market",
+            select: "landmark", // only landMark
+          },
+          {
+            path: "address.area",
+            model: "Market",
+            select: "area", // only area
+          },
+          {
+            path: "address.pincode",
+            model: "Market",
+            select: "pincode", // only pincode
+          },
+        ],
+      })
       .sort({ createdAt: -1 });
 
     // Fetch AccountMaster for each task to get createdBy
@@ -639,6 +670,37 @@ exports.getTasksByStaffId = async (req, res) => {
       .populate({
         path: "originalTaskId",
         select: "date status",
+      })
+      .populate({
+        path: "partyName",
+        select: "-__v",
+        populate: [
+          {
+            path: "address.marketName",
+            model: "Market",
+            select: "marketName", // only marketName
+          },
+          {
+            path: "address.streetAddress",
+            model: "Market",
+            select: "streetAddress", // only streetAddress
+          },
+          {
+            path: "address.landMark",
+            model: "Market",
+            select: "landmark", // only landMark
+          },
+          {
+            path: "address.area",
+            model: "Market",
+            select: "area", // only area
+          },
+          {
+            path: "address.pincode",
+            model: "Market",
+            select: "pincode", // only pincode
+          },
+        ],
       })
       .sort({ createdAt: -1 });
 
