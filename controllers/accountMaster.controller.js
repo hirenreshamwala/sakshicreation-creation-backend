@@ -7,6 +7,7 @@ const Order = require("../models/order.model");
 const Staff = require("../models/staff.model");
 const Party = require("../models/Party.model");
 const CompanyName = require("../models/companyName.model");
+const Market = require("../models/marketData.model");
 
 // Create a new Account Master
 exports.createAccountMaster = async (req, res) => {
@@ -534,6 +535,24 @@ exports.getAllAccountMasters = async (req, res) => {
 //     });
 //   }
 // };
+
+// Helper function to normalize text (trim + lowercase)
+const normalize = (val) => (val ? String(val).trim().toLowerCase() : null);
+
+// Helper to find a Market by field
+const findMarketByField = async (field, value, session) => {
+  if (!value) return null;
+  const normalized = normalize(value);
+
+  const market = await Market.findOne({
+    [field]: { $regex: new RegExp(`^${normalized}$`, "i") }, // exact match, case-insensitive
+  }).session(session);
+
+
+  console.log('finede martked s',market)
+  return market ? market._id : null;
+};
+
 exports.bulkCreateAccountMasters = async (req, res) => {
   const session = await mongoose.startSession();
   session.startTransaction();
@@ -587,6 +606,24 @@ exports.bulkCreateAccountMasters = async (req, res) => {
         // If any other value is provided, it will remain "New" (default)
       }
 
+      // Resolve address fields with Market IDs
+      const address = {
+        unitNo: row.unitNo || null,
+        marketName: await findMarketByField(
+          "marketName",
+          row.marketName,
+          session
+        ),
+        streetAddress: await findMarketByField(
+          "streetAddress",
+          row.streetAddress,
+          session
+        ),
+        landMark: await findMarketByField("landmark", row.landMark, session),
+        area: await findMarketByField("area", row.area, session),
+        pincode: await findMarketByField("pincode", row.pincode, session),
+      };
+
       // Prepare party data from CSV row
       const partyData = {
         companyName: globalCompanyName,
@@ -604,14 +641,7 @@ exports.bulkCreateAccountMasters = async (req, res) => {
         contactWhatsAppNo: row.contactWhatsAppNo || null,
         contactForPaymentEmail: row.contactForPaymentEmail || null,
         GSTNo: row.GSTNo || null,
-        address: {
-          unitNo: row.unitNo || null,
-          marketName: row.marketName || null,
-          streetAddress: row.streetAddress || null,
-          landMark: row.landMark || null,
-          area: row.area || null,
-          pincode: row.pincode || null,
-        },
+        address,
         reference: row.reference || null,
         statusApproval: row.isRequestMode === "TRUE" ? "Pending" : "Approved",
         createdBy: globalCreatedBy,

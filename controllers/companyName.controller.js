@@ -298,7 +298,7 @@ exports.getPartywithCompany = async (req, res) => {
       _id: account.party._id,
       partyName: account.party.partyName,
       unitNo: account.party.address.unitNo,
-      marketName: account.party.address.marketName?.marketName
+      marketName: account.party.address.marketName?.marketName || ""
     }));
 
     res.status(200).json({
