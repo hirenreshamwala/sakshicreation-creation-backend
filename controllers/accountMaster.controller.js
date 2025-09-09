@@ -809,7 +809,7 @@ exports.bulkCreateAccountMasters = async (req, res) => {
         partyName: row.partyName || null,
         ownerName: row.ownerName || null,
         ownerMobileNo: row.ownerMobileNo || null,
-        ownerWhatsAppNo: row.ownerWhatsAppNo || null,
+        ownerWhatsAppNo: String(row.ownerWhatsAppNo) || null,
         ownerEmail: row.ownerEmail || null,
         contactPerson: row.contactPerson || null,
         personMobileNo: row.personMobileNo || null,

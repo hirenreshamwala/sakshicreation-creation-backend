@@ -8,12 +8,13 @@ const AssignTask = require("../models/assignTask.model");
 
 exports.createAssignTask = async (req, res) => {
   try {
-    const { companyName, partyName, date, time, reasonForVisit, assignTo } = req.body;
+    const { companyName, partyName, date, time, reasonForVisit, assignTo } =
+      req.body;
 
     if (!companyName || !partyName || !date || !reasonForVisit || !assignTo) {
       return res.status(400).json({
         success: false,
-        message: "Missing required fields"
+        message: "Missing required fields",
       });
     }
 
@@ -24,7 +25,7 @@ exports.createAssignTask = async (req, res) => {
     ) {
       return res.status(400).json({
         success: false,
-        message: "Invalid ID format"
+        message: "Invalid ID format",
       });
     }
 
@@ -41,7 +42,7 @@ exports.createAssignTask = async (req, res) => {
       visitTime: req.body.visitTime || "",
       feedback: req.body.feedback || "",
       isRescheduledTask: req.body.isRescheduledTask || false,
-      originalTaskId: req.body.originalTaskId || null
+      originalTaskId: req.body.originalTaskId || null,
     });
 
     await newAssignTask.save();
@@ -49,7 +50,7 @@ exports.createAssignTask = async (req, res) => {
     // Fetch AccountMaster using raw ObjectIds before population
     const accountMaster = await AccountMaster.findOne({
       companyName: newAssignTask.companyName, // Use raw ObjectId
-      party: newAssignTask.partyName         // Use 'party' field, assuming schema uses 'party'
+      party: newAssignTask.partyName, // Use 'party' field, assuming schema uses 'party'
     })
       .populate("createdBy", "firstName lastName")
       .lean();
@@ -62,20 +63,20 @@ exports.createAssignTask = async (req, res) => {
 
     const taskWithCreatedBy = {
       ...populatedTask.toObject(),
-      createdBy: accountMaster ? accountMaster.createdBy : null
+      createdBy: accountMaster ? accountMaster.createdBy : null,
     };
 
     res.status(201).json({
       success: true,
       message: "Task assigned successfully",
-      data: taskWithCreatedBy
+      data: taskWithCreatedBy,
     });
   } catch (error) {
     console.error("Error creating assign task:", error);
     res.status(500).json({
       success: false,
       message: "Failed to create task",
-      error: error.message
+      error: error.message,
     });
   }
 };
@@ -93,7 +94,7 @@ exports.getAllAssignTasks = async (req, res) => {
       })
       .populate({
         path: "assignTo",
-        select: "firstName lastName"
+        select: "firstName lastName",
       })
       .populate({
         path: "originalTaskId",
@@ -137,14 +138,14 @@ exports.getAllAssignTasks = async (req, res) => {
       tasks.map(async (task) => {
         const accountMaster = await AccountMaster.findOne({
           companyName: task.companyName,
-          party: task.partyName
+          party: task.partyName,
         })
           .populate("createdBy", "firstName lastName")
           .lean();
 
         return {
           ...task.toObject(),
-          createdBy: accountMaster ? accountMaster.createdBy : null
+          createdBy: accountMaster ? accountMaster.createdBy : null,
         };
       })
     );
@@ -152,13 +153,13 @@ exports.getAllAssignTasks = async (req, res) => {
     res.status(200).json({
       success: true,
       count: tasksWithCreatedBy.length,
-      data: tasksWithCreatedBy
+      data: tasksWithCreatedBy,
     });
   } catch (error) {
     res.status(500).json({
       success: false,
       message: "Failed to fetch tasks",
-      error: error.message
+      error: error.message,
     });
   }
 };
@@ -194,7 +195,7 @@ exports.getAllAssignTasks = async (req, res) => {
 //       const rescheduleDate = new Date(updateData.rescheduleDate);
 //       const today = new Date();
 //       today.setHours(0, 0, 0, 0);
-      
+
 //       if (rescheduleDate < today) {
 //         return res.status(400).json({
 //           success: false,
@@ -242,7 +243,6 @@ exports.getAllAssignTasks = async (req, res) => {
 //     });
 //   }
 // };
- 
 
 exports.getAssignTaskById = async (req, res) => {
   try {
@@ -250,7 +250,7 @@ exports.getAssignTaskById = async (req, res) => {
       .populate("assignTo")
       .populate({
         path: "originalTaskId",
-        select: "date status createdAt" // Add createdAt here
+        select: "date status createdAt", // Add createdAt here
       });
     if (!assignTask) {
       return res.status(404).json({
@@ -265,6 +265,37 @@ exports.getAssignTaskById = async (req, res) => {
     })
       .populate("createdBy")
       .populate("party")
+      .populate({
+        path: "party",
+        select: "-__v",
+        populate: [
+          {
+            path: "address.marketName",
+            model: "Market",
+            select: "marketName", // only marketName
+          },
+          {
+            path: "address.streetAddress",
+            model: "Market",
+            select: "streetAddress", // only streetAddress
+          },
+          {
+            path: "address.landMark",
+            model: "Market",
+            select: "landmark", // only landMark
+          },
+          {
+            path: "address.area",
+            model: "Market",
+            select: "area", // only area
+          },
+          {
+            path: "address.pincode",
+            model: "Market",
+            select: "pincode", // only pincode
+          },
+        ],
+      })
       .lean();
 
     res.status(200).json({
@@ -327,17 +358,17 @@ exports.updateAssignTask = async (req, res) => {
     };
 
     if (updateData.companyName) {
-      const isValid = await validateReference('companyName', CompanyName, true);
+      const isValid = await validateReference("companyName", CompanyName, true);
       if (!isValid) return;
     }
 
     if (updateData.partyName) {
-      const isValid = await validateReference('partyName', Party, true);
+      const isValid = await validateReference("partyName", Party, true);
       if (!isValid) return;
     }
 
     if (updateData.assignTo) {
-      const isValid = await validateReference('assignTo', Staff, true);
+      const isValid = await validateReference("assignTo", Staff, true);
       if (!isValid) return;
     }
 
@@ -365,14 +396,20 @@ exports.updateAssignTask = async (req, res) => {
     }
 
     // 5. Time format validation
-    if (updateData.time && !/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/.test(updateData.time)) {
+    if (
+      updateData.time &&
+      !/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/.test(updateData.time)
+    ) {
       return res.status(400).json({
         success: false,
         message: "Invalid time format. Use HH:MM (24-hour format)",
       });
     }
 
-    if (updateData.visitTime && !/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/.test(updateData.visitTime)) {
+    if (
+      updateData.visitTime &&
+      !/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/.test(updateData.visitTime)
+    ) {
       return res.status(400).json({
         success: false,
         message: "Invalid visit time format. Use HH:MM (24-hour format)",
@@ -383,7 +420,11 @@ exports.updateAssignTask = async (req, res) => {
     let originalCreatedAt = existingTask.createdAt; // Default to current task's createdAt
     let populatedNewTask = null; // Initialize populatedNewTask as null
     if (updateData.status) {
-      if (!["Pending", "Rescheduled", "Completed", "Cancelled"].includes(updateData.status)) {
+      if (
+        !["Pending", "Rescheduled", "Completed", "Cancelled"].includes(
+          updateData.status
+        )
+      ) {
         return res.status(400).json({
           success: false,
           message: "Invalid status value",
@@ -391,10 +432,14 @@ exports.updateAssignTask = async (req, res) => {
       }
 
       if (updateData.status === "Rescheduled") {
-        if (!updateData.rescheduleDate || isNaN(new Date(updateData.rescheduleDate).getTime())) {
+        if (
+          !updateData.rescheduleDate ||
+          isNaN(new Date(updateData.rescheduleDate).getTime())
+        ) {
           return res.status(400).json({
             success: false,
-            message: "Reschedule date is required and must be a valid date when status is Rescheduled",
+            message:
+              "Reschedule date is required and must be a valid date when status is Rescheduled",
           });
         }
 
@@ -452,10 +497,14 @@ exports.updateAssignTask = async (req, res) => {
     }
 
     // Update the original task
-    const updatedAssignTask = await AssignTask.findByIdAndUpdate(id, updateData, {
-      new: true,
-      runValidators: true,
-    })
+    const updatedAssignTask = await AssignTask.findByIdAndUpdate(
+      id,
+      updateData,
+      {
+        new: true,
+        runValidators: true,
+      }
+    )
       .populate("companyName", "companyName avatar")
       .populate("partyName", "partyName address ownerName personMobileNo")
       .populate("assignTo", "firstName lastName");
@@ -494,9 +543,10 @@ exports.updateAssignTask = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      message: updateData.status === "Rescheduled"
-        ? "Task rescheduled successfully and new task created"
-        : "Task updated successfully",
+      message:
+        updateData.status === "Rescheduled"
+          ? "Task rescheduled successfully and new task created"
+          : "Task updated successfully",
       data: responseData,
     });
   } catch (error) {
@@ -513,7 +563,9 @@ exports.updateAssignTaskStatus = async (req, res) => {
   try {
     const { status, rescheduleDate } = req.body;
 
-    if (!["Pending", "Rescheduled", "Completed", "Cancelled"].includes(status)) {
+    if (
+      !["Pending", "Rescheduled", "Completed", "Cancelled"].includes(status)
+    ) {
       return res.status(400).json({
         success: false,
         message: "Invalid status value",
@@ -525,7 +577,8 @@ exports.updateAssignTaskStatus = async (req, res) => {
       if (!rescheduleDate || isNaN(new Date(rescheduleDate).getTime())) {
         return res.status(400).json({
           success: false,
-          message: "rescheduleDate is required and must be a valid date when status is Rescheduled",
+          message:
+            "rescheduleDate is required and must be a valid date when status is Rescheduled",
         });
       }
       const rescheduleDateObj = new Date(rescheduleDate);
