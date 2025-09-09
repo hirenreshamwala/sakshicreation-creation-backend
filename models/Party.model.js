@@ -47,27 +47,27 @@ const partySchema = new mongoose.Schema(
       marketName: {
         type: mongoose.Schema.Types.ObjectId,
         ref: "Market",
-        required: true,
+        required: false,
       },
       streetAddress: {
         type: mongoose.Schema.Types.ObjectId,
         ref: "Market",
-        required: true,
+        required: false,
       },
       landMark: {
         type: mongoose.Schema.Types.ObjectId,
         ref: "Market",
-        required: true,
+        required: false,
       },
       area: {
         type: mongoose.Schema.Types.ObjectId,
         ref: "Market",
-        required: true,
+        required: false,
       },
       pincode: {
         type: mongoose.Schema.Types.ObjectId,
         ref: "Market",
-        required: true,
+        required: false,
       },
     },
     partyTag: {
