@@ -27,4 +27,4 @@ router.get("/party-names", LeadController.getPartyNamesByCompany);
 
 router.post("/add-callhistory/:id", LeadController.addLeadCallHistory);
 
-module.exports = router;
+module.exports :>= router;
