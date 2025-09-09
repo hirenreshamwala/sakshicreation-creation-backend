@@ -537,6 +537,179 @@ exports.getAllAccountMasters = async (req, res) => {
 // };
 
 // Helper function to normalize text (trim + lowercase)
+
+// const normalize = (val) => (val ? String(val).trim().toLowerCase() : null);
+
+// // Helper to find Market by marketName
+// const findMarketByName = async (marketName, session) => {
+//   if (!marketName) return null;
+//   const normalized = normalize(marketName);
+
+//   return await Market.findOne({
+//     marketName: { $regex: new RegExp(`^${normalized}$`, "i") }, // case-insensitive exact match
+//   }).session(session);
+// };
+
+// exports.bulkCreateAccountMasters = async (req, res) => {
+//   const session = await mongoose.startSession();
+//   session.startTransaction();
+
+//   try {
+//     if (!req.file) {
+//       await session.abortTransaction();
+//       session.endSession();
+//       return res
+//         .status(400)
+//         .json({ success: false, message: "No file uploaded" });
+//     }
+
+//     const globalCompanyName = req.body.companyName;
+//     const globalCreatedBy = req.body.createdBy;
+
+//     if (!globalCompanyName || !globalCreatedBy) {
+//       await session.abortTransaction();
+//       session.endSession();
+//       return res.status(400).json({
+//         success: false,
+//         message: "companyName and createdBy are required in the request body",
+//       });
+//     }
+
+//     const workbook = xlsx.read(req.file.buffer, { type: "buffer" });
+//     const sheet = workbook.Sheets[workbook.SheetNames[0]];
+//     const data = xlsx.utils.sheet_to_json(sheet);
+
+//     const accountMasters = [];
+//     const errors = [];
+
+//     for (const row of data) {
+//       // partyTag
+//       let partyTag = "New";
+//       if (row.partyTag) {
+//         const val = String(row.partyTag).trim().toLowerCase();
+//         if (val === "customer") partyTag = "Customer";
+//         else if (val === "new") partyTag = "New";
+//       }
+
+//       // 🔑 Find Market by marketName only
+//       const marketDoc = await findMarketByName(row.marketName, session);
+
+//       if (!marketDoc) {
+//         errors.push(`Market not found for row: ${row.marketName}`);
+//         continue;
+//       }
+
+//       // Address filled from Market document
+//       const address = {
+//         unitNo: row.unitNo || null,
+//         marketName: marketDoc._id, // reference
+//         streetAddress: marketDoc._id,
+//         landMark: marketDoc._id,
+//         area: marketDoc._id,
+//         pincode: marketDoc._id,
+//       };
+
+//       const partyData = {
+//         companyName: globalCompanyName,
+//         partyName: row.partyName || null,
+//         ownerName: row.ownerName || null,
+//         ownerMobileNo: row.ownerMobileNo || null,
+//         ownerWhatsAppNo: row.ownerWhatsAppNo || null,
+//         ownerEmail: row.ownerEmail || null,
+//         contactPerson: row.contactPerson || null,
+//         personMobileNo: row.personMobileNo || null,
+//         personWhatsAppNo: row.personWhatsAppNo || null,
+//         contactPersonEmail: row.contactPersonEmail || null,
+//         contactForPayment: row.contactForPayment || null,
+//         contactMobileNo: row.contactMobileNo || null,
+//         contactWhatsAppNo: row.contactWhatsAppNo || null,
+//         contactForPaymentEmail: row.contactForPaymentEmail || null,
+//         GSTNo: row.GSTNo || null,
+//         address,
+//         reference: row.reference || null,
+//         statusApproval: row.isRequestMode === "TRUE" ? "Pending" : "Approved",
+//         createdBy: globalCreatedBy,
+//         partyTag,
+//       };
+
+//       // Validate companyName
+//       const company = await CompanyName.findById(globalCompanyName).session(
+//         session
+//       );
+//       if (!company) {
+//         errors.push(`Invalid companyName ID for row: ${JSON.stringify(row)}`);
+//         continue;
+//       }
+
+//       // Validate createdBy
+//       const staff = await Staff.findById(globalCreatedBy).session(session);
+//       if (!staff) {
+//         errors.push(`Invalid createdBy ID for row: ${JSON.stringify(row)}`);
+//         continue;
+//       }
+
+//       const newParty = await Party.create([partyData], { session });
+
+//       const accountMasterData = {
+//         companyName: globalCompanyName,
+//         party: newParty[0]._id,
+//         reasonToVisit: row.reasonToVisit || null,
+//         reference: row.reference || null,
+//         createdBy: globalCreatedBy,
+//         partyTag,
+//       };
+
+//       const newAccountMaster = await AccountMaster.create([accountMasterData], {
+//         session,
+//       });
+//       accountMasters.push(newAccountMaster[0]);
+//     }
+
+//     if (errors.length > 0) {
+//       await session.abortTransaction();
+//       session.endSession();
+//       return res.status(400).json({
+//         success: false,
+//         message: "Some records failed to process",
+//         errors,
+//       });
+//     }
+
+//     await session.commitTransaction();
+//     session.endSession();
+
+//     const populatedAccountMasters = await AccountMaster.find({
+//       _id: { $in: accountMasters.map((am) => am._id) },
+//     })
+//       .populate("companyName", "companyName avatar")
+//       .populate("party")
+//       .populate({
+//         path: "party",
+//         select: "-__v",
+//         populate: {
+//           path: "address.marketName",
+//           model: "Market",
+//           select: "marketName streetAddress landmark area pincode",
+//         },
+//       })
+//       .populate("createdBy", "firstName lastName email");
+
+//     res.status(201).json({
+//       success: true,
+//       message: "Bulk account masters created successfully",
+//       data: populatedAccountMasters,
+//     });
+//   } catch (error) {
+//     await session.abortTransaction();
+//     session.endSession();
+//     console.error("Error in bulk create account masters:", error);
+//     res.status(500).json({
+//       success: false,
+//       message: "Failed to bulk create account masters",
+//       error: error.message,
+//     });
+//   }
+// };
 const normalize = (val) => (val ? String(val).trim().toLowerCase() : null);
 
 // Helper to find a Market by field
@@ -548,8 +721,7 @@ const findMarketByField = async (field, value, session) => {
     [field]: { $regex: new RegExp(`^${normalized}$`, "i") }, // exact match, case-insensitive
   }).session(session);
 
-
-  console.log('finede martked s',market)
+  console.log("finede martked s", market);
   return market ? market._id : null;
 };
 
@@ -607,21 +779,28 @@ exports.bulkCreateAccountMasters = async (req, res) => {
       }
 
       // Resolve address fields with Market IDs
+      const marketId = await findMarketByField(
+        "marketName",
+        row.marketName,
+        session
+      );
+
       const address = {
         unitNo: row.unitNo || null,
-        marketName: await findMarketByField(
-          "marketName",
-          row.marketName,
-          session
-        ),
-        streetAddress: await findMarketByField(
-          "streetAddress",
-          row.streetAddress,
-          session
-        ),
-        landMark: await findMarketByField("landmark", row.landMark, session),
-        area: await findMarketByField("area", row.area, session),
-        pincode: await findMarketByField("pincode", row.pincode, session),
+        marketName: marketId,
+        streetAddress:
+          (await findMarketByField(
+            "streetAddress",
+            row.streetAddress,
+            session
+          )) || marketId,
+        landMark:
+          (await findMarketByField("landmark", row.landMark, session)) ||
+          marketId,
+        area: (await findMarketByField("area", row.area, session)) || marketId,
+        pincode:
+          (await findMarketByField("pincode", row.pincode, session)) ||
+          marketId,
       };
 
       // Prepare party data from CSV row
@@ -1423,6 +1602,37 @@ exports.getAccountMasterByStaffId = async (req, res) => {
       .populate("companyName", "_id companyName")
       .populate("party", "-__v")
       .populate("createdBy", "_id firstName lastName email")
+       .populate({
+        path: "party",
+        select: "-__v",
+        populate: [
+          {
+            path: "address.marketName",
+            model: "Market",
+            select: "marketName", // only marketName
+          },
+          {
+            path: "address.streetAddress",
+            model: "Market",
+            select: "streetAddress", // only streetAddress
+          },
+          {
+            path: "address.landMark",
+            model: "Market",
+            select: "landmark", // only landMark
+          },
+          {
+            path: "address.area",
+            model: "Market",
+            select: "area", // only area
+          },
+          {
+            path: "address.pincode",
+            model: "Market",
+            select: "pincode", // only pincode
+          },
+        ],
+      })
       .sort({ createdAt: -1 });
 
     // if (!accountMasters.length) {
