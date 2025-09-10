@@ -788,19 +788,10 @@ exports.bulkCreateAccountMasters = async (req, res) => {
       const address = {
         unitNo: row.unitNo || null,
         marketName: marketId,
-        streetAddress:
-          (await findMarketByField(
-            "streetAddress",
-            row.streetAddress,
-            session
-          )) || marketId,
-        landMark:
-          (await findMarketByField("landmark", row.landMark, session)) ||
-          marketId,
-        area: (await findMarketByField("area", row.area, session)) || marketId,
-        pincode:
-          (await findMarketByField("pincode", row.pincode, session)) ||
-          marketId,
+        streetAddress: marketId,
+        landMark: marketId,
+        area: marketId,
+        pincode: marketId,
       };
 
       // Prepare party data from CSV row
@@ -1602,7 +1593,7 @@ exports.getAccountMasterByStaffId = async (req, res) => {
       .populate("companyName", "_id companyName")
       .populate("party", "-__v")
       .populate("createdBy", "_id firstName lastName email")
-       .populate({
+      .populate({
         path: "party",
         select: "-__v",
         populate: [
