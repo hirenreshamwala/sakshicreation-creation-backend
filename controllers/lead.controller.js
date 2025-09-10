@@ -473,7 +473,7 @@ exports.getLeadById = async (req, res) => {
       .populate("companyName")
       .populate("partyName")
       .populate({
-        path: "party",
+        path: "partyName",
         select: "-__v",
         populate: [
           {
@@ -969,6 +969,37 @@ exports.getLeadsByStaffId = async (req, res) => {
         path: "partyName",
         select:
           "partyName address ownerName ownerMobileNo ownerWhatsAppNo contactPerson personMobileNo personWhatsAppNo contactForPayment contactMobileNo contactWhatsAppNo GSTNo partyTag",
+      })
+      .populate({
+        path: "partyName",
+        select: "-__v",
+        populate: [
+          {
+            path: "address.marketName",
+            model: "Market",
+            select: "marketName", // only marketName
+          },
+          {
+            path: "address.streetAddress",
+            model: "Market",
+            select: "streetAddress", // only streetAddress
+          },
+          {
+            path: "address.landMark",
+            model: "Market",
+            select: "landmark", // only landMark
+          },
+          {
+            path: "address.area",
+            model: "Market",
+            select: "area", // only area
+          },
+          {
+            path: "address.pincode",
+            model: "Market",
+            select: "pincode", // only pincode
+          },
+        ],
       })
       .populate({
         path: "assignedTo",
