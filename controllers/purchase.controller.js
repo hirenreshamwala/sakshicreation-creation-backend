@@ -198,9 +198,13 @@ exports.createPurchase = async (req, res) => {
     const savedPurchase = await newPurchase.save();
 
     // Create corresponding inventory record
-    const category = roleExists.roleName.toLowerCase().includes('printer') ? 'printer' :
-                    roleExists.roleName.toLowerCase().includes('binder') ? 'binder' :
-                    roleExists.roleName.toLowerCase().includes('booklet') ? 'booklet' : 'factory';
+    let category = 'factory';
+const roleName = roleExists.roleName.toLowerCase();
+
+if (roleName.includes('printer')) category = 'printer';
+else if (roleName.includes('binder') && !roleName.includes('booklet')) category = 'binder';
+else if (roleName.includes('booklet')) category = 'booklet';
+
 
     const newInventory = new Inventory({
       category,

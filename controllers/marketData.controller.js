@@ -117,6 +117,7 @@ exports.bulkUploadMarkets = async (req, res) => {
     });
 
     const records = parsedData.data;
+    console.log(records,'jkdnfdknjfi')
 
     const validRecords = [];
     for (const row of records) {

@@ -30,7 +30,8 @@ const InventorySchema = new mongoose.Schema({
   vendor: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Vendor',
-    required: [true, 'Vendor is required for inward records'],
+    required: false
+    // required: [true, 'Vendor is required for inward records'],
   },
   date: {
     type: Date,
