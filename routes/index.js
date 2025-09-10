@@ -23,6 +23,7 @@ const BinderTypeRoutes = require("./binderType.routes");
 const QpOrderRoutes = require("./qpOrder.routes");
 const packagingOptions = require("./packagingOption.routes");
 const marketData = require("./marketData.routes");
+const kantan = require("./kantan.routes");
 
 router.use("/company", CompanyRouter);
 router.use("/staff", StaffRouter);
@@ -41,6 +42,7 @@ router.use("/role", Roles);
 router.use("/qporder", QpOrderRoutes);
 router.use("/packagingOptions", packagingOptions);
 router.use("/market", marketData);
+router.use("/kantan", kantan);
 router.use("/filedownload", filedownloadRouter);
 router.use("/material", MaterialRouter);
 router.use("/roleDepartment", RoleDepartmentRouter);
