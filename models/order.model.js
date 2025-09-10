@@ -244,18 +244,19 @@ const orderSchema = new mongoose.Schema(
           required: true,
         },
         paperType: {
-          type: String,
-          trim: true,
-          required: true,
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "Material",
+          required: false,
         },
         gsm: {
-          type: String,
-          trim: true,
-          required: true,
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "Material",
+          required: false,
         },
-        materialSize:{
-          type: String,
-          trim: true,
+        materialSize: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "Material",
+          required: false,
         },
         ratePerUnit: {
           type: String,

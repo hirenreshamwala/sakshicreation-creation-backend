@@ -14,7 +14,8 @@ const InventorySchema = new mongoose.Schema({
   material: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Material',
-    required: [true, 'Material is required'],
+    required:false
+    // required: [true, 'Material is required'],
   },
   quantity: {
     type: Number,
@@ -23,8 +24,8 @@ const InventorySchema = new mongoose.Schema({
   },
   kg: {
     type: Number,
-    required: [true, 'KG is required'],
-    min: [0, 'KG cannot be negative'],
+    // required: [true, 'KG is required'],
+    // min: [0, 'KG cannot be negative'],
   },
   vendor: {
     type: mongoose.Schema.Types.ObjectId,

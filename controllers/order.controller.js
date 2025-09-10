@@ -5,6 +5,7 @@ const Company = require("../models/companyName.model");
 const AssignTask = require("../models/assignTask.model");
 const Party = require("../models/Party.model");
 const Staff = require("../models/staff.model");
+const Inventory = require("../models/inventory.model")
 
 exports.createOrder = async (req, res) => {
   try {
@@ -169,16 +170,14 @@ exports.createOrder = async (req, res) => {
       laminationType: isLamination ? laminationType || "" : "",
     };
 
-    if(req.body.number === 'Yes')
-    {
-      orderData.number = req.body.number
-      orderData.endNumber= req.body.endNumber
-      orderData.startNumber= req.body.startNumber
+    if (req.body.number === "Yes") {
+      orderData.number = req.body.number;
+      orderData.endNumber = req.body.endNumber;
+      orderData.startNumber = req.body.startNumber;
     }
 
-    if(req.body.color !== "")
-    {
-      orderData.color = req.body.color
+    if (req.body.color !== "") {
+      orderData.color = req.body.color;
     }
 
     const order = new Order(orderData);
@@ -197,7 +196,7 @@ exports.createOrder = async (req, res) => {
       .populate("productItem", "itemName")
       .populate("createdBy")
       .populate("designer", "name")
-      .populate("bindingType",'name');
+      .populate("bindingType", "name");
 
     res.status(201).json({
       success: true,
@@ -325,10 +324,10 @@ exports.getOrderById = async (req, res) => {
       .populate("printer", "name")
       .populate("deliveryStaff", "name")
       .populate("binder", "name")
-      .populate("printer","firstName lastName")
+      .populate("printer", "firstName lastName")
       .populate("bookletBinder", "name")
       .populate("reworkHistory.createdBy", "name")
-      .populate('bindingType',"name");
+      .populate("bindingType", "name");
 
     // order = order.map((order) => {
     //   if (!order.isGst && order.party) {
@@ -1058,41 +1057,66 @@ exports.getOrdersByStaffId = async (req, res) => {
     });
   }
 };
-
-// Add this to your order.controller.js
 exports.updateStaffStatus = async (req, res) => {
   try {
     const { orderId } = req.params;
-    const { statusType, status } = req.body; // statusType can be 'printer', 'binder', or 'bookletBinder'
+    const { id, role } = req.user;
+    const { statusType, status } = req.body;
+
+    console.log("🔹 Request received:", { orderId, statusType, status, userId: id });
 
     if (!mongoose.Types.ObjectId.isValid(orderId)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid Order ID",
-      });
+      console.log("❌ Invalid Order ID");
+      return res.status(400).json({ success: false, message: "Invalid Order ID" });
     }
 
-    // Validate status type and value
     const validStatusTypes = ["printer", "binder", "bookletBinder"];
     const validStatusValues = ["Pending", "In Progress", "Done"];
 
     if (!validStatusTypes.includes(statusType)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid status type",
-      });
+      console.log("❌ Invalid status type:", statusType);
+      return res.status(400).json({ success: false, message: "Invalid status type" });
     }
 
     if (!validStatusValues.includes(status)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid status value",
-      });
+      console.log("❌ Invalid status value:", status);
+      return res.status(400).json({ success: false, message: "Invalid status value" });
     }
 
-    // Create update object based on status type
+    const currentOrder = await Order.findById(orderId);
+    if (!currentOrder) {
+      console.log("❌ Order not found:", orderId);
+      return res.status(404).json({ success: false, message: "Order not found" });
+    }
+
+    console.log("📦 Current order fetched:", currentOrder._id);
+
+    const currentStatus = currentOrder[`${statusType}Status`];
+    console.log(`🔹 Current status of ${statusType}:`, currentStatus);
+
+    // Add inventory entry if moving from Pending → In Progress
+    if (currentStatus === "Pending" && status === "In Progress") {
+      console.log("📝 Adding inventory entry...");
+
+      await Inventory.create({
+        category: statusType,
+        type: "outward",
+        material: currentOrder?.printerPapers?.paperType || "N/A",
+        quantity: currentOrder.qty,
+        date: new Date(),
+        companyName: currentOrder.companyName,
+        for: role,
+        forCompany: id,
+      });
+
+      console.log("✅ Inventory entry added");
+    }
+
+    // Update order status
     const updateField = `${statusType}Status`;
     const updateData = { [updateField]: status };
+
+    console.log("🔹 Updating order status:", updateData);
 
     const updatedOrder = await Order.findByIdAndUpdate(orderId, updateData, {
       new: true,
@@ -1102,11 +1126,11 @@ exports.updateStaffStatus = async (req, res) => {
       .populate("productItem", "itemName");
 
     if (!updatedOrder) {
-      return res.status(404).json({
-        success: false,
-        message: "Order not found",
-      });
+      console.log("❌ Order not found after update:", orderId);
+      return res.status(404).json({ success: false, message: "Order not found" });
     }
+
+    console.log("✅ Order status updated successfully");
 
     res.status(200).json({
       success: true,

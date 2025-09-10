@@ -27,7 +27,7 @@ router.get("/binder", authenticateToken, getBinderById);
 
 router.get("/bookletBinder", authenticateToken, getBookletBinderById);
 
-router.put("/:orderId/status", updateStaffStatus);
+router.put("/:orderId/status",authenticateToken, updateStaffStatus);
 
 router.get("/designe", authenticateToken, getDesignerById);
 
