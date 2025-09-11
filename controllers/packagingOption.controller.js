@@ -1,16 +1,16 @@
 const PackagingOption = require("../models/packagingOption.model");
 const Papa = require("papaparse");
 
-// ✅ Create a new Packaging Option
+// Create a new Packaging Option
 exports.createPackagingOption = async (req, res) => {
   try {
-    const { ply, size, gsm, deckal } = req.body;
+    const { name, ply, length, width, height } = req.body;
 
-    if (!ply || !size || !gsm || !deckal) {
+    if (!name || !ply || !length || !width || !height) {
       return res.status(400).json({ message: "All fields are required" });
     }
 
-    const newOption = new PackagingOption({ ply, size, gsm, deckal });
+    const newOption = new PackagingOption({ name, ply, length, width, height });
     await newOption.save();
 
     return res.status(201).json({
@@ -24,7 +24,7 @@ exports.createPackagingOption = async (req, res) => {
   }
 };
 
-// ✅ Get all Packaging Options
+// Get all Packaging Options
 exports.getAllPackagingOptions = async (req, res) => {
   try {
     const options = await PackagingOption.find().sort({ createdAt: -1 });
@@ -36,15 +36,15 @@ exports.getAllPackagingOptions = async (req, res) => {
   }
 };
 
-// ✅ Edit (Update) a Packaging Option
+// Edit (Update) a Packaging Option
 exports.updatePackagingOption = async (req, res) => {
   try {
     const { id } = req.params;
-    const { ply, size, gsm, deckal } = req.body;
+    const { name, ply, length, width, height } = req.body;
 
     const updatedOption = await PackagingOption.findByIdAndUpdate(
       id,
-      { ply, size, gsm, deckal },
+      { name, ply, length, width, height },
       { new: true, runValidators: true }
     );
 
@@ -63,7 +63,7 @@ exports.updatePackagingOption = async (req, res) => {
   }
 };
 
-// ✅ Delete a Packaging Option
+// Delete a Packaging Option
 exports.deletePackagingOption = async (req, res) => {
   try {
     const { id } = req.params;
@@ -84,6 +84,7 @@ exports.deletePackagingOption = async (req, res) => {
   }
 };
 
+// Bulk Upload Packaging Options
 exports.bulkUploadPackagingOptions = async (req, res) => {
   try {
     if (!req.file) {
@@ -105,13 +106,13 @@ exports.bulkUploadPackagingOptions = async (req, res) => {
 
     const validRecords = [];
     for (const row of records) {
-      const { ply, size, gsm, deckal } = row;
-      if (!ply || !size || !gsm || !deckal) {
+      const { name, ply, length, width, height } = row;
+      if (!name || !ply || !length || !width || !height) {
         return res
           .status(400)
-          .json({ message: "All fields are required in every row" });
+          .json({ message: "All fields (name, ply, length, width, height) are required in every row" });
       }
-      validRecords.push({ ply, size, gsm, deckal });
+      validRecords.push({ name, ply, length, width, height });
     }
 
     const insertedOptions = await PackagingOption.insertMany(validRecords);

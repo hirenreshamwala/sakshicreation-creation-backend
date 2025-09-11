@@ -24,27 +24,59 @@ const qpDataSchema = new mongoose.Schema(
     orderFrom: {
       type: String,
     },
-    size: {
+    name: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "packagingOption",
-      required: true,
+    },
+    length: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "packagingOption",
+    },
+    height: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "packagingOption",
+    },
+    width: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "packagingOption",
     },
     ply: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "packagingOption",
-      required: true,
+      // required: true,
     },
+    // size: {
+    //   type: mongoose.Schema.Types.ObjectId,
+    //   ref: "packagingOption",
+    //   // required: true,
+    // },
     gsm: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "packagingOption",
-      required: true,
+      type: String
     },
     deckal: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "packagingOption",
-      required: true,
+      type: String,
     },
-    rate: {
+    noOfPieces: {
+      type: Number,
+    },
+    ratePerPiece: {
+      type: Number,
+    },
+    amount: {
+      type: String,
+    },
+    kgPerUnit: {
+      type: String,
+    },
+    totalKg: {
+      type: String,
+    },
+    kantan: {
+      // type: String,
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Kantan",
+    },
+    kantanDeckal: {
       type: String,
     },
     dyeNumber: {
@@ -62,6 +94,9 @@ const qpDataSchema = new mongoose.Schema(
       default: "Pending",
     },
     dySheetSize: {
+      type: String,
+    },
+    salesRemark: {
       type: String,
     },
     dyeRemark: {
@@ -86,12 +121,12 @@ const qpDataSchema = new mongoose.Schema(
     deliveryDate: {
       type: String,
     },
-    kantan: {
-      type: String,
-    },
-    kantanDeckal: {
-      type: String,
-    },
+    // kantan: {
+    //   type: String,
+    // },
+    // kantanDeckal: {
+    //   type: String,
+    // },
     rsFor: {
       type: String,
     },

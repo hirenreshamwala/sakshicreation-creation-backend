@@ -5,6 +5,43 @@ const Staff = require("../models/staff.model");
 // Add a new QP Order
 exports.createQpOrder = async (req, res) => {
   try {
+    const { companyName, party } = req.body;
+
+    if (!companyName || !party) {
+      return res.status(400).json({
+        success: false,
+        message: "Missing required fields: companyName and party",
+      });
+    }
+
+    if (!mongoose.Types.ObjectId.isValid(companyName) || !mongoose.Types.ObjectId.isValid(party)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid ID format for companyName or party",
+      });
+    }
+
+    if (req.body.size && !mongoose.Types.ObjectId.isValid(req.body.size)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid size ID format",
+      });
+    }
+
+    if (req.body.ply && !mongoose.Types.ObjectId.isValid(req.body.ply)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid ply ID format",
+      });
+    }
+
+    if (req.body.kantan && !mongoose.Types.ObjectId.isValid(req.body.kantan)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid kantan ID format",
+      });
+    }
+
     const qpOrder = new QpData(req.body);
     await qpOrder.save();
 
@@ -19,9 +56,11 @@ exports.createQpOrder = async (req, res) => {
           "partyName address contactPerson personMobileNo personWhatsAppNo GSTNo",
       })
       .populate("ply", "ply")
-      .populate("size", "size")
-      .populate("gsm", "gsm")
-      .populate("deckal", "deckal");
+      .populate("name", "name")
+      .populate("length", "length")
+      .populate("width", "width")
+      .populate("height", "height")
+      .populate("kantan", "kantanName");
     res.status(201).json({
       success: true,
       message: "QP Order created successfully",
@@ -51,9 +90,11 @@ exports.getAllQpOrders = async (req, res) => {
           "partyName address contactPerson personMobileNo personWhatsAppNo GSTNo",
       })
       .populate("ply", "ply")
-      .populate("size", "size")
-      .populate("gsm", "gsm")
-      .populate("deckal", "deckal")
+      .populate("name", "name")
+      .populate("length", "length")
+      .populate("width", "width")
+      .populate("height", "height")
+      .populate("kantan", "kantanName")
       .sort({ createdAt: -1 });
     res.status(200).json({
       success: true,
@@ -84,9 +125,11 @@ exports.getQpOrderById = async (req, res) => {
           "partyName address contactPerson personMobileNo personWhatsAppNo GSTNo",
       })
       .populate("ply", "ply")
-      .populate("size", "size")
-      .populate("gsm", "gsm")
-      .populate("deckal", "deckal");
+      .populate("name", "name")
+      .populate("length", "length")
+      .populate("width", "width")
+      .populate("height", "height")
+      .populate("kantan", "kantanName")
     if (!qpOrder) {
       return res.status(404).json({
         success: false,
@@ -111,6 +154,43 @@ exports.getQpOrderById = async (req, res) => {
 // Update QP Order
 exports.updateQpOrder = async (req, res) => {
   try {
+    // const { companyName, party } = req.body;
+    // if (!companyName || !party) {
+    //   return res.status(400).json({
+    //     success: false,
+    //     message: "Missing required fields: companyName and party are required",
+    //   });
+    // }
+
+    // Validate ObjectId fields
+    // if (!mongoose.Types.ObjectId.isValid(companyName) || !mongoose.Types.ObjectId.isValid(party)) {
+    //   return res.status(400).json({
+    //     success: false,
+    //     message: "Invalid ID format for companyName or party",
+    //   });
+    // }
+
+    if (req.body.size && !mongoose.Types.ObjectId.isValid(req.body.size)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid size ID format",
+      });
+    }
+
+    if (req.body.ply && !mongoose.Types.ObjectId.isValid(req.body.ply)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid ply ID format",
+      });
+    }
+
+    if (req.body.kantan && !mongoose.Types.ObjectId.isValid(req.body.kantan)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid kantan ID format",
+      });
+    }
+
     const qpOrder = await QpData.findByIdAndUpdate(req.params.id, req.body, {
       new: true,
       runValidators: true,
@@ -125,9 +205,11 @@ exports.updateQpOrder = async (req, res) => {
           "partyName address contactPerson personMobileNo personWhatsAppNo GSTNo",
       })
       .populate("ply", "ply")
-      .populate("size", "size")
-      .populate("gsm", "gsm")
-      .populate("deckal", "deckal");
+      .populate("name", "name")
+      .populate("length", "length")
+      .populate("width", "width")
+      .populate("height", "height")
+      .populate("kantan", "kantanName");
 
     if (!qpOrder) {
       return res.status(404).json({
@@ -210,9 +292,12 @@ exports.getOrdersByStaffId = async (req, res) => {
           "partyName address contactPerson personMobileNo personWhatsAppNo GSTNo",
       })
       .populate("ply", "ply")
-      .populate("size", "size")
-      .populate("gsm", "gsm")
-      .populate("deckal", "deckal")
+      .populate("name", "name")
+      .populate("name", "name")
+      .populate("length", "length")
+      .populate("width", "width")
+      .populate("height", "height")
+      .populate("kantan", "kantanName")
       .sort({ createdAt: -1 });
 
     // 4. If no orders found, return an empty array with a message
