@@ -81,6 +81,191 @@ exports.createAssignTask = async (req, res) => {
   }
 };
 
+exports.bulkCreateTasks = async (req, res) => {
+  try {
+    const tasksData = req.body;
+    console.log("Received tasksData:", tasksData);
+
+    if (!Array.isArray(tasksData) || tasksData.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Expected an array of task data",
+      });
+    }
+
+    const createdTasks = [];
+    const errors = [];
+
+    for (const taskData of tasksData) {
+      try {
+        const {
+          companyName,
+          partyName,
+          date,
+          time,
+          reasonForVisit,
+          remarks,
+          assignTo,
+          status = "Pending",
+        } = taskData;
+
+        console.log(`Processing task for partyName: ${partyName}`);
+
+        // Validate required fields
+        if (!companyName || !partyName || !date || !reasonForVisit || !assignTo) {
+          errors.push({
+            partyName,
+            message: "Missing required fields",
+            missingFields: { companyName, partyName, date, reasonForVisit, assignTo },
+          });
+          console.log(`Validation failed for partyName: ${partyName}`, {
+            companyName,
+            partyName,
+            date,
+            reasonForVisit,
+            assignTo,
+          });
+          continue;
+        }
+
+        // Validate ObjectId fields
+        if (
+          !mongoose.Types.ObjectId.isValid(companyName) ||
+          !mongoose.Types.ObjectId.isValid(partyName) ||
+          !mongoose.Types.ObjectId.isValid(assignTo)
+        ) {
+          errors.push({
+            partyName,
+            message: "Invalid ID format",
+            invalidFields: { companyName, partyName, assignTo },
+          });
+          console.log(`Invalid ID format for partyName: ${partyName}`, {
+            companyName,
+            partyName,
+            assignTo,
+          });
+          continue;
+        }
+
+        // Validate existence of referenced documents
+        const [company, party, staff] = await Promise.all([
+          CompanyName.findById(companyName),
+          Party.findById(partyName),
+          Staff.findById(assignTo),
+        ]);
+
+        if (!company) {
+          errors.push({
+            partyName,
+            message: `Company not found for ID: ${companyName}`,
+          });
+          console.log(`Company not found for ID: ${companyName}`);
+          continue;
+        }
+
+        if (!party) {
+          errors.push({
+            partyName,
+            message: `Party not found for ID: ${partyName}`,
+          });
+          console.log(`Party not found for ID: ${partyName}`);
+          continue;
+        }
+
+        if (!staff) {
+          errors.push({
+            partyName,
+            message: `Staff not found for ID: ${assignTo}`,
+          });
+          console.log(`Staff not found for ID: ${assignTo}`);
+          continue;
+        }
+
+        // Validate date format
+        let normalizedDate = null;
+        if (date) {
+          const dateRegex = /^(\d{2}-\d{2}-\d{4}|\d{4}-\d{2}-\d{2})$/;
+          if (!dateRegex.test(date)) {
+            errors.push({
+              partyName,
+              message: "Invalid date format. Use DD-MM-YYYY or YYYY-MM-DD.",
+            });
+            console.log(`Invalid date format for partyName: ${partyName}`, { date });
+            continue;
+          }
+
+          let [year, month, day] = date.split("-");
+          if (date.match(/^\d{2}-\d{2}-\d{4}$/)) {
+            [day, month, year] = date.split("-");
+          }
+          normalizedDate = new Date(`${year}-${month}-${day}`);
+
+          if (isNaN(normalizedDate.getTime())) {
+            errors.push({ partyName, message: "Invalid date provided" });
+            console.log(`Invalid date provided for partyName: ${partyName}`, { date });
+            continue;
+          }
+        }
+
+        // Validate time format if provided
+        if (time) {
+          const timeRegex = /^([01]?[0-9]|2[0-3]):[0-5][0-9]$/;
+          if (!timeRegex.test(time)) {
+            errors.push({
+              partyName,
+              message: "Invalid time format. Use HH:MM in 24-hour format.",
+            });
+            console.log(`Invalid time format for partyName: ${partyName}`, { time });
+            continue;
+          }
+        }
+
+        // Create task
+        const task = new AssignTask({
+          companyName,
+          partyName,
+          date: normalizedDate,
+          time: time || "",
+          reasonForVisit,
+          remarks: remarks || "",
+          assignTo,
+          status,
+          visitDate: null,
+          visitTime: "",
+          feedback: "",
+          isRescheduledTask: false,
+          originalTaskId: null,
+        });
+
+        const savedTask = await task.save();
+        createdTasks.push(savedTask);
+        console.log(`Successfully created task for partyName: ${partyName}`);
+      } catch (error) {
+        console.error(`Error processing task:`, error);
+        errors.push({
+          partyName: taskData.partyName,
+          message: error.message || "Error processing task",
+        });
+      }
+    }
+
+    return res.status(201).json({
+      success: true,
+      message: "Bulk task creation completed",
+      data: createdTasks,
+      errors: errors.length > 0 ? errors : undefined,
+      count: createdTasks.length,
+    });
+  } catch (error) {
+    console.error("Error in bulk task creation:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Server error while creating tasks",
+      error: error.message,
+    });
+  }
+};
+
 exports.getAllAssignTasks = async (req, res) => {
   try {
     const tasks = await AssignTask.find()

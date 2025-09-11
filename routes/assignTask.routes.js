@@ -5,6 +5,7 @@ const router = express.Router();
 
 // Create a new assign task
 router.post("/create", AssignTaskController.createAssignTask);
+router.post("/create/bulk", AssignTaskController.bulkCreateTasks);
 
 // Get all assign tasks
 router.get("/getall", AssignTaskController.getAllAssignTasks);
