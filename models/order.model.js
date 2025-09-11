@@ -258,6 +258,10 @@ const orderSchema = new mongoose.Schema(
           ref: "Material",
           required: false,
         },
+        wastage: {
+          type: String,
+          trim: true,
+        },
         ratePerUnit: {
           type: String,
           trim: true,
@@ -297,6 +301,10 @@ const orderSchema = new mongoose.Schema(
           trim: true,
           // required: true,
         },
+        wastage: {
+          type: String,
+          trim: true,
+        },
       },
     ],
     bookletPapers: [
@@ -331,6 +339,10 @@ const orderSchema = new mongoose.Schema(
           type: String,
           trim: true,
           required: true,
+        },
+        wastage: {
+          type: String,
+          trim: true,
         },
       },
     ],

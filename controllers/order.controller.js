@@ -492,6 +492,7 @@ exports.updateOrder = async (req, res) => {
         materialSize: paper.materialSize || "",
         paperType: paper.paperType || "",
         gsm: paper.gsm || "",
+        wastage: paper.wastage || "",
         ratePerUnit: paper.ratePerUnit || "",
       }));
     }
@@ -510,6 +511,7 @@ exports.updateOrder = async (req, res) => {
         sheetSize: paper.sheetSize || "",
         paperType: paper.paperType || "",
         gsm: paper.gsm || "",
+        wastage: paper.wastage || "",
         ratePerUnit: paper.ratePerUnit || "",
       }));
     }
@@ -529,6 +531,7 @@ exports.updateOrder = async (req, res) => {
         sheetSize: paper.sheetSize || "",
         paperType: paper.paperType || "",
         gsm: paper.gsm || "",
+        wastage: paper.wastage || "",
         ratePerUnit: paper.ratePerUnit || "",
       }));
     }
@@ -688,7 +691,7 @@ exports.updateOrder = async (req, res) => {
             category: "printer",
             type: "outward",
             material: paper.paperType || "Unknown",
-            quantity: paper.numberOfSheetsUsed,
+            quantity: paper.wastage,
             date: new Date(),
             companyName: orderData.companyName,
             for: staffRole.role,
@@ -714,7 +717,7 @@ exports.updateOrder = async (req, res) => {
             category: "binder",
             type: "outward",
             material: paper.paperType || "Unknown",
-            quantity: paper.numberOfSheetsUsed,
+            quantity: paper.wastage,
             date: new Date(),
             companyName: orderData.companyName,
             for: staffRole.role,
@@ -740,7 +743,7 @@ exports.updateOrder = async (req, res) => {
             category: "booklet",
             type: "outward",
             material: paper.paperType || "Unknown",
-            quantity: paper.numberOfSheetsUsed,
+            quantity: paper.wastage,
             date: new Date(),
             companyName: orderData.companyName,
             for: staffRole.role,
@@ -1145,13 +1148,13 @@ exports.getOrdersByStaffId = async (req, res) => {
     });
   }
 };
+
 exports.updateStaffStatus = async (req, res) => {
   try {
     const { orderId } = req.params;
     const { statusType, status } = req.body;
 
     if (!mongoose.Types.ObjectId.isValid(orderId)) {
-      console.log("❌ Invalid Order ID");
       return res
         .status(400)
         .json({ success: false, message: "Invalid Order ID" });
@@ -1161,80 +1164,87 @@ exports.updateStaffStatus = async (req, res) => {
     const validStatusValues = ["Pending", "In Progress", "Done"];
 
     if (!validStatusTypes.includes(statusType)) {
-      console.log("❌ Invalid status type:", statusType);
       return res
         .status(400)
         .json({ success: false, message: "Invalid status type" });
     }
 
     if (!validStatusValues.includes(status)) {
-      console.log("❌ Invalid status value:", status);
       return res
         .status(400)
         .json({ success: false, message: "Invalid status value" });
     }
 
-    const currentOrder = await Order.findById(orderId);
+    const currentOrder = await Order.findById(orderId)
+      .populate("companyName", "companyName")
+      .populate("party", "partyName")
+      .populate("productItem", "itemName");
+
     if (!currentOrder) {
-      console.log("❌ Order not found:", orderId);
       return res
         .status(404)
         .json({ success: false, message: "Order not found" });
     }
 
-    console.log("📦 Current order fetched:", currentOrder._id);
+    const staffRole = await Staff.findById(req.user.id);
+    if (!staffRole) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Staff not found" });
+    }
 
-    const currentStatus = currentOrder[`${statusType}Status`];
-    console.log(`🔹 Current status of ${statusType}:`, currentStatus);
+    // Helper to process inventory for any category
+    const processInventory = async (category, papers) => {
+      if (!papers || !Array.isArray(papers)) return;
 
-    // Add inventory entry if moving from Pending → In Progress
-    // if (currentStatus === "Pending" && status === "In Progress") {
-    //   console.log("📝 Adding inventory entry...");
+      for (const paper of papers) {
+        if (paper.numberOfSheetsUsed && paper.numberOfSheetsUsed > 0) {
+          await Inventory.create({
+            category,
+            type: "outward",
+            material: paper.paperType || "Unknown",
+            quantity: paper.numberOfSheetsUsed,
+            date: new Date(),
+            companyName: currentOrder.companyName || "Unknown",
+            for: staffRole.role,
+            forCompany: req.user.id,
+            orderId: currentOrder._id,
+            paperName: paper.paperName || "Unnamed Paper",
+            sheetSize: paper.sheetSize || "",
+            gsm: paper.gsm || "",
+          });
+        }
+      }
+    };
 
-    //   await Inventory.create({
-    //     category: statusType,
-    //     type: "outward",
-    //     material: currentOrder?.printerPapers?.paperType || "N/A",
-    //     quantity: currentOrder.qty,
-    //     date: new Date(),
-    //     companyName: currentOrder.companyName,
-    //     for: role,
-    //     forCompany: id,
-    //   });
-
-    //   console.log("✅ Inventory entry added");
-    // }
+    // Process inventory if status is "In Progress"
+    if (statusType === "printer" && status === "In Progress") {
+      await processInventory("printer", currentOrder.printerPapers);
+    } else if (statusType === "binder" && status === "In Progress") {
+      await processInventory("binder", currentOrder.binderPapers);
+    } else if (statusType === "bookletBinder" && status === "In Progress") {
+      await processInventory("booklet", currentOrder.bookletPapers);
+    }
 
     // Update order status
     const updateField = `${statusType}Status`;
-    const updateData = { [updateField]: status };
-
-    console.log("🔹 Updating order status:", updateData);
-
-    const updatedOrder = await Order.findByIdAndUpdate(orderId, updateData, {
-      new: true,
-    })
+    const updatedOrder = await Order.findByIdAndUpdate(
+      orderId,
+      { [updateField]: status },
+      { new: true }
+    )
       .populate("companyName", "companyName avatar")
       .populate("party", "partyName")
       .populate("productItem", "itemName");
 
-    if (!updatedOrder) {
-      console.log("❌ Order not found after update:", orderId);
-      return res
-        .status(404)
-        .json({ success: false, message: "Order not found" });
-    }
-
-    console.log("✅ Order status updated successfully");
-
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       message: `${statusType} status updated successfully`,
       data: updatedOrder,
     });
   } catch (error) {
     console.error("❌ Update staff status error:", error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: "Failed to update status",
       error: error.message,
