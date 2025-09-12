@@ -12,14 +12,31 @@ exports.createMarket = async (req, res) => {
         .json({ message: "Market Name, Area, and Pincode are required" });
     }
 
-    const newMarket = new Market({
-      marketName,
-      area,
-      streetAddress,
-      landmark,
-      pincode,
+    // ✅ Normalize input (trim + lowercase for consistency)
+    const normalizedData = {
+      marketName: marketName.trim(),
+      area: area.trim(),
+      streetAddress: streetAddress?.trim() || "",
+      landmark: landmark?.trim() || "",
+      pincode: pincode.trim(),
+    };
+
+    // ✅ Check for exact duplicate
+    const existingMarket = await Market.findOne({
+      marketName: normalizedData.marketName,
+      area: normalizedData.area,
+      streetAddress: normalizedData.streetAddress,
+      landmark: normalizedData.landmark,
+      pincode: normalizedData.pincode,
     });
 
+    if (existingMarket) {
+      return res.status(400).json({
+        message: "Market with the same details already exists",
+      });
+    }
+
+    const newMarket = new Market(normalizedData);
     await newMarket.save();
 
     return res.status(201).json({
@@ -33,6 +50,7 @@ exports.createMarket = async (req, res) => {
     });
   }
 };
+
 
 // ✅ Get all Markets
 exports.getAllMarkets = async (req, res) => {
@@ -103,10 +121,7 @@ exports.bulkUploadMarkets = async (req, res) => {
       return res.status(400).json({ message: "No file uploaded" });
     }
 
-    
     const fileContent = req.file.buffer.toString("utf8");
-    console.log(fileContent,'fileContent')
-    
     if (!fileContent) {
       return res.status(400).json({ message: "Uploaded file is empty" });
     }
@@ -117,17 +132,46 @@ exports.bulkUploadMarkets = async (req, res) => {
     });
 
     const records = parsedData.data;
-    console.log(records,'jkdnfdknjfi')
-
     const validRecords = [];
+
     for (const row of records) {
       const { marketName, area, streetAddress, landmark, pincode } = row;
+
       if (!marketName || !area || !pincode) {
-        return res
-          .status(400)
-          .json({ message: "Market Name, Area, and Pincode are required in every row" });
+        return res.status(400).json({
+          message: "Market Name, Area, and Pincode are required in every row",
+        });
       }
-      validRecords.push({ marketName, area, streetAddress, landmark, pincode });
+
+      // ✅ Normalize values (trim + lowercase for consistent comparison)
+      const normalizedData = {
+        marketName: marketName.trim(),
+        area: area.trim(),
+        streetAddress: streetAddress?.trim() || "",
+        landmark: landmark?.trim() || "",
+        pincode: pincode.trim(),
+      };
+
+      // ✅ Check if same record already exists
+      const existing = await Market.findOne({
+        marketName: normalizedData.marketName,
+        area: normalizedData.area,
+        streetAddress: normalizedData.streetAddress,
+        landmark: normalizedData.landmark,
+        pincode: normalizedData.pincode,
+      });
+
+      if (!existing) {
+        validRecords.push(normalizedData); // Only push if not duplicate
+      }
+    }
+
+    if (validRecords.length === 0) {
+      return res.status(200).json({
+        message: "No new unique records to insert",
+        insertedCount: 0,
+        data: [],
+      });
     }
 
     const insertedMarkets = await Market.insertMany(validRecords);

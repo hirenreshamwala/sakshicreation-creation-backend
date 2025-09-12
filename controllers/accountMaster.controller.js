@@ -725,12 +725,37 @@ const findMarketByField = async (field, value, session) => {
   return market ? market._id : null;
 };
 
+async function findStaffByFullName(fullName) {
+
+  const [firstName, lastName] = fullName.trim().split(" ");
+
+  const staff = await Staff.findOne({
+    $expr: {
+      $and: [
+        {
+          $eq: [
+            { $toLower: { $trim: { input: "$firstName" } } },
+            firstName.toLowerCase(),
+          ],
+        },
+        {
+          $eq: [
+            { $toLower: { $trim: { input: "$lastName" } } },
+            lastName.toLowerCase(),
+          ],
+        },
+      ],
+    },
+  });
+
+  return staff;
+}
+
 exports.bulkCreateAccountMasters = async (req, res) => {
   const session = await mongoose.startSession();
   session.startTransaction();
 
   try {
-    // Check if file is uploaded
     if (!req.file) {
       await session.abortTransaction();
       session.endSession();
@@ -740,190 +765,133 @@ exports.bulkCreateAccountMasters = async (req, res) => {
       });
     }
 
-    // Get global companyName and createdBy from request body
     const globalCompanyName = req.body.companyName;
-    const globalCreatedBy = req.body.createdBy;
 
-    // Validate global fields
-    if (!globalCompanyName || !globalCreatedBy) {
+    if (!globalCompanyName) {
       await session.abortTransaction();
       session.endSession();
       return res.status(400).json({
         success: false,
-        message: "companyName and createdBy are required in the request body",
+        message: "companyName is required in the request body",
       });
     }
 
-    // Read and parse the uploaded CSV file
+    // Read CSV
     const workbook = xlsx.read(req.file.buffer, { type: "buffer" });
     const sheet = workbook.Sheets[workbook.SheetNames[0]];
     const data = xlsx.utils.sheet_to_json(sheet);
 
     const accountMasters = [];
-    const errors = [];
+    const skippedRecords = [];
 
-    // Process each row in the CSV
-    for (const row of data) {
-      // Handle partyTag logic
-      let partyTag = "New"; // Default value
-      if (row.partyTag) {
-        const partyTagValue = String(row.partyTag).trim();
-
-        // Case-insensitive matching
-        if (partyTagValue.toLowerCase() === "customer") {
-          partyTag = "Customer";
-        } else if (partyTagValue.toLowerCase() === "new") {
-          partyTag = "New";
+    for (const [index, row] of data.entries()) {
+      try {
+        // ✅ Find staff by full name
+        const staff = await findStaffByFullName(row.createdBy);
+        if (!staff) {
+          skippedRecords.push({
+            ...row,
+            reason: `Staff not found for createdBy: ${row.createdBy}`,
+          });
+          continue;
         }
-        // If any other value is provided, it will remain "New" (default)
-      }
 
-      // Resolve address fields with Market IDs
-      const marketId = await findMarketByField(
-        "marketName",
-        row.marketName,
-        session
-      );
+        // PartyTag logic
+        let partyTag = "New";
+        if (row.partyTag) {
+          const partyTagValue = String(row.partyTag).trim().toLowerCase();
+          if (partyTagValue === "customer") partyTag = "Customer";
+        }
 
-      const address = {
-        unitNo: row.unitNo || null,
-        marketName: marketId,
-        streetAddress: marketId,
-        landMark: marketId,
-        area: marketId,
-        pincode: marketId,
-      };
+        // Market resolve
+        const marketId = await findMarketByField(
+          "marketName",
+          row.marketName,
+          session
+        );
 
-      // Prepare party data from CSV row
-      const partyData = {
-        companyName: globalCompanyName,
-        partyName: row.partyName || null,
-        ownerName: row.ownerName || null,
-        ownerMobileNo: row.ownerMobileNo || null,
-        ownerWhatsAppNo: String(row.ownerWhatsAppNo) || null,
-        ownerEmail: row.ownerEmail || null,
-        contactPerson: row.contactPerson || null,
-        personMobileNo: row.personMobileNo || null,
-        personWhatsAppNo: row.personWhatsAppNo || null,
-        contactPersonEmail: row.contactPersonEmail || null,
-        contactForPayment: row.contactForPayment || null,
-        contactMobileNo: row.contactMobileNo || null,
-        contactWhatsAppNo: row.contactWhatsAppNo || null,
-        contactForPaymentEmail: row.contactForPaymentEmail || null,
-        GSTNo: row.GSTNo || null,
-        address,
-        reference: row.reference || null,
-        statusApproval: row.isRequestMode === "TRUE" ? "Pending" : "Approved",
-        createdBy: globalCreatedBy,
-        partyTag: partyTag, // Add the determined partyTag
-      };
+        const address = {
+          unitNo: row.unitNo || null,
+          marketName: marketId,
+          streetAddress: marketId,
+          landMark: marketId,
+          area: marketId,
+          pincode: marketId,
+        };
 
-      // Validate companyName
-      const company = await CompanyName.findById(globalCompanyName).session(
-        session
-      );
-      if (!company) {
-        errors.push(`Invalid companyName ID for row: ${JSON.stringify(row)}`);
+        // Party
+        const partyData = {
+          companyName: globalCompanyName,
+          partyName: row.partyName || null,
+          ownerName: row.ownerName || null,
+          ownerMobileNo: row.ownerMobileNo || null,
+          ownerWhatsAppNo: row.ownerWhatsAppNo
+            ? String(row.ownerWhatsAppNo)
+            : null,
+          ownerEmail: row.ownerEmail || null,
+          contactPerson: row.contactPerson || null,
+          personMobileNo: row.personMobileNo || null,
+          personWhatsAppNo: row.personWhatsAppNo || null,
+          contactPersonEmail: row.contactPersonEmail || null,
+          contactForPayment: row.contactForPayment || null,
+          contactMobileNo: row.contactMobileNo || null,
+          contactWhatsAppNo: row.contactWhatsAppNo || null,
+          contactForPaymentEmail: row.contactForPaymentEmail || null,
+          GSTNo: row.GSTNo || null,
+          address,
+          reference: row.reference || null,
+          statusApproval: row.isRequestMode === "TRUE" ? "Pending" : "Approved",
+          createdBy: staff._id,
+          partyTag,
+        };
+
+        const newParty = await Party.create([partyData], { session });
+
+        const accountMasterData = {
+          companyName: globalCompanyName,
+          party: newParty[0]._id,
+          reasonToVisit: row.reasonToVisit || null,
+          reference: row.reference || null,
+          createdBy: staff._id,
+          partyTag,
+        };
+
+        const newAccountMaster = await AccountMaster.create(
+          [accountMasterData],
+          { session }
+        );
+        accountMasters.push(newAccountMaster[0]);
+      } catch (err) {
+        skippedRecords.push({
+          row: index + 1,
+          reason: err.message,
+        });
         continue;
       }
-
-      // Validate createdBy
-      const staff = await Staff.findById(globalCreatedBy).session(session);
-      if (!staff) {
-        errors.push(`Invalid createdBy ID for row: ${JSON.stringify(row)}`);
-        continue;
-      }
-
-      // Create new Party (no duplicate check to allow duplicate partyName)
-      const newParty = await Party.create([partyData], { session });
-
-      // Prepare AccountMaster data
-      const accountMasterData = {
-        companyName: globalCompanyName,
-        party: newParty[0]._id,
-        reasonToVisit: row.reasonToVisit || null,
-        reference: row.reference || null,
-        createdBy: globalCreatedBy,
-        partyTag: partyTag, // Also add partyTag to AccountMaster if needed
-      };
-
-      // Create new AccountMaster
-      const newAccountMaster = await AccountMaster.create([accountMasterData], {
-        session,
-      });
-      accountMasters.push(newAccountMaster[0]);
     }
 
-    // If there are errors, rollback and return
-    if (errors.length > 0) {
-      await session.abortTransaction();
-      session.endSession();
-      return res.status(400).json({
-        success: false,
-        message: "Some records failed to process",
-        errors,
-      });
-    }
-
-    // Commit transaction
     await session.commitTransaction();
     session.endSession();
 
-    // Populate and return the created AccountMasters
-    const populatedAccountMasters = await AccountMaster.find({
-      _id: { $in: accountMasters.map((am) => am._id) },
-    })
-      .populate("companyName", "companyName avatar")
-      .populate("party")
-      .populate({
-        path: "party",
-        select: "-__v",
-        populate: [
-          {
-            path: "address.marketName",
-            model: "Market",
-            select: "marketName", // only marketName
-          },
-          {
-            path: "address.streetAddress",
-            model: "Market",
-            select: "streetAddress", // only streetAddress
-          },
-          {
-            path: "address.landMark",
-            model: "Market",
-            select: "landmark", // only landMark
-          },
-          {
-            path: "address.area",
-            model: "Market",
-            select: "area", // only area
-          },
-          {
-            path: "address.pincode",
-            model: "Market",
-            select: "pincode", // only pincode
-          },
-        ],
-      })
-      .populate("createdBy", "firstName lastName email");
-
-    res.status(201).json({
+    return res.status(201).json({
       success: true,
-      message: "Bulk account masters created successfully",
-      data: populatedAccountMasters,
+      message: "Bulk account masters processed",
+      insertedCount: accountMasters.length,
+      skippedCount: skippedRecords.length,
+      skippedRecords, // optional: to debug which ones skipped
+      data: accountMasters,
     });
   } catch (error) {
     await session.abortTransaction();
     session.endSession();
-    console.error("Error in bulk create account masters:", error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: "Failed to bulk create account masters",
       error: error.message,
     });
   }
 };
+
 exports.getAccountMasterById = async (req, res) => {
   try {
     const { id } = req.params;
