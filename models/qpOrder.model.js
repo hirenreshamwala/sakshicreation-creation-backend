@@ -56,6 +56,9 @@ const qpDataSchema = new mongoose.Schema(
     deckal: {
       type: String,
     },
+    deckalCalculation: {
+      type: String,
+    },
     noOfPieces: {
       type: Number,
     },
@@ -75,6 +78,17 @@ const qpDataSchema = new mongoose.Schema(
       // type: String,
       type: mongoose.Schema.Types.ObjectId,
       ref: "Kantan",
+    },
+    kantanPerUnit: {
+      type: String,
+    },
+    totalKantan: {
+      reel: {
+        type: String,
+      },
+      inch: {
+        type: String, 
+      }
     },
     kantanDeckal: {
       type: String,
