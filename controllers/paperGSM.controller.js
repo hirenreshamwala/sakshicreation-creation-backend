@@ -1,20 +1,20 @@
-const PackagingOption = require("../models/packagingOption.model");
+const PaperGSM = require("../models/paperGSM.model");
 const Papa = require("papaparse");
 
 // Create a new Packaging Option
-exports.createPackagingOption = async (req, res) => {
+exports.createPaperGSM = async (req, res) => {
   try {
-    const { name, ply, length, width, height } = req.body;
+    const { name, length, width, height } = req.body;
 
-    if (!ply || !length || !width || !height) {
+    if (!length || !width || !height) {
       return res.status(400).json({ message: "All fields are required" });
     }
 
-    const newOption = new PackagingOption({ name, ply, length, width, height });
+    const newOption = new PaperGSM({ name, length, width, height });
     await newOption.save();
 
     return res.status(201).json({
-      message: "Packaging option created successfully",
+      message: "Paper GSM created successfully",
       data: newOption,
     });
   } catch (error) {
@@ -25,9 +25,9 @@ exports.createPackagingOption = async (req, res) => {
 };
 
 // Get all Packaging Options
-exports.getAllPackagingOptions = async (req, res) => {
+exports.getAllPaperGSM = async (req, res) => {
   try {
-    const options = await PackagingOption.find().sort({ createdAt: -1 });
+    const options = await PaperGSM.find().sort({ createdAt: -1 });
     return res.status(200).json({ data: options });
   } catch (error) {
     return res
@@ -37,23 +37,23 @@ exports.getAllPackagingOptions = async (req, res) => {
 };
 
 // Edit (Update) a Packaging Option
-exports.updatePackagingOption = async (req, res) => {
+exports.updatePaperGSM = async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, ply, length, width, height } = req.body;
+    const { name, length, width, height } = req.body;
 
-    const updatedOption = await PackagingOption.findByIdAndUpdate(
+    const updatedOption = await PaperGSM.findByIdAndUpdate(
       id,
-      { name, ply, length, width, height },
+      { name, length, width, height },
       { new: true, runValidators: true }
     );
 
     if (!updatedOption) {
-      return res.status(404).json({ message: "Packaging option not found" });
+      return res.status(404).json({ message: "Paper GSM not found" });
     }
 
     return res.status(200).json({
-      message: "Packaging option updated successfully",
+      message: "Paper GSM updated successfully",
       data: updatedOption,
     });
   } catch (error) {
@@ -64,19 +64,19 @@ exports.updatePackagingOption = async (req, res) => {
 };
 
 // Delete a Packaging Option
-exports.deletePackagingOption = async (req, res) => {
+exports.deletePaperGSM = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const deletedOption = await PackagingOption.findByIdAndDelete(id);
+    const deletedOption = await PaperGSM.findByIdAndDelete(id);
 
     if (!deletedOption) {
-      return res.status(404).json({ message: "Packaging option not found" });
+      return res.status(404).json({ message: "Paper GSM not found" });
     }
 
     return res
       .status(200)
-      .json({ message: "Packaging option deleted successfully" });
+      .json({ message: "Paper GSM deleted successfully" });
   } catch (error) {
     return res
       .status(500)
@@ -85,7 +85,7 @@ exports.deletePackagingOption = async (req, res) => {
 };
 
 // Bulk Upload Packaging Options
-exports.bulkUploadPackagingOptions = async (req, res) => {
+exports.bulkUploadPaperGSM = async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ message: "No file uploaded" });
@@ -106,16 +106,16 @@ exports.bulkUploadPackagingOptions = async (req, res) => {
 
     const validRecords = [];
     for (const row of records) {
-      const { name, ply, length, width, height } = row;
-      if (!ply || !length || !width || !height) {
+      const { name, length, width, height } = row;
+      if (!length || !width || !height) {
         return res
           .status(400)
-          .json({ message: "All fields (ply, length, width, height) are required in every row" });
+          .json({ message: "All fields (length, width, height) are required in every row" });
       }
-      validRecords.push({ name, ply, length, width, height });
+      validRecords.push({ name, length, width, height });
     }
 
-    const insertedOptions = await PackagingOption.insertMany(validRecords);
+    const insertedOptions = await PaperGSM.insertMany(validRecords);
 
     return res.status(201).json({
       message: "Bulk upload successful",

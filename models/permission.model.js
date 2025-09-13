@@ -30,6 +30,7 @@ const permissionSchema = new mongoose.Schema(
       create: { type: Boolean },
       edit: { type: Boolean },
       delete: { type: Boolean },
+      status: { type: Boolean ,default: false}
     },
     // for quality packaging company
     order_factory: {
