@@ -13,7 +13,7 @@ const leadSchema = new mongoose.Schema({
   },
   reason: {
     type: String,
-    enum: ["Cold Call", "Proof Approval", "Sample Approval", "Inquiry Call", "Confirmation Call", "Other"],
+    // enum: ["Cold Call", "Proof Approval", "Sample Approval", "Inquiry Call", "Confirmation Call", "Other"],
     required: true
   },
   customReason: {
