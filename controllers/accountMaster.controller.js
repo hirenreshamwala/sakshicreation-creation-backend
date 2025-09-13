@@ -950,6 +950,7 @@ exports.getAccountMasterById = async (req, res) => {
     const responseData = {
       companyName: accountMaster.companyName._id.toString(), // Just the ID for the company select
       partyName: accountMaster.party.partyName, // Direct party name for the party input
+      partyId: accountMaster.party._id,
       ownerName: accountMaster.party.ownerName,
       ownerMobileNo: accountMaster.party.ownerMobileNo,
       ownerWhatsAppNo: accountMaster.party.ownerWhatsAppNo,

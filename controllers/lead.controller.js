@@ -99,7 +99,7 @@ exports.createLead = async (req, res) => {
       companyName,
       partyName,
       reason,
-      customReason: reason === "Other" ? customReason : undefined,
+      customReason,
       assignedTo,
       date: normalizedDate || new Date(), // Use provided date or current date
       time: time || undefined,

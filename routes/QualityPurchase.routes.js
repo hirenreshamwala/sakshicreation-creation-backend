@@ -1,0 +1,18 @@
+const express = require('express');
+const PurchaseController = require('../controllers/QpPurchase.controller');
+const multer = require("multer");
+
+const router = express.Router();
+const upload = multer({ dest: 'uploads/' });
+router.post("/create", PurchaseController.createPurchase);
+
+router.get("/getall", PurchaseController.getAllPurchases);
+
+router.get("/getbyid/:id", PurchaseController.getPurchaseById);
+
+router.patch("/update/:id", PurchaseController.updatePurchase);
+
+router.delete("/delete/:id", PurchaseController.deletePurchase);
+
+router.post('/bulk', upload.single('file'), PurchaseController.bulkCreatePurchases);
+module.exports = router;
