@@ -23,6 +23,7 @@ const Vendor = require("./vendor.routes");
 const BinderTypeRoutes = require("./binderType.routes");
 const QpOrderRoutes = require("./qpOrder.routes");
 const packagingOptions = require("./packagingOption.routes");
+const paperGSM = require("./paperGSM.routes");
 const marketData = require("./marketData.routes");
 const kantan = require("./kantan.routes");
 
@@ -43,6 +44,7 @@ router.use("/status", status);
 router.use("/role", Roles);
 router.use("/qporder", QpOrderRoutes);
 router.use("/packagingOptions", packagingOptions);
+router.use("/paperGSM", paperGSM);
 router.use("/market", marketData);
 router.use("/kantan", kantan);
 router.use("/filedownload", filedownloadRouter);

@@ -6,6 +6,8 @@ const Staff = require("../models/staff.model");
 exports.createQpOrder = async (req, res) => {
   try {
     const { companyName, party } = req.body;
+    const { id } = req.user;
+    req.body.createdBy = id;
 
     if (!companyName || !party) {
       return res.status(400).json({
@@ -299,6 +301,8 @@ exports.getOrdersByStaffId = async (req, res) => {
       .populate("height", "height")
       .populate("kantan", "kantanName")
       .sort({ createdAt: -1 });
+    console.log("DEBUG : v:", orders);
+
 
     // 4. If no orders found, return an empty array with a message
     if (!orders || orders.length === 0) {

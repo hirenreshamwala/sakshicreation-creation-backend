@@ -153,6 +153,11 @@ const qpDataSchema = new mongoose.Schema(
     otherStatus: {
       type: String,
     },
+    createdBy: {
+      // type: String,
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Staff",
+    },
   },
   {
     timestamps: true,

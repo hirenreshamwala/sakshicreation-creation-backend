@@ -4,7 +4,7 @@ const packagingOptionSchema = new mongoose.Schema(
   {
     name: {
       type: String,
-      required: true,
+      // required: true,
       trim: true,
     },
     ply: {

@@ -1,8 +1,9 @@
 const express = require("express")
 const router = express.Router()
 const QpOrderController = require("../controllers/qpOrder.controller");
+const { authenticateToken } = require("../middleware/auth");
 
-router.post("/create",QpOrderController.createQpOrder);
+router.post("/create",authenticateToken,QpOrderController.createQpOrder);
 router.get("/getall", QpOrderController.getAllQpOrders);
 router.get("/getbyid/:id", QpOrderController.getQpOrderById);
 router.put("/update/:id", QpOrderController.updateQpOrder);
