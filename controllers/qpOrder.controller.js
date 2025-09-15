@@ -1,6 +1,7 @@
 const { default: mongoose } = require("mongoose");
 const QpData = require("../models/qpOrder.model"); // Adjust path to your model
 const Staff = require("../models/staff.model");
+const Inventory = require("../models/inventory.model"); // Import Inventory model
 
 // Add a new QP Order
 exports.createQpOrder = async (req, res) => {
@@ -165,26 +166,27 @@ exports.getQpOrderById = async (req, res) => {
   }
 };
 
-// Update QP Order
+// Update QP Order with inventory outward creation on completion
 exports.updateQpOrder = async (req, res) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+  
   try {
-    // const { companyName, party } = req.body;
-    // if (!companyName || !party) {
-    //   return res.status(400).json({
-    //     success: false,
-    //     message: "Missing required fields: companyName and party are required",
-    //   });
-    // }
+    // Get the current order before update
+    const currentOrder = await QpData.findById(req.params.id).session(session);
+    if (!currentOrder) {
+      await session.abortTransaction();
+      session.endSession();
+      return res.status(404).json({
+        success: false,
+        message: "QP Order not found",
+      });
+    }
 
     // Validate ObjectId fields
-    // if (!mongoose.Types.ObjectId.isValid(companyName) || !mongoose.Types.ObjectId.isValid(party)) {
-    //   return res.status(400).json({
-    //     success: false,
-    //     message: "Invalid ID format for companyName or party",
-    //   });
-    // }
-
     if (req.body.size && !mongoose.Types.ObjectId.isValid(req.body.size)) {
+      await session.abortTransaction();
+      session.endSession();
       return res.status(400).json({
         success: false,
         message: "Invalid size ID format",
@@ -192,6 +194,8 @@ exports.updateQpOrder = async (req, res) => {
     }
 
     if (req.body.ply && !mongoose.Types.ObjectId.isValid(req.body.ply)) {
+      await session.abortTransaction();
+      session.endSession();
       return res.status(400).json({
         success: false,
         message: "Invalid ply ID format",
@@ -199,16 +203,24 @@ exports.updateQpOrder = async (req, res) => {
     }
 
     if (req.body.kantan && !mongoose.Types.ObjectId.isValid(req.body.kantan)) {
+      await session.abortTransaction();
+      session.endSession();
       return res.status(400).json({
         success: false,
         message: "Invalid kantan ID format",
       });
     }
 
-    const qpOrder = await QpData.findByIdAndUpdate(req.params.id, req.body, {
-      new: true,
-      runValidators: true,
-    })
+    // Update the order
+    const qpOrder = await QpData.findByIdAndUpdate(
+      req.params.id, 
+      req.body, 
+      { 
+        new: true, 
+        runValidators: true,
+        session 
+      }
+    )
       .populate({
         path: "companyName",
         select: "companyName avatar",
@@ -230,18 +242,57 @@ exports.updateQpOrder = async (req, res) => {
       .populate("kantan", "kantanName");
 
     if (!qpOrder) {
+      await session.abortTransaction();
+      session.endSession();
       return res.status(404).json({
         success: false,
         message: "QP Order not found",
       });
     }
 
+    // Check if status changed to "completed"
+    const statusChangedToCompleted = 
+      req.body.status === "Completed" && 
+      currentOrder.status !== "Completed";
+
+      const getRole = await Staff.findById(qpOrder) 
+
+    // Create outward inventory entry if status changed to completed
+    if (statusChangedToCompleted) {
+      const outwardInventory = new Inventory({
+        category: "factory", // Adjust category as needed
+        type: "outward",
+        material: qpOrder.paperName || undefined,
+        quantity: qpOrder.quantity || 1,
+        kg: qpOrder.weight || undefined,
+        reel: qpOrder.reel || undefined,
+        vendor: qpOrder.vendor || undefined,
+        date: new Date(),
+        qpOrder: qpOrder._id,
+        companyName: qpOrder.companyName,
+        kantan: qpOrder.kantan || undefined,
+        paperName: qpOrder.paperName || undefined,
+        deckal: qpOrder.deckal || undefined,
+        gsm: qpOrder.gsm || undefined,
+        for: qpOrder.assignedTo || undefined,
+        forCompany: qpOrder.createdBy || undefined,
+      });
+
+      await outwardInventory.save({ session });
+    }
+
+    await session.commitTransaction();
+    session.endSession();
+
     res.status(200).json({
       success: true,
       message: "QP Order updated successfully",
       data: qpOrder,
+      outwardCreated: statusChangedToCompleted,
     });
   } catch (error) {
+    await session.abortTransaction();
+    session.endSession();
     console.error("❌ Error updating QP order:", error);
     res.status(500).json({
       success: false,
@@ -277,6 +328,7 @@ exports.deleteQpOrder = async (req, res) => {
   }
 };
 
+// Get orders by staff ID
 exports.getOrdersByStaffId = async (req, res) => {
   try {
     const { id } = req.params;
@@ -323,7 +375,6 @@ exports.getOrdersByStaffId = async (req, res) => {
       .sort({ createdAt: -1 });
     console.log("DEBUG : v:", orders);
 
-
     // 4. If no orders found, return an empty array with a message
     if (!orders || orders.length === 0) {
       return res.status(200).json({
@@ -346,6 +397,107 @@ exports.getOrdersByStaffId = async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Failed to fetch orders",
+      error: error.message,
+    });
+  }
+};
+
+// Dedicated endpoint to update order status only
+exports.updateQpOrderStatus = async (req, res) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+  
+  try {
+    const { status } = req.body;
+    const { id } = req.params;
+
+    // Get the current order
+    const currentOrder = await QpData.findById(id).session(session);
+    if (!currentOrder) {
+      await session.abortTransaction();
+      session.endSession();
+      return res.status(404).json({
+        success: false,
+        message: "QP Order not found",
+      });
+    }
+
+    // Update the status
+    const updatedOrder = await QpData.findByIdAndUpdate(
+      id,
+      { status },
+      { 
+        new: true, 
+        runValidators: true,
+        session 
+      }
+    )
+    .populate({
+      path: "companyName",
+      select: "companyName avatar",
+    })
+    .populate({
+      path: "party",
+      select:
+        "partyName address contactPerson personMobileNo personWhatsAppNo GSTNo",
+    })
+    .populate("ply", "ply")
+    .populate("name", "name")
+    .populate("length", "length")
+    .populate("width", "width")
+    .populate("height", "height")
+    .populate("paperLength", "length")
+    .populate("paperWidth", "width")
+    .populate("paperName", "name")
+    .populate("paperHeight", "height")
+    .populate("kantan", "kantanName");
+
+    // Check if status changed to "completed"
+    const statusChangedToCompleted = 
+      status === "Completed" && 
+      currentOrder.status !== "Completed";
+
+    // Create outward inventory entry if status changed to completed
+    if (statusChangedToCompleted) {
+      const outwardInventory = new Inventory({
+        category: "factory", // Adjust category as needed
+        type: "outward",
+        material: updatedOrder.paperName || undefined,
+        quantity: updatedOrder.quantity || 1,
+        kg: updatedOrder.weight || undefined,
+        reel: updatedOrder.reel || undefined,
+        vendor: updatedOrder.vendor || undefined,
+        date: new Date(),
+        qpOrder: updatedOrder._id,
+        companyName: updatedOrder.companyName,
+        kantan: updatedOrder.kantan || undefined,
+        paperName: updatedOrder.paperName || undefined,
+        deckal: updatedOrder.deckal || undefined,
+        gsm: updatedOrder.gsm || undefined,
+        for: updatedOrder.assignedTo || undefined,
+        forCompany: updatedOrder.createdBy || undefined,
+        remarks: `Outward entry for completed QP order ${updatedOrder.orderNumber || updatedOrder._id}`,
+      });
+
+      await outwardInventory.save({ session });
+    }
+
+    await session.commitTransaction();
+    session.endSession();
+
+    res.status(200).json({
+      success: true,
+      message: "QP Order status updated successfully",
+      data: updatedOrder,
+      outwardCreated: statusChangedToCompleted,
+    });
+  } catch (error) {
+    await session.abortTransaction();
+    session.endSession();
+    console.error("❌ Error updating QP order status:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to update QP order status",
       error: error.message,
     });
   }

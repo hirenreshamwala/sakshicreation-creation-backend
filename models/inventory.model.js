@@ -89,12 +89,12 @@ const InventorySchema = new mongoose.Schema(
     for: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Role",
-      required: [true, "Role is required"],
+      required: [false, "Role is required"],
     },
     forCompany: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Staff",
-      required: [true, "Staff is required"],
+      required: [false, "Staff is required"],
     },
   },
   { timestamps: true }
