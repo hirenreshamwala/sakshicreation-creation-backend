@@ -2,19 +2,15 @@ const mongoose = require("mongoose");
 
 const paperGSMSchema = new mongoose.Schema(
   {
-    name: {
+    // name: {
+    //   type: String,
+    //   trim: true,
+    // },
+    deckal: {
       type: String,
       trim: true,
     },
-    length: {
-      type: String,
-      trim: true,
-    },
-    width: {
-      type: String,
-      trim: true,
-    },
-    height: {
+    gsm: {
       type: String,
       trim: true,
     },

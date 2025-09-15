@@ -62,6 +62,10 @@ exports.createQpOrder = async (req, res) => {
       .populate("length", "length")
       .populate("width", "width")
       .populate("height", "height")
+      .populate("paperLength", "length")
+      .populate("paperWidth", "width")
+      .populate("paperName", "name")
+      .populate("paperHeight", "height")
       .populate("kantan", "kantanName");
     res.status(201).json({
       success: true,
@@ -96,6 +100,10 @@ exports.getAllQpOrders = async (req, res) => {
       .populate("length", "length")
       .populate("width", "width")
       .populate("height", "height")
+      .populate("paperLength", "length")
+      .populate("paperWidth", "width")
+      .populate("paperName", "name")
+      .populate("paperHeight", "height")
       .populate("kantan", "kantanName")
       .sort({ createdAt: -1 });
     res.status(200).json({
@@ -131,6 +139,10 @@ exports.getQpOrderById = async (req, res) => {
       .populate("length", "length")
       .populate("width", "width")
       .populate("height", "height")
+      .populate("paperLength", "length")
+      .populate("paperWidth", "width")
+      .populate("paperName", "name")
+      .populate("paperHeight", "height")
       .populate("kantan", "kantanName")
     if (!qpOrder) {
       return res.status(404).json({
@@ -211,6 +223,10 @@ exports.updateQpOrder = async (req, res) => {
       .populate("length", "length")
       .populate("width", "width")
       .populate("height", "height")
+      .populate("paperLength", "length")
+      .populate("paperWidth", "width")
+      .populate("paperName", "name")
+      .populate("paperHeight", "height")
       .populate("kantan", "kantanName");
 
     if (!qpOrder) {
@@ -299,6 +315,10 @@ exports.getOrdersByStaffId = async (req, res) => {
       .populate("length", "length")
       .populate("width", "width")
       .populate("height", "height")
+      .populate("paperLength", "length")
+      .populate("paperWidth", "width")
+      .populate("paperName", "name")
+      .populate("paperHeight", "height")
       .populate("kantan", "kantanName")
       .sort({ createdAt: -1 });
     console.log("DEBUG : v:", orders);

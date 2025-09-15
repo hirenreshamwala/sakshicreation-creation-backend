@@ -4,13 +4,13 @@ const Papa = require("papaparse");
 // Create a new Packaging Option
 exports.createPaperGSM = async (req, res) => {
   try {
-    const { name, length, width, height } = req.body;
+    const { name, deckal, gsm } = req.body;
 
-    if (!length || !width || !height) {
-      return res.status(400).json({ message: "All fields are required" });
+    if (!deckal || !gsm ) {
+      return res.status(400).json({ message: "Deckal and GSM are required" });
     }
 
-    const newOption = new PaperGSM({ name, length, width, height });
+    const newOption = new PaperGSM({ name, deckal, gsm });
     await newOption.save();
 
     return res.status(201).json({
@@ -40,11 +40,11 @@ exports.getAllPaperGSM = async (req, res) => {
 exports.updatePaperGSM = async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, length, width, height } = req.body;
+    const { name, deckal, gsm} = req.body;
 
     const updatedOption = await PaperGSM.findByIdAndUpdate(
       id,
-      { name, length, width, height },
+      { name, deckal, gsm },
       { new: true, runValidators: true }
     );
 
@@ -106,13 +106,13 @@ exports.bulkUploadPaperGSM = async (req, res) => {
 
     const validRecords = [];
     for (const row of records) {
-      const { name, length, width, height } = row;
-      if (!length || !width || !height) {
+      const { name, deckal, gsm } = row;
+      if (!deckal || !gsm ) {
         return res
           .status(400)
-          .json({ message: "All fields (length, width, height) are required in every row" });
+          .json({ message: "All fields (deckal, gsm) are required in every row" });
       }
-      validRecords.push({ name, length, width, height });
+      validRecords.push({ name, deckal, gsm });
     }
 
     const insertedOptions = await PaperGSM.insertMany(validRecords);
@@ -126,5 +126,32 @@ exports.bulkUploadPaperGSM = async (req, res) => {
     return res
       .status(500)
       .json({ message: "Server Error", error: error.message });
+  }
+};
+
+
+exports.getByDeckal = async (req, res) => {
+  try {
+    const { deckal } = req.query;
+    if (!deckal) return res.status(400).json({ message: "Deckal required" });
+
+    const deckalNum = Number(deckal);
+
+    // Find all docs where deckal matches numerically
+    const results = await PaperGSM.find({
+      $expr: { $eq: [{ $toDouble: "$deckal" }, deckalNum] }
+    });
+
+    // unique GSM list with id
+    const uniqueGSMs = results.map((r) => ({
+      id: r._id,
+      value: r.gsm,
+      label: r.gsm,
+    }));
+
+    res.json({ gsmOptions: uniqueGSMs });
+  } catch (err) {
+    console.error("Error fetching by deckal:", err);
+    res.status(500).json({ message: "Server Error" });
   }
 };

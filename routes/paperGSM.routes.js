@@ -11,6 +11,7 @@ const PaperGSMController = require('../controllers/paperGSM.controller');
 router.post("/create", PaperGSMController.createPaperGSM);
 
 router.get("/getall", PaperGSMController.getAllPaperGSM);
+router.get("/getbydeckal", PaperGSMController.getByDeckal);
 
 router.patch("/update/:id", PaperGSMController.updatePaperGSM);
 
