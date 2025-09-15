@@ -5,11 +5,13 @@ const Role = require("../models/role.model");
 const Staff = require("../models/staff.model");
 const Material = require("../models/material.model");
 const Vendor = require("../models/vendor.model");
-const Kantan = require("../models/kantan.model"); // Add Kantan model import
+const Kantan = require("../models/kantan.model");
+const PaperGSM = require("../models/paperGSM.model"); // Add PaperGSM model import
 const Inventory = require("../models/inventory.model");
 const csv = require("csv-parser");
 const fs = require("fs");
 const path = require("path");
+const xlsx = require("xlsx");
 
 // Get all companies
 exports.getCompanies = async (req, res) => {
@@ -101,30 +103,52 @@ exports.createPurchase = async (req, res) => {
       for: role,
       forCompany: staff,
       type,
-      kantan
+      kantan,
+      paperName,
+      deckal,
+      gsm,
+      reel,
+      category, // 👈 pass either "factory" or "godown" from frontend
     } = req.body;
 
-    // Validate required fields
-    if (!vendorName || !billNumber || !companyName || !role || !staff || !type) {
+    // Required validations
+    if (
+      !vendorName ||
+      !billNumber ||
+      !companyName ||
+      !role ||
+      !staff ||
+      !type
+    ) {
       return res.status(400).json({
         success: false,
-        message: "Vendor, bill number, company, role, staff, and type are required",
+        message:
+          "Vendor, bill number, company, role, staff, and type are required",
       });
     }
 
-    // Validate KG for glue and wire types
-    if ((type === 'glue' || type === 'wire') && !kg) {
+    // Category validation
+    if (!category || !["factory", "godown"].includes(category)) {
       return res.status(400).json({
         success: false,
-        message: "KG is required for glue and wire types",
+        message: "Category must be either factory or godown",
       });
     }
 
-    // Validate kantan for kantan type
-    if (type === 'kantan' && !kantan) {
+    // KG required for kantan/glue/wire
+    if ((type === "glue" || type === "wire") && !kg) {
       return res.status(400).json({
         success: false,
-        message: "Kantan is required for kantan type",
+        message: "KG is required for kantan, glue, and wire types",
+      });
+    }
+
+    // Paper fields required
+    if (type === "paper" && (!paperName || !gsm || !deckal)) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Paper name, height, width, and length are required for paper type",
       });
     }
 
@@ -134,7 +158,8 @@ exports.createPurchase = async (req, res) => {
       !mongoose.Types.ObjectId.isValid(companyName) ||
       !mongoose.Types.ObjectId.isValid(role) ||
       !mongoose.Types.ObjectId.isValid(staff) ||
-      (kantan && !mongoose.Types.ObjectId.isValid(kantan))
+      (kantan && !mongoose.Types.ObjectId.isValid(kantan)) ||
+      (paperName && !mongoose.Types.ObjectId.isValid(paperName))
     ) {
       return res.status(400).json({
         success: false,
@@ -142,7 +167,7 @@ exports.createPurchase = async (req, res) => {
       });
     }
 
-    // Check if bill number already exists
+    // Bill number uniqueness (for QualityPurchase)
     const existingPurchase = await Purchase.findOne({ billNumber });
     if (existingPurchase) {
       return res.status(400).json({
@@ -151,58 +176,53 @@ exports.createPurchase = async (req, res) => {
       });
     }
 
-    // Verify vendor exists
+    // Vendor, Company, Role, Staff validation
     const vendorExists = await Vendor.findById(vendorName);
-    if (!vendorExists) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid vendor",
-      });
-    }
+    if (!vendorExists)
+      return res
+        .status(400)
+        .json({ success: false, message: "Invalid vendor" });
 
-    // Verify company exists
     const companyExists = await CompanyName.findById(companyName);
-    if (!companyExists) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid company",
-      });
-    }
+    if (!companyExists)
+      return res
+        .status(400)
+        .json({ success: false, message: "Invalid company" });
 
-    // Verify role exists and is not deleted
     const roleExists = await Role.findOne({ _id: role, isDelete: false });
-    if (!roleExists) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid or deleted role",
-      });
-    }
+    if (!roleExists)
+      return res
+        .status(400)
+        .json({ success: false, message: "Invalid or deleted role" });
 
-    // Verify staff exists and matches role
     const staffExists = await Staff.findOne({
       _id: staff,
       role: role,
       status: true,
     });
-    if (!staffExists) {
+    if (!staffExists)
       return res.status(400).json({
         success: false,
         message: "Invalid staff or staff-role mismatch",
       });
-    }
 
-    // Verify kantan exists if provided
     if (kantan) {
       const kantanExists = await Kantan.findById(kantan);
-      if (!kantanExists) {
-        return res.status(400).json({
-          success: false,
-          message: "Invalid kantan",
-        });
-      }
+      if (!kantanExists)
+        return res
+          .status(400)
+          .json({ success: false, message: "Invalid kantan" });
     }
 
-    // Create new purchase
+    if (paperName) {
+      const paperExists = await PaperGSM.findById(paperName);
+      if (!paperExists)
+        return res
+          .status(400)
+          .json({ success: false, message: "Invalid paper" });
+    }
+
+    // ✅ Save Quality Purchase
     const newPurchase = new Purchase({
       vendorName,
       billNumber,
@@ -211,15 +231,43 @@ exports.createPurchase = async (req, res) => {
       for: role,
       forCompany: staff,
       type,
-      kantan: type === 'kantan' ? kantan : undefined
+      reel: type === "kantan" ? reel : undefined,
+      kantan: type === "kantan" ? kantan : undefined,
+      paperName: type === "paper" ? paperName : undefined,
+      deckal: type === "paper" ? deckal : undefined,
+      gsm: type === "paper" ? gsm : undefined,
+      category:category
     });
 
     const savedPurchase = await newPurchase.save();
 
-    // Populate all references
+    // ✅ Save Inventory with only "factory" or "godown"
+    const newInventory = new Inventory({
+      category, // 👈 directly from req.body ("factory" | "godown")
+      type: "inward",
+      material: type === "paper" ? paperName : undefined,
+      quantity: type === "paper" ? 1 : undefined,
+      kg: kg || undefined,
+      reel: reel || undefined,
+      vendor: vendorName,
+      date: new Date(),
+      qpPurchase: savedPurchase._id,
+      companyName,
+      kantan: type === "kantan" ? kantan : undefined,
+      paperName: type === "paper" ? paperName : undefined,
+      deckal: type === "paper" ? deckal : undefined,
+      gsm: type === "paper" ? gsm : undefined,
+      for: role,
+      forCompany: staff,
+    });
+
+    await newInventory.save();
+
+    // ✅ Populate for response
     const populatedPurchase = await Purchase.findById(savedPurchase._id)
       .populate("vendorName", "name")
-      .populate("kantan")
+      .populate("kantan", "kantanName")
+      .populate("paperName", "name")
       .populate("companyName", "companyName")
       .populate("for", "roleName")
       .populate("forCompany", "firstName lastName");
@@ -231,7 +279,7 @@ exports.createPurchase = async (req, res) => {
   } catch (error) {
     res.status(500).json({
       success: false,
-      message: "Error creating purchase: " + error.message,
+      message: "Error creating quality purchase: " + error.message,
     });
   }
 };
@@ -241,7 +289,8 @@ exports.getAllPurchases = async (req, res) => {
   try {
     const purchases = await Purchase.find()
       .populate("vendorName", "name")
-      .populate("kantan")
+      .populate("kantan", "kantanName")
+      .populate("paperName", "name")
       .populate("companyName", "companyName")
       .populate("for", "roleName")
       .populate("forCompany", "firstName lastName")
@@ -265,7 +314,8 @@ exports.getPurchaseById = async (req, res) => {
   try {
     const purchase = await Purchase.findById(req.params.id)
       .populate("vendorName", "name")
-      .populate("kantan")
+      .populate("kantan", "kantanName")
+      .populate("paperName", "name")
       .populate("companyName", "companyName")
       .populate("for", "roleName")
       .populate("forCompany", "firstName lastName");
@@ -300,7 +350,12 @@ exports.updatePurchase = async (req, res) => {
       for: role,
       forCompany: staff,
       type,
-      kantan
+      kantan,
+      paperName,
+      deckal,
+      gsm,
+      reel,
+      category,
     } = req.body;
 
     // Validate ObjectIds if provided
@@ -333,6 +388,12 @@ exports.updatePurchase = async (req, res) => {
       return res.status(400).json({
         success: false,
         message: "Invalid kantan ID",
+      });
+    }
+    if (paperName && !mongoose.Types.ObjectId.isValid(paperName)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid paper ID",
       });
     }
 
@@ -409,21 +470,75 @@ exports.updatePurchase = async (req, res) => {
       }
     }
 
+    // Verify paper exists and dimensions match if provided
+    if (paperName) {
+      const paperExists = await PaperGSM.findById(paperName);
+      if (!paperExists) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid paper",
+        });
+      }
+      // if (
+      //   type === "paper" &&
+      //   (paperExists.deckal !== deckal ||   
+      //     paperExists.gsm !== gsm )
+      // ) {
+      //   return res.status(400).json({
+      //     success: false,
+      //     message: "Provided dimensions do not match the selected paper",
+      //   });
+      // }
+    }
+
+    // Validate required fields for specific types
+    if (type === "kantan" && (!kantan || !reel)) {
+      return res.status(400).json({
+        success: false,
+        message: "Kantan and KG are required for kantan type",
+      });
+    }
+    if ((type === "glue" || type === "wire") && !kg) {
+      return res.status(400).json({
+        success: false,
+        message: "KG is required for glue and wire types",
+      });
+    }
+    if (type === "paper" && (!paperName || !deckal || !gsm)) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Paper name, height, width, and length are required for paper type",
+      });
+    }
+
     // Prepare update data
     const updateData = {
       ...(vendorName && { vendorName }),
       ...(billNumber && { billNumber }),
-      ...(kg !== undefined && { kg }),
+      ...(kg !== undefined && { kg: Number(kg) || 0 }),
       ...(companyName && { companyName }),
       ...(role && { for: role }),
       ...(staff && { forCompany: staff }),
       ...(type && { type }),
-      ...(kantan && { kantan })
+      ...(kantan && { reel }),
+      ...(kantan && { kantan }),
+      ...(paperName && { paperName }),
+      ...(gsm && { gsm }),
+      ...(deckal && { deckal }),
     };
 
-    // Clear kantan if type is not kantan
-    if (type && type !== 'kantan') {
+    // Clear fields not relevant to the type
+    if (type && type !== "kantan") {
       updateData.kantan = undefined;
+    }
+    if (type && type !== "paper") {
+      updateData.paperName = undefined;
+      updateData.deckal = undefined;
+      updateData.gsm = undefined;
+    }
+    if (type && !(type === "kantan" || type === "glue" || type === "wire")) {
+      updateData.kg = 0;
     }
 
     const updatedPurchase = await Purchase.findByIdAndUpdate(
@@ -433,16 +548,51 @@ exports.updatePurchase = async (req, res) => {
     );
 
     if (!updatedPurchase) {
-      return res.status(404).json({
+      return res.status(400).json({
         success: false,
         message: "Purchase not found",
       });
     }
 
+    // ======== UPDATE OR CREATE INVENTORY =========
+    let inventoryData = {
+      category: category || "factory", // 👈 default if not passed
+      type: "inward",
+      material: type === "paper" ? paperName : undefined,
+      quantity: type === "paper" ? 1 : undefined,
+      kg: kg || undefined,
+      reel: reel || undefined,
+      vendor: vendorName,
+      date: new Date(),
+      qpPurchase: updatedPurchase._id,
+      companyName,
+      kantan: type === "kantan" ? kantan : undefined,
+      paperName: type === "paper" ? paperName : undefined,
+      deckal: type === "paper" ? deckal : undefined,
+      gsm: type === "paper" ? gsm : undefined,
+      for: role,
+      forCompany: staff,
+    };
+
+    // find if inventory exists for this purchase
+    let inventory = await Inventory.findOne({ qpPurchase: updatedPurchase._id });
+
+    if (inventory) {
+      // update existing inventory
+      await Inventory.findByIdAndUpdate(inventory._id, inventoryData, {
+        new: true,
+      });
+    } else {
+      // create new inventory
+      const newInventory = new Inventory(inventoryData);
+      await newInventory.save();
+    }
+
     // Populate all references
     const populatedPurchase = await Purchase.findById(updatedPurchase._id)
       .populate("vendorName", "name")
-      .populate("kantan")
+      .populate("kantan", "kantanName")
+      .populate("paperName", "name")
       .populate("companyName", "companyName")
       .populate("for", "roleName")
       .populate("forCompany", "firstName lastName");
@@ -483,178 +633,171 @@ exports.deletePurchase = async (req, res) => {
   }
 };
 
+// Normalize helper
+const normalize = (val) => (val ? String(val).trim().toLowerCase() : null);
+
+// Generic helper to resolve by name
+const findByName = async (Model, field, value, session) => {
+  if (!value) return null;
+  const normalized = normalize(value);
+
+  const doc = await Model.findOne({
+    [field]: { $regex: new RegExp(`^${normalized}$`, "i") },
+  }).session(session);
+
+  return doc ? doc._id : null;
+};
+
 exports.bulkCreatePurchases = async (req, res) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
   try {
-    const file = req.file;
-    if (!file) {
+    if (!req.file) {
+      await session.abortTransaction();
+      session.endSession();
       return res.status(400).json({
         success: false,
         message: "No file uploaded",
       });
     }
 
-    const {
-      vendorName,
-      companyName,
-      for: role,
-      forCompany: staff,
-      type
-    } = req.body;
+    // Read CSV
+    const workbook = xlsx.read(req.file.buffer, { type: "buffer" });
+    const sheet = workbook.Sheets[workbook.SheetNames[0]];
+    const data = xlsx.utils.sheet_to_json(sheet);
 
-    // Validate required fields
-    if (
-      !vendorName ||
-      !companyName ||
-      !role ||
-      !staff ||
-      !type
-    ) {
-      return res.status(400).json({
-        success: false,
-        message: "All required fields must be provided",
-      });
-    }
+    const purchases = [];
+    const skippedRecords = [];
 
-    // Validate ObjectIds
-    if (
-      !mongoose.Types.ObjectId.isValid(vendorName) ||
-      !mongoose.Types.ObjectId.isValid(companyName) ||
-      !mongoose.Types.ObjectId.isValid(role) ||
-      !mongoose.Types.ObjectId.isValid(staff)
-    ) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid ID format",
-      });
-    }
-
-    // Verify vendor exists
-    const vendorExists = await Vendor.findById(vendorName);
-    if (!vendorExists) {
-      return res.status(400).json({
-        success: false,
-        message: `Invalid vendor ID: ${vendorName}`,
-      });
-    }
-
-    // Verify company exists
-    const companyExists = await CompanyName.findById(companyName);
-    if (!companyExists) {
-      return res.status(400).json({
-        success: false,
-        message: `Invalid company ID: ${companyName}`,
-      });
-    }
-
-    // Verify role exists and is not deleted
-    const roleExists = await Role.findOne({ _id: role, isDelete: false });
-    if (!roleExists) {
-      return res.status(400).json({
-        success: false,
-        message: `Invalid or deleted role ID: ${role}`,
-      });
-    }
-
-    // Verify staff exists and matches role
-    const staffExists = await Staff.findOne({
-      _id: staff,
-      role: role,
-      status: true,
-    });
-    if (!staffExists) {
-      return res.status(400).json({
-        success: false,
-        message: `Invalid staff ID or staff-role mismatch: ${staff}`,
-      });
-    }
-
-    const results = [];
-    const filePath = path.join(__dirname, "../uploads", file.filename);
-
-    // Parse CSV file
-    fs.createReadStream(filePath)
-      .pipe(csv())
-      .on("data", (data) => results.push(data))
-      .on("end", async () => {
-        try {
-          const purchases = [];
-
-          // Process each row
-          for (const row of results) {
-            const { billNumber, kg } = row;
-
-            // Validate required fields
-            if (!billNumber) {
-              return res.status(400).json({
-                success: false,
-                message: `Missing bill number in row: ${JSON.stringify(row)}`,
-              });
-            }
-
-            // Validate KG for glue and wire types
-            if ((type === 'glue' || type === 'wire') && !kg) {
-              return res.status(400).json({
-                success: false,
-                message: `KG is required for glue and wire types in row: ${JSON.stringify(row)}`,
-              });
-            }
-
-            // Check for duplicate bill number
-            const existingPurchase = await Purchase.findOne({ billNumber });
-            if (existingPurchase) {
-              return res.status(400).json({
-                success: false,
-                message: `Duplicate bill number: ${billNumber}`,
-              });
-            }
-
-            // Prepare purchase record
-            purchases.push({
-              vendorName,
-              billNumber,
-              kg: kg ? Number(kg) : 0,
-              companyName,
-              for: role,
-              forCompany: staff,
-              type
-            });
-          }
-
-          // Insert purchases
-          const savedPurchases = await Purchase.insertMany(purchases);
-
-          // Clean up uploaded file
-          fs.unlinkSync(filePath);
-
-          // Populate saved purchases
-          const populatedPurchases = await Purchase.find({
-            _id: { $in: savedPurchases.map((p) => p._id) },
-          })
-            .populate("vendorName", "name")
-            .populate("companyName", "companyName")
-            .populate("for", "roleName")
-            .populate("forCompany", "firstName lastName");
-
-          res.status(200).json({
-            success: true,
-            message: "Bulk purchase upload completed successfully",
-            count: savedPurchases.length,
-            data: populatedPurchases,
+    for (const [index, row] of data.entries()) {
+      try {
+        // Vendor
+        const vendorId = await findByName(
+          Vendor,
+          "vendorName",
+          row.vendorName,
+          session
+        );
+        if (!vendorId) {
+          skippedRecords.push({
+            row: index + 1,
+            reason: `Vendor not found: ${row.vendorName}`,
           });
-        } catch (error) {
-          console.error("Error processing bulk upload:", error);
-          fs.unlinkSync(filePath);
-          res.status(500).json({
-            success: false,
-            message: `Failed to process bulk upload: ${error.message}`,
-          });
+          continue;
         }
-      });
+
+        // Kantan (optional)
+        const kantanId = await findByName(Kantan, "name", row.kantan, session);
+
+        // Paper fields
+        const paperNameId = await findByName(
+          PaperGSM,
+          "name",
+          row.paperName,
+          session
+        );
+        const heightId = await findByName(
+          PaperGSM,
+          "name",
+          row.height,
+          session
+        );
+        const widthId = await findByName(PaperGSM, "name", row.width, session);
+        const lengthId = await findByName(
+          PaperGSM,
+          "name",
+          row.length,
+          session
+        );
+
+        // Company
+        const companyId = await findByName(
+          CompanyName,
+          "companyName",
+          row.companyName,
+          session
+        );
+        if (!companyId) {
+          skippedRecords.push({
+            row: index + 1,
+            reason: `Company not found: ${row.companyName}`,
+          });
+          continue;
+        }
+
+        // Role
+        const roleId = await findByName(Role, "roleName", row.for, session);
+        if (!roleId) {
+          skippedRecords.push({
+            row: index + 1,
+            reason: `Role not found: ${row.for}`,
+          });
+          continue;
+        }
+
+        // Staff
+        const staffId = await findByName(
+          Staff,
+          "fullName",
+          row.forCompany,
+          session
+        );
+        if (!staffId) {
+          skippedRecords.push({
+            row: index + 1,
+            reason: `Staff not found: ${row.forCompany}`,
+          });
+          continue;
+        }
+
+        // Purchase data
+        const purchaseData = {
+          vendorName: vendorId,
+          billNumber: row.billNumber,
+          type: row.type || null,
+          kantan: kantanId,
+          kg: row.kg || null,
+          paperName: paperNameId,
+          height: heightId,
+          width: widthId,
+          length: lengthId,
+          companyName: companyId,
+          for: roleId,
+          forCompany: staffId,
+        };
+
+        const newPurchase = await Purchase.create([purchaseData], {
+          session,
+        });
+        purchases.push(newPurchase[0]);
+      } catch (err) {
+        skippedRecords.push({
+          row: index + 1,
+          reason: err.message,
+        });
+        continue;
+      }
+    }
+
+    await session.commitTransaction();
+    session.endSession();
+
+    return res.status(201).json({
+      success: true,
+      message: "Bulk purchases processed",
+      insertedCount: purchases.length,
+      skippedCount: skippedRecords.length,
+      skippedRecords,
+      data: purchases,
+    });
   } catch (error) {
-    console.error("Error in bulk upload:", error);
-    res.status(500).json({
+    await session.abortTransaction();
+    session.endSession();
+    return res.status(500).json({
       success: false,
-      message: `Server error during bulk upload: ${error.message}`,
+      message: "Failed to bulk create purchases",
+      error: error.message,
     });
   }
 };

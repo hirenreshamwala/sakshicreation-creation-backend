@@ -101,7 +101,7 @@ exports.createLead = async (req, res) => {
       reason,
       customReason,
       assignedTo,
-      date: normalizedDate || new Date(), // Use provided date or current date
+      date: normalizedDate || new Date(),
       time: time || undefined,
     });
 

@@ -1,9 +1,9 @@
-const express = require('express');
-const PurchaseController = require('../controllers/QpPurchase.controller');
+const express = require("express");
+const PurchaseController = require("../controllers/QpPurchase.controller");
 const multer = require("multer");
 
 const router = express.Router();
-const upload = multer({ dest: 'uploads/' });
+const upload = multer({ dest: "uploads/" });
 router.post("/create", PurchaseController.createPurchase);
 
 router.get("/getall", PurchaseController.getAllPurchases);
@@ -14,5 +14,9 @@ router.patch("/update/:id", PurchaseController.updatePurchase);
 
 router.delete("/delete/:id", PurchaseController.deletePurchase);
 
-router.post('/bulk', upload.single('file'), PurchaseController.bulkCreatePurchases);
+router.post(
+  "/bulk",
+  upload.single("file"),
+  PurchaseController.bulkCreatePurchases
+);
 module.exports = router;
