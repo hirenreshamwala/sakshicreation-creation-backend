@@ -8,6 +8,7 @@ const path = require("path");
 const fs = require("fs");
 const csv = require("csv-parser");
 var CryptoJS = require("crypto-js");
+const { v4: uuidv4 } = require("uuid");
 
 const SECRET_KEY = process.env.CRYPTO_SECRET || "xghvyusdvf";
 // Encrypt function
@@ -384,13 +385,13 @@ exports.deleteStaff = async (req, res) => {
 // Login Staff
 exports.loginStaff = async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { email, password, requestType } = req.body;
 
     // Check for required fields
-    if (!email || !password) {
+    if (!email || !password || !requestType) {
       return res.status(400).json({
         success: false,
-        message: "Email and password are required",
+        message: "Email, password and requestType are required",
       });
     }
 
@@ -426,10 +427,31 @@ exports.loginStaff = async (req, res) => {
       });
     }
 
-    // Generate JWT token
+    let deviceToken = uuidv4();
+    if (requestType === "app") {
+      staff.app_token = deviceToken;
+    } else if (requestType === "web") {
+      staff.web_token = deviceToken;
+    } else {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid requestType. Must be 'app' or 'web'",
+      });
+    }
+
+    await staff.save();
+
+    // Generate JWT token including deviceToken
     const token = jwt.sign(
-      { id: staff._id, role: staff.role.roleName, roleData: staff.role },
-      process.env.JWT_SECRET || "your_jwt_secret_key" // Replace with environment variable in production
+      {
+        id: staff._id,
+        role: staff.role.roleName,
+        roleData: staff.role,
+        requestType,
+        deviceToken, // include app/web token
+      },
+      process.env.JWT_SECRET || "your_jwt_secret_key",
+      { expiresIn: "7d" }
     );
 
     res.status(200).json({
@@ -441,6 +463,8 @@ exports.loginStaff = async (req, res) => {
         lastName: staff.lastName,
         email: staff.email,
         role: staff.role,
+        requestType,
+        deviceToken,
         token,
       },
     });

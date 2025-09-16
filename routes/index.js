@@ -1,6 +1,6 @@
+const { authenticateToken } = require("../middleware/auth");
 const express = require("express");
 const router = express.Router();
-
 const CompanyRouter = require("./companyName.routes");
 const StaffRouter = require("./staff.routes");
 const AccountMasterRouter = require("./accountMaster.routes");
@@ -27,6 +27,8 @@ const paperGSM = require("./paperGSM.routes");
 const marketData = require("./marketData.routes");
 const kantan = require("./kantan.routes");
 
+
+router.use(authenticateToken);
 router.use("/company", CompanyRouter);
 router.use("/staff", StaffRouter);
 router.use("/account-master", AccountMasterRouter);

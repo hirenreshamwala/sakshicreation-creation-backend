@@ -31,6 +31,8 @@ const staffSchema = new mongoose.Schema(
     status: { type: Boolean, default: true },
     resetPasswordToken: { type: String },
     resetPasswordExpires: { type: Date },
+    app_token: { type: String },
+    web_token: { type: String },
     aadharFiles: {
       type: [{ type: String }], // Array of strings
       // required: false, // Made required
