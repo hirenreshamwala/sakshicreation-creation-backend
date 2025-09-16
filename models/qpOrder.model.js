@@ -115,6 +115,12 @@ const qpDataSchema = new mongoose.Schema(
     dyeSize: {
       type: String,
     },
+    glue: {
+      type: String,
+    },
+    wire: {
+      type: String,
+    },
     typ: {
       type: String,
       default: "New",
