@@ -18,9 +18,9 @@ const encryptData = (text) => {
 
 // Decrypt function
 const decryptData = (ciphertext) => {
+  console.log(originalText, "originalText");
   var bytes = CryptoJS.AES.decrypt(ciphertext, SECRET_KEY);
   var originalText = bytes.toString(CryptoJS.enc.Utf8);
-  console.log(originalText, "originalText");
   return originalText;
 };
 

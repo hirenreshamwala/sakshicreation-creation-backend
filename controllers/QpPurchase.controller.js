@@ -245,6 +245,7 @@ exports.createPurchase = async (req, res) => {
     const newInventory = new Inventory({
       category, // 👈 directly from req.body ("factory" | "godown")
       type: "inward",
+      inventoryType:type,
       material: type === "paper" ? paperName : undefined,
       quantity: type === "paper" ? 1 : undefined,
       kg: kg || undefined,
@@ -558,6 +559,7 @@ exports.updatePurchase = async (req, res) => {
     let inventoryData = {
       category: category || "factory", // 👈 default if not passed
       type: "inward",
+      inventoryType:type,
       material: type === "paper" ? paperName : undefined,
       quantity: type === "paper" ? 1 : undefined,
       kg: kg || undefined,

@@ -17,7 +17,10 @@ exports.createQpOrder = async (req, res) => {
       });
     }
 
-    if (!mongoose.Types.ObjectId.isValid(companyName) || !mongoose.Types.ObjectId.isValid(party)) {
+    if (
+      !mongoose.Types.ObjectId.isValid(companyName) ||
+      !mongoose.Types.ObjectId.isValid(party)
+    ) {
       return res.status(400).json({
         success: false,
         message: "Invalid ID format for companyName or party",
@@ -141,7 +144,7 @@ exports.getQpOrderById = async (req, res) => {
       .populate("paperLength", "gsm")
       .populate("paperWidth", "gsm")
       .populate("paperHeight", "gsm")
-      .populate("kantan", "kantanName")
+      .populate("kantan", "kantanName");
     if (!qpOrder) {
       return res.status(404).json({
         success: false,
@@ -163,11 +166,16 @@ exports.getQpOrderById = async (req, res) => {
   }
 };
 
+function convertToReels(reels = 0, inches = 0) {
+  const totalInches = reels * 7200 + inches; // convert everything to inches
+  const totalReels = totalInches / 7200; // convert back to reels
+  return parseFloat(totalReels.toFixed(3)); // round to 3 decimals (optional)
+}
 // Update QP Order with inventory outward creation on completion
 exports.updateQpOrder = async (req, res) => {
   const session = await mongoose.startSession();
   session.startTransaction();
-  
+
   try {
     // Get the current order before update
     const currentOrder = await QpData.findById(req.params.id).session(session);
@@ -209,15 +217,11 @@ exports.updateQpOrder = async (req, res) => {
     }
 
     // Update the order
-    const qpOrder = await QpData.findByIdAndUpdate(
-      req.params.id, 
-      req.body, 
-      { 
-        new: true, 
-        runValidators: true,
-        session 
-      }
-    )
+    const qpOrder = await QpData.findByIdAndUpdate(req.params.id, req.body, {
+      new: true,
+      runValidators: true,
+      session,
+    })
       .populate({
         path: "companyName",
         select: "companyName avatar",
@@ -247,34 +251,63 @@ exports.updateQpOrder = async (req, res) => {
     }
 
     // Check if status changed to "completed"
-    const statusChangedToCompleted = 
-      req.body.status === "Completed" && 
-      currentOrder.status !== "Completed";
+    const statusChangedToCompleted =
+      req.body.status === "Completed" && currentOrder.status !== "Completed";
 
-      const getRole = await Staff.findById(qpOrder) 
+    const getRole = await Staff.findById(qpOrder);
 
     // Create outward inventory entry if status changed to completed
     if (statusChangedToCompleted) {
-      const outwardInventory = new Inventory({
-        category: "factory", // Adjust category as needed
-        type: "outward",
-        material: qpOrder.paperName || undefined,
-        quantity: qpOrder.quantity || 1,
-        kg: qpOrder.weight || undefined,
-        reel: qpOrder.reel || undefined,
-        vendor: qpOrder.vendor || undefined,
-        date: new Date(),
-        qpOrder: qpOrder._id,
-        companyName: qpOrder.companyName,
-        kantan: qpOrder.kantan || undefined,
-        paperName: qpOrder.paperName || undefined,
-        deckal: qpOrder.deckal || undefined,
-        gsm: qpOrder.gsm || undefined,
-        for: qpOrder.assignedTo || undefined,
-        forCompany: qpOrder.createdBy || undefined,
-      });
-
-      await outwardInventory.save({ session });
+      if (qpOrder.wire.trim() !== "") {
+        const outwardInventory = new Inventory({
+          category: "factory", // Adjust category as needed
+          type: "outward",
+          inventoryType: "Wire",
+          kg: qpOrder.wire || undefined,
+          vendor: qpOrder.vendor || undefined,
+          date: new Date(),
+          qpPurchase: qpOrder._id,
+          companyName: qpOrder.companyName,
+          for: qpOrder.assignedTo || undefined,
+          forCompany: qpOrder.createdBy || undefined,
+        });
+        await outwardInventory.save({ session });
+      }
+      if (qpOrder.glue.trim() !== "") {
+        const outwardInventory2 = new Inventory({
+          category: "factory", // Adjust category as needed
+          type: "outward",
+          inventoryType: "Glue",
+          kg: qpOrder.glue || undefined,
+          vendor: qpOrder.vendor || undefined,
+          date: new Date(),
+          qpPurchase: qpOrder._id,
+          companyName: qpOrder.companyName,
+          for: qpOrder.assignedTo || undefined,
+          forCompany: qpOrder.createdBy || undefined,
+        });
+        await outwardInventory2.save({ session });
+      }
+      if (qpOrder.kantan !== null) {
+        const outwardInventory3 = new Inventory({
+          category: "factory", // Adjust category as needed
+          type: "outward",
+          inventoryType: "Kantan",
+          reel:
+            convertToReels(
+              qpOrder.totalKantan.reel,
+              qpOrder.totalKantan.inch
+            ) || undefined,
+          vendor: qpOrder.vendor || undefined,
+          date: new Date(),
+          qpPurchase: qpOrder._id,
+          companyName: qpOrder.companyName,
+          kantan: qpOrder.kantan || undefined,
+          for: qpOrder.assignedTo || undefined,
+          forCompany: qpOrder.createdBy || undefined,
+        });
+        await outwardInventory3.save({ session });
+      }
     }
 
     await session.commitTransaction();
@@ -401,7 +434,7 @@ exports.getOrdersByStaffId = async (req, res) => {
 exports.updateQpOrderStatus = async (req, res) => {
   const session = await mongoose.startSession();
   session.startTransaction();
-  
+
   try {
     const { status } = req.body;
     const { id } = req.params;
@@ -421,35 +454,34 @@ exports.updateQpOrderStatus = async (req, res) => {
     const updatedOrder = await QpData.findByIdAndUpdate(
       id,
       { status },
-      { 
-        new: true, 
+      {
+        new: true,
         runValidators: true,
-        session 
+        session,
       }
     )
-    .populate({
-      path: "companyName",
-      select: "companyName avatar",
-    })
-    .populate({
-      path: "party",
-      select:
-        "partyName address contactPerson personMobileNo personWhatsAppNo GSTNo",
-    })
-    .populate("ply", "ply")
-    .populate("name", "name")
-    .populate("length", "length")
-    .populate("width", "width")
-    .populate("height", "height")
-    .populate("paperLength", "gsm")
-    .populate("paperWidth", "gsm")
-    .populate("paperHeight", "gsm")
-    .populate("kantan", "kantanName");
+      .populate({
+        path: "companyName",
+        select: "companyName avatar",
+      })
+      .populate({
+        path: "party",
+        select:
+          "partyName address contactPerson personMobileNo personWhatsAppNo GSTNo",
+      })
+      .populate("ply", "ply")
+      .populate("name", "name")
+      .populate("length", "length")
+      .populate("width", "width")
+      .populate("height", "height")
+      .populate("paperLength", "gsm")
+      .populate("paperWidth", "gsm")
+      .populate("paperHeight", "gsm")
+      .populate("kantan", "kantanName");
 
     // Check if status changed to "completed"
-    const statusChangedToCompleted = 
-      status === "Completed" && 
-      currentOrder.status !== "Completed";
+    const statusChangedToCompleted =
+      status === "Completed" && currentOrder.status !== "Completed";
 
     // Create outward inventory entry if status changed to completed
     if (statusChangedToCompleted) {
@@ -470,7 +502,9 @@ exports.updateQpOrderStatus = async (req, res) => {
         gsm: updatedOrder.gsm || undefined,
         for: updatedOrder.assignedTo || undefined,
         forCompany: updatedOrder.createdBy || undefined,
-        remarks: `Outward entry for completed QP order ${updatedOrder.orderNumber || updatedOrder._id}`,
+        remarks: `Outward entry for completed QP order ${
+          updatedOrder.orderNumber || updatedOrder._id
+        }`,
       });
 
       await outwardInventory.save({ session });

@@ -86,6 +86,9 @@ const InventorySchema = new mongoose.Schema(
       ref: "PaperGSM",
       required: false,
     },
+    inventoryType:{
+      type:String
+    },
     for: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Role",
