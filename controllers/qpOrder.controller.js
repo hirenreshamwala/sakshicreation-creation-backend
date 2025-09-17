@@ -274,6 +274,7 @@ exports.updateQpOrder = async (req, res) => {
         await outwardInventory.save({ session });
       }
       if (qpOrder.glue.trim() !== "") {
+         console.log('glue store')
         const outwardInventory2 = new Inventory({
           category: "factory", // Adjust category as needed
           type: "outward",
