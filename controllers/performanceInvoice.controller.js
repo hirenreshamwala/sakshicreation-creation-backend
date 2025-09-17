@@ -41,7 +41,7 @@ exports.createPerformanceInvoice = async (req, res) => {
     }
 
     const order = await Order.findOne({ orderNumber })
-      .populate("companyName", "name")
+      .populate("companyName")
       .populate(
         "party",
         "partyName contactPerson personWhatsAppNo GSTNo address"
@@ -103,7 +103,7 @@ exports.createPerformanceInvoice = async (req, res) => {
     const populatedInvoice = await PerformanceInvoice.findById(
       newPerformanceInvoice._id
     )
-      .populate("companyName", "name")
+      .populate("companyName")
       .populate("party", "partyName GSTNo address");
     res.status(201).json({
       success: true,
@@ -155,7 +155,7 @@ exports.getPerformanceInvoiceById = async (req, res) => {
     }
 
     const performanceInvoice = await PerformanceInvoice.findById(id)
-      .populate("companyName", "name")
+      .populate("companyName")
       .populate("party", "partyName GSTNo address")
       .populate("assignedTo", "firstName lastName");  
     
@@ -305,7 +305,7 @@ exports.updatePerformanceInvoice = async (req, res) => {
         },
         { new: true, runValidators: true }
       )
-        .populate("companyName", "name")
+        .populate("companyName")
         .populate("party")
         .populate("order");
 

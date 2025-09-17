@@ -1559,7 +1559,7 @@ exports.getAccountMasterByStaffId = async (req, res) => {
 
     // Find account masters created by this staff
     const accountMasters = await AccountMaster.find({ createdBy: id })
-      .populate("companyName", "_id companyName")
+      .populate("companyName", "_id companyName avatar")
       .populate("party", "-__v")
       .populate("createdBy", "_id firstName lastName email")
       .populate({

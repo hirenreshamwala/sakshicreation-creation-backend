@@ -1176,7 +1176,7 @@ exports.updateStaffStatus = async (req, res) => {
     }
 
     const currentOrder = await Order.findById(orderId)
-      .populate("companyName", "companyName")
+      .populate("companyName", "companyName avatar")
       .populate("party", "partyName")
       .populate("productItem", "itemName");
 
