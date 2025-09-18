@@ -1702,7 +1702,7 @@ exports.searchParties = async (req, res) => {
   try {
     const { q } = req.query;
     const query = q ? { partyName: { $regex: q, $options: "i" } } : {};
-    const parties = await Party.find(query).limit(20).sort({ partyName: 1 });
+    const parties = await Party.find(query).populate('address.marketName').limit(20).sort({ partyName: 1 });
 
     res.status(200).json({
       success: true,

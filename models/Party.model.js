@@ -8,67 +8,27 @@ const partySchema = new mongoose.Schema(
       ref: "CompanyName",
       required: true,
     },
-    partyName: {
-      type: String,
-      // required: true,
-      // unique: true
-    },
-    ownerName: { type: String, required: false },
-    ownerMobileNo: { type: String, required: false },
+    partyName: { type: String },
+    ownerName: { type: String },
+    ownerMobileNo: { type: String },
     ownerWhatsAppNo: { type: String, required: true },
-    ownerEmail: {
-      type: String,
-      // match: [/^\S+@\S+\.\S+$/, "Please enter a valid email address"],
-      trim: true,
-    },
-    contactPerson: { type: String, required: false },
-    personMobileNo: { type: String, required: false },
-    personWhatsAppNo: { type: String, required: false },
-    contactPersonEmail: {
-      type: String,
-      // match: [/^\S+@\S+\.\S+$/, "Please enter a valid email address"],
-      trim: true,
-    },
-    contactForPayment: { type: String, required: false },
-    contactMobileNo: { type: String, required: false },
-    contactWhatsAppNo: { type: String, required: false },
-    contactForPaymentEmail: {
-      type: String,
-      // match: [/^\S+@\S+\.\S+$/, "Please enter a valid email address"],
-      trim: true,
-    },
-    GSTNo: {
-      type: String,
-      required: false,
-      // unique: true,
-    },
+    ownerEmail: { type: String, trim: true },
+    contactPerson: { type: String },
+    personMobileNo: { type: String },
+    personWhatsAppNo: { type: String },
+    contactPersonEmail: { type: String, trim: true },
+    contactForPayment: { type: String },
+    contactMobileNo: { type: String },
+    contactWhatsAppNo: { type: String },
+    contactForPaymentEmail: { type: String, trim: true },
+    GSTNo: { type: String },
     address: {
-      unitNo: { type: String, required: false },
-      marketName: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "Market",
-        required: false,
-      },
-      streetAddress: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "Market",
-        required: false,
-      },
-      landMark: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "Market",
-        required: false,
-      },
-      area: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "Market",
-        required: false,
-      },
-      pincode: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "Market",
-        required: false,
-      },
+      unitNo: { type: String },
+      marketName: { type: mongoose.Schema.Types.ObjectId, ref: "Market" },
+      streetAddress: { type: mongoose.Schema.Types.ObjectId, ref: "Market" },
+      landMark: { type: mongoose.Schema.Types.ObjectId, ref: "Market" },
+      area: { type: mongoose.Schema.Types.ObjectId, ref: "Market" },
+      pincode: { type: mongoose.Schema.Types.ObjectId, ref: "Market" },
     },
     partyTag: {
       type: String,
@@ -83,6 +43,30 @@ const partySchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+// Middleware to make all string fields uppercase
+partySchema.pre("save", function (next) {
+  const doc = this;
+
+  function convertToUpper(obj, schemaObj) {
+    for (let key in schemaObj) {
+      const fieldType = schemaObj[key]?.instance;
+
+      if (fieldType === "String" && typeof obj[key] === "string") {
+        obj[key] = obj[key].toUpperCase();
+      }
+
+      // If field is a nested schema (object)
+      if (schemaObj[key]?.instance === undefined && typeof obj[key] === "object" && obj[key] !== null) {
+        convertToUpper(obj[key], schemaObj[key].schema?.paths || {});
+      }
+    }
+  }
+
+  convertToUpper(doc, this.schema.paths);
+  next();
+});
+
 
 // Update partyTag based on Orders collection
 partySchema.pre("save", async function (next) {

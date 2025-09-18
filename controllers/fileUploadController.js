@@ -1,5 +1,33 @@
-const path = require("path")
-const fs = require("fs")
+const path = require("path");
+const fs = require("fs");
+
+// helper: uploads root and safe resolver
+const uploadsRoot = path.join(__dirname, "../uploads");
+
+function toPublicPaths(filePath, baseUrl) {
+  const absolute = path.resolve(filePath);
+  // relative path from uploads root, normalized to POSIX separators
+  let rel = path.relative(uploadsRoot, absolute).split(path.sep).join("/");
+
+  // If file somehow is outside uploads root, fallback to basename
+  if (rel.startsWith("..")) {
+    rel = path.basename(absolute);
+  }
+
+  return {
+    storedPath: rel, // e.g. "folder/sub/file.jpg"
+    path: `/uploads/${rel}`, // same format you used earlier (safe, normalized)
+    url: `${baseUrl}/uploads/${rel}`,
+  };
+}
+
+function resolveWithinUploads(...segments) {
+  const resolved = path.resolve(uploadsRoot, ...segments);
+  if (!resolved.startsWith(uploadsRoot)) {
+    throw new Error("Invalid file path (outside uploads folder)");
+  }
+  return resolved;
+}
 
 // Upload single file
 exports.uploadSingleFile = async (req, res) => {
@@ -8,20 +36,21 @@ exports.uploadSingleFile = async (req, res) => {
       return res.status(400).json({
         success: false,
         message: "No file uploaded",
-      })
+      });
     }
 
-    const folderName = req.body.folder 
-    const baseUrl = process.env.BACK_URL
-    const fileUrl = `${baseUrl}/uploads/${folderName}/${req.file.filename}`
+    const folderName = req.body.folder || ""; // may be empty or nested e.g. "invoices/2025"
+    const baseUrl = process.env.BACK_URL || ""; // ensure you have BACK_URL set
+    const uploadedAbsolutePath = req.file.path; // multer sets this when using diskStorage
 
-
-
-    if (fs.existsSync(req.file.path)) {
-      console.log(`✅ File verified at: ${req.file.path}`)
+    // verify saved file
+    if (fs.existsSync(uploadedAbsolutePath)) {
+      console.log(`✅ File verified at: ${uploadedAbsolutePath}`);
     } else {
-      console.log(`❌ File not found at: ${req.file.path}`)
+      console.log(`❌ File not found at: ${uploadedAbsolutePath}`);
     }
+
+    const publicPaths = toPublicPaths(uploadedAbsolutePath, baseUrl);
 
     res.status(200).json({
       success: true,
@@ -32,19 +61,21 @@ exports.uploadSingleFile = async (req, res) => {
         size: req.file.size,
         mimetype: req.file.mimetype,
         folder: folderName,
-        url: fileUrl,
-        path: `/uploads/${folderName}/${req.file.filename}`,
+        // Real, dynamically resolved paths (relative to uploads + public URL)
+        url: publicPaths.url,
+        path: publicPaths.path,
+        storedPath: publicPaths.storedPath,
       },
-    })
+    });
   } catch (error) {
-    console.error("❌ File upload error:", error)
+    console.error("❌ File upload error:", error);
     res.status(500).json({
       success: false,
       message: "File upload failed",
       error: error.message,
-    })
+    });
   }
-}
+};
 
 // Upload multiple files
 exports.uploadMultipleFiles = async (req, res) => {
@@ -53,29 +84,26 @@ exports.uploadMultipleFiles = async (req, res) => {
       return res.status(400).json({
         success: false,
         message: "No files uploaded",
-      })
+      });
     }
 
-    console.log("req.body.folder",req.body.folder);
-    console.log("req.body",req.body);
+    const folderName = req.body.folder || "";
+    const baseUrl = process.env.BACK_URL || "";
 
-    const folderName = req.body.folder 
-    const baseUrl = process.env.BACK_URL
-
-    console.log(`📁 Folder specified: ${folderName}`)
-    console.log(`📄 Files count: ${req.files.length}`)
+    console.log(`📁 Folder specified: ${folderName}`);
+    console.log(`📄 Files count: ${req.files.length}`);
 
     const uploadedFiles = req.files.map((file, index) => {
-      const fileUrl = `${baseUrl}/uploads/${folderName}/${file.filename}`
-      console.log(`📄 File ${index + 1}: ${file.filename}`)
-      console.log(`🔗 File URL: ${fileUrl}`)
+      const uploadedAbsolutePath = file.path;
 
       // Verify each file exists
-      if (fs.existsSync(file.path)) {
-        console.log(`✅ File ${index + 1} verified at: ${file.path}`)
+      if (fs.existsSync(uploadedAbsolutePath)) {
+        console.log(`✅ File ${index + 1} verified at: ${uploadedAbsolutePath}`);
       } else {
-        console.log(`❌ File ${index + 1} not found at: ${file.path}`)
+        console.log(`❌ File ${index + 1} not found at: ${uploadedAbsolutePath}`);
       }
+
+      const publicPaths = toPublicPaths(uploadedAbsolutePath, baseUrl);
 
       return {
         filename: file.filename,
@@ -83,130 +111,141 @@ exports.uploadMultipleFiles = async (req, res) => {
         size: file.size,
         mimetype: file.mimetype,
         folder: folderName,
-        url: fileUrl,
-        path: `/uploads/${folderName}/${file.filename}`,
-      }
-    })
+        url: publicPaths.url,
+        path: publicPaths.path,
+        storedPath: publicPaths.storedPath,
+      };
+    });
 
-    // List all files in the folder for verification
-    const folderPath = path.join(__dirname, "../uploads", folderName)
+    // List all files in the folder for verification (optional)
+    const folderPath = path.join(uploadsRoot, folderName);
     if (fs.existsSync(folderPath)) {
-      const filesInFolder = fs.readdirSync(folderPath)
-      console.log(`📂 Files in ${folderName} folder:`, filesInFolder)
+      const filesInFolder = fs.readdirSync(folderPath);
+      console.log(`📂 Files in ${folderName} folder:`, filesInFolder);
     }
 
     res.status(200).json({
       success: true,
       message: `${req.files.length} files uploaded successfully to ${folderName} folder`,
       data: uploadedFiles,
-    })
+    });
   } catch (error) {
-    console.error("❌ Multiple file upload error:", error)
+    console.error("❌ Multiple file upload error:", error);
     res.status(500).json({
       success: false,
       message: "File upload failed",
       error: error.message,
-    })
+    });
   }
-}
+};
 
 // Delete file
 exports.deleteFile = async (req, res) => {
   try {
-    const { folder, filename } = req.params
-    const filePath = path.join(__dirname, "../uploads", folder, filename)
+    const { folder, filename } = req.params;
 
-    console.log(`🗑️ Attempting to delete file: ${filePath}`)
+    // allow both nested folder paths and simple folder names
+    const filePathResolved = resolveWithinUploads(...(folder ? [folder, filename] : [filename]));
 
-    // Check if file exists
-    if (!fs.existsSync(filePath)) {
+    console.log(`🗑️ Attempting to delete file: ${filePathResolved}`);
+
+    if (!fs.existsSync(filePathResolved)) {
       return res.status(404).json({
         success: false,
         message: "File not found",
-      })
+      });
     }
 
-    // Delete the file
-    fs.unlinkSync(filePath)
-    console.log(`✅ File deleted successfully: ${filePath}`)
+    fs.unlinkSync(filePathResolved);
+    console.log(`✅ File deleted successfully: ${filePathResolved}`);
 
     res.status(200).json({
       success: true,
       message: "File deleted successfully",
-    })
+    });
   } catch (error) {
-    console.error("❌ File delete error:", error)
+    console.error("❌ File delete error:", error);
     res.status(500).json({
       success: false,
       message: "File deletion failed",
       error: error.message,
-    })
+    });
   }
-}
+};
 
 // Get file info
 exports.getFileInfo = async (req, res) => {
   try {
-    const { folder, filename } = req.params
-    const filePath = path.join(__dirname, "../uploads", folder, filename)
+    const { folder, filename } = req.params;
+    const filePathResolved = resolveWithinUploads(...(folder ? [folder, filename] : [filename]));
 
-    // Check if file exists
-    if (!fs.existsSync(filePath)) {
+    if (!fs.existsSync(filePathResolved)) {
       return res.status(404).json({
         success: false,
         message: "File not found",
-      })
+      });
     }
 
-    const stats = fs.statSync(filePath)
-    const baseUrl = process.env.BACK_URL
+    const stats = fs.statSync(filePathResolved);
+    const baseUrl = process.env.BACK_URL || "";
+
+    const publicPaths = toPublicPaths(filePathResolved, baseUrl);
 
     res.status(200).json({
       success: true,
       data: {
-        filename: filename,
-        folder: folder,
+        filename: path.basename(filePathResolved),
+        folder: path.dirname(publicPaths.storedPath),
         size: stats.size,
-        url: `${baseUrl}/uploads/${folder}/${filename}`,
-        path: `/uploads/${folder}/${filename}`,
+        url: publicPaths.url,
+        path: publicPaths.path,
+        storedPath: publicPaths.storedPath,
         createdAt: stats.birthtime,
         modifiedAt: stats.mtime,
       },
-    })
+    });
   } catch (error) {
-    console.error("❌ Get file info error:", error)
+    console.error("❌ Get file info error:", error);
     res.status(500).json({
       success: false,
       message: "Failed to get file info",
       error: error.message,
-    })
+    });
   }
-}
+};
 
-// Add a new function to list all folders and files
+// List uploads (folders and files)
 exports.listUploads = async (req, res) => {
   try {
-    const uploadsPath = path.join(__dirname, "../uploads")
-
-    if (!fs.existsSync(uploadsPath)) {
+    if (!fs.existsSync(uploadsRoot)) {
       return res.status(404).json({
         success: false,
         message: "Uploads directory not found",
-      })
+      });
     }
 
+    const baseUrl = process.env.BACK_URL || "";
+
     const folders = fs
-      .readdirSync(uploadsPath, { withFileTypes: true })
+      .readdirSync(uploadsRoot, { withFileTypes: true })
       .filter((dirent) => dirent.isDirectory())
       .map((dirent) => {
-        const folderPath = path.join(uploadsPath, dirent.name)
-        const files = fs.readdirSync(folderPath)
+        const folderPath = path.join(uploadsRoot, dirent.name);
+        const files = fs.readdirSync(folderPath).map((f) => {
+          const abs = path.join(folderPath, f);
+          const publicPaths = toPublicPaths(abs, baseUrl);
+          return {
+            filename: f,
+            path: publicPaths.path,
+            url: publicPaths.url,
+          };
+        });
         return {
           folder: dirent.name,
           fileCount: files.length,
-          files: files,
-        }
-      })
+          files,
+        };
+      });
 
     res.status(200).json({
       success: true,
@@ -214,13 +253,13 @@ exports.listUploads = async (req, res) => {
         totalFolders: folders.length,
         folders: folders,
       },
-    })
+    });
   } catch (error) {
-    console.error("❌ List uploads error:", error)
+    console.error("❌ List uploads error:", error);
     res.status(500).json({
       success: false,
       message: "Failed to list uploads",
       error: error.message,
-    })
+    });
   }
-}
+};

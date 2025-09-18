@@ -238,6 +238,9 @@ const orderSchema = new mongoose.Schema(
           trim: true,
           required: false,
         },
+        used: {
+          type: String,
+        },
         sheetSize: {
           type: String,
           trim: true,

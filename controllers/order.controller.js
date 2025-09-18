@@ -697,7 +697,7 @@ exports.updateOrder = async (req, res) => {
             for: staffRole.role,
             forCompany: req.user.id,
             orderId: id, // Reference to the order
-            paperName: paper.paperName || "Unnamed Paper",
+            paperName: paper.paperType || "Unnamed Paper",
             sheetSize: paper.sheetSize || "",
             gsm: paper.gsm || "",
           });
@@ -723,7 +723,7 @@ exports.updateOrder = async (req, res) => {
             for: staffRole.role,
             forCompany: req.user.id,
             orderId: id,
-            paperName: paper.paperName || "Unnamed Paper",
+            paperName: paper.paperType || "Unnamed Paper",
             sheetSize: paper.sheetSize || "",
             gsm: paper.gsm || "",
           });
@@ -749,7 +749,7 @@ exports.updateOrder = async (req, res) => {
             for: staffRole.role,
             forCompany: req.user.id,
             orderId: id,
-            paperName: paper.paperName || "Unnamed Paper",
+            paperName: paper.paperType || "Unnamed Paper",
             sheetSize: paper.sheetSize || "",
             gsm: paper.gsm || "",
           });
@@ -1154,7 +1154,10 @@ exports.updateStaffStatus = async (req, res) => {
     const { orderId } = req.params;
     const { statusType, status } = req.body;
 
+    console.log("📥 Incoming request:", { orderId, statusType, status });
+
     if (!mongoose.Types.ObjectId.isValid(orderId)) {
+      console.log("❌ Invalid Order ID:", orderId);
       return res
         .status(400)
         .json({ success: false, message: "Invalid Order ID" });
@@ -1164,41 +1167,58 @@ exports.updateStaffStatus = async (req, res) => {
     const validStatusValues = ["Pending", "In Progress", "Done"];
 
     if (!validStatusTypes.includes(statusType)) {
+      console.log("❌ Invalid status type:", statusType);
       return res
         .status(400)
         .json({ success: false, message: "Invalid status type" });
     }
 
     if (!validStatusValues.includes(status)) {
+      console.log("❌ Invalid status value:", status);
       return res
         .status(400)
         .json({ success: false, message: "Invalid status value" });
     }
 
+    console.log("🔍 Fetching order:", orderId);
     const currentOrder = await Order.findById(orderId)
       .populate("companyName", "companyName")
       .populate("party", "partyName")
       .populate("productItem", "itemName");
 
     if (!currentOrder) {
+      console.log("❌ Order not found:", orderId);
       return res
         .status(404)
         .json({ success: false, message: "Order not found" });
     }
 
+    console.log("✅ Order found:", currentOrder._id);
+
+    console.log("🔍 Fetching staff role:", req.user.id);
     const staffRole = await Staff.findById(req.user.id);
     if (!staffRole) {
+      console.log("❌ Staff not found:", req.user.id);
       return res
         .status(404)
         .json({ success: false, message: "Staff not found" });
     }
 
+    console.log("✅ Staff role found:", staffRole.role);
+
     // Helper to process inventory for any category
     const processInventory = async (category, papers) => {
-      if (!papers || !Array.isArray(papers)) return;
+      console.log(`📦 Processing inventory for category: ${category}`);
+
+      if (!papers || !Array.isArray(papers)) {
+        console.log("⚠️ No papers found for", category, papers);
+        return;
+      }
 
       for (const paper of papers) {
-        if (paper.numberOfSheetsUsed && paper.numberOfSheetsUsed > 0) {
+        console.log("➡️ Checking paper:", paper);
+
+        if (paper.numberOfSheetsUsed && Number(paper.numberOfSheetsUsed) > 0) {
           await Inventory.create({
             category,
             type: "outward",
@@ -1209,25 +1229,36 @@ exports.updateStaffStatus = async (req, res) => {
             for: staffRole.role,
             forCompany: req.user.id,
             orderId: currentOrder._id,
-            paperName: paper.paperName || "Unnamed Paper",
+            paperName: paper.paperType || "Unnamed Paper",
             sheetSize: paper.sheetSize || "",
             gsm: paper.gsm || "",
           });
+        } else {
+          console.log("⚠️ Skipping paper, no sheets used:", paper);
         }
       }
     };
 
     // Process inventory if status is "In Progress"
-    if (statusType === "printer" && status === "In Progress") {
-      await processInventory("printer", currentOrder.printerPapers);
-    } else if (statusType === "binder" && status === "In Progress") {
-      await processInventory("binder", currentOrder.binderPapers);
-    } else if (statusType === "bookletBinder" && status === "In Progress") {
-      await processInventory("booklet", currentOrder.bookletPapers);
+    if (status === "In Progress") {
+      console.log("🔄 Processing inventory because status = In Progress");
+      if (statusType === "printer") {
+        await processInventory("printer", currentOrder.printerPapers);
+      } else if (statusType === "binder") {
+        await processInventory("binder", currentOrder.binderPapers);
+      } else if (statusType === "bookletBinder") {
+        await processInventory("booklet", currentOrder.bookletPapers);
+      }
+    } else {
+      console.log(
+        "ℹ️ Inventory not processed because status is not In Progress"
+      );
     }
 
     // Update order status
     const updateField = `${statusType}Status`;
+    console.log("📝 Updating order status:", updateField, "=>", status);
+
     const updatedOrder = await Order.findByIdAndUpdate(
       orderId,
       { [updateField]: status },
@@ -1236,6 +1267,8 @@ exports.updateStaffStatus = async (req, res) => {
       .populate("companyName", "companyName avatar")
       .populate("party", "partyName")
       .populate("productItem", "itemName");
+
+    console.log("✅ Order updated successfully:", updatedOrder._id);
 
     return res.status(200).json({
       success: true,
