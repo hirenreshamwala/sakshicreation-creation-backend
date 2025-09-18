@@ -269,7 +269,7 @@ exports.createPurchase = async (req, res) => {
       .populate("vendorName", "name")
       .populate("kantan", "kantanName")
       .populate("paperName", "name")
-      .populate("companyName", "companyName")
+      .populate("companyName", "companyName avatar")
       .populate("for", "roleName")
       .populate("forCompany", "firstName lastName");
 
@@ -292,7 +292,7 @@ exports.getAllPurchases = async (req, res) => {
       .populate("vendorName", "name")
       .populate("kantan", "kantanName")
       .populate("paperName", "name")
-      .populate("companyName", "companyName")
+      .populate("companyName", "companyName avatar")
       .populate("for", "roleName")
       .populate("forCompany", "firstName lastName")
       .sort({ createdAt: -1 });
@@ -317,7 +317,7 @@ exports.getPurchaseById = async (req, res) => {
       .populate("vendorName", "name")
       .populate("kantan", "kantanName")
       .populate("paperName", "name")
-      .populate("companyName", "companyName")
+      .populate("companyName", "companyName avatar")
       .populate("for", "roleName")
       .populate("forCompany", "firstName lastName");
 
@@ -595,7 +595,7 @@ exports.updatePurchase = async (req, res) => {
       .populate("vendorName", "name")
       .populate("kantan", "kantanName")
       .populate("paperName", "name")
-      .populate("companyName", "companyName")
+      .populate("companyName", "companyName avatar")
       .populate("for", "roleName")
       .populate("forCompany", "firstName lastName");
 

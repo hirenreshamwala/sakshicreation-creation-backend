@@ -723,7 +723,7 @@ exports.updateLeadById = async (req, res) => {
 
       // Populate the new lead for the response
       populatedNewLead = await Lead.findById(newLead._id)
-        .populate("companyName", "companyName")
+        .populate("companyName", "companyName avatar")
         .populate(
           "partyName",
           "partyName ownerName ownerMobileNo ownerWhatsAppNo contactPerson personMobileNo personWhatsAppNo contactForPayment contactMobileNo contactWhatsAppNo GSTNo partyTag address createdAt updatedAt"
@@ -757,7 +757,7 @@ exports.updateLeadById = async (req, res) => {
     const updatedLead = await Lead.findByIdAndUpdate(id, updateData, {
       new: true,
     })
-      .populate("companyName", "companyName")
+      .populate("companyName", "companyName avatar")
       .populate(
         "partyName",
         "partyName ownerName ownerMobileNo ownerWhatsAppNo contactPerson personMobileNo personWhatsAppNo contactForPayment contactMobileNo contactWhatsAppNo GSTNo partyTag address createdAt updatedAt"
