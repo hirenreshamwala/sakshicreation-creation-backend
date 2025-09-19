@@ -1717,3 +1717,29 @@ exports.searchParties = async (req, res) => {
     });
   }
 };
+
+exports.getQualityPackingParties = async (req, res) => {
+  try {
+    // Find the CompanyName document for "Quality Packaging"
+    const company = await CompanyName.findOne({ companyName: "Quality Packaging" });
+
+    if (!company) {
+      return res.status(404).json({ message: "Company 'Quality Packaging' not found" });
+    }
+
+    // Find all parties associated with the company and populate only partyName
+    const parties = await Party.find({ companyName: company._id })
+      .select("partyName") // Select only the partyName field
+      .lean(); // Use lean for better performance since we don't need Mongoose documents
+
+    return res.status(200).json({
+      message: "Parties retrieved successfully",
+      data: parties,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      message: "Server Error",
+      error: error.message,
+    });
+  }
+};

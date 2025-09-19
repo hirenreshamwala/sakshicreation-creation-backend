@@ -24,53 +24,12 @@ const qpDataSchema = new mongoose.Schema(
     orderFrom: {
       type: String,
     },
-    name: {
+    orderdata: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "packagingOption",
     },
-    length: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "packagingOption",
-    },
-    height: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "packagingOption",
-    },
-    width: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "packagingOption",
-    },
-    ply: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "packagingOption",
-      // required: true,
-    },
-    paperLength: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "PaperGSM",
-    },
-    paperWidth: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "PaperGSM",
-    },
-    paperHeight: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "PaperGSM",
-    },
-    paperName: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "PaperGSM",
-    },
-    // size: {
-    //   type: mongoose.Schema.Types.ObjectId,
-    //   ref: "packagingOption",
-    //   // required: true,
-    // },
     gsm: {
       type: String
-    },
-    deckal: {
-      type: String,
     },
     deckalCalculation: {
       type: String,

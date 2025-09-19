@@ -10,6 +10,7 @@ router.post("/create",authenticateToken, AccountMasterController.createAccountMa
 
 // Get all account masters
 router.get("/getall",authenticateToken, AccountMasterController.getAllAccountMasters);
+router.get("/getqp",authenticateToken, AccountMasterController.getQualityPackingParties);
 
 router.put("/party/:id/approve",authenticateToken, AccountMasterController.approveParty);
 

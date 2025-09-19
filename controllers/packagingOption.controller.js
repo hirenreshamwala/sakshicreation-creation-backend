@@ -1,17 +1,48 @@
 const PackagingOption = require("../models/packagingOption.model");
 const Papa = require("papaparse");
+const mongoose = require("mongoose");
+const Party = require("../models/Party.model");
 
 // Create a new Packaging Option
 exports.createPackagingOption = async (req, res) => {
   try {
-    const { name, ply, length, width, height } = req.body;
+    const { party, ply, length, width, height, deckal, paper1GSM, paper2GSM, paper3GSM } = req.body;
 
-    if (!ply || !length || !width || !height) {
-      return res.status(400).json({ message: "All fields are required" });
+    // Validate all required fields
+    if (!ply || !length || !width || !height || !deckal || !paper1GSM || !paper2GSM || !paper3GSM) {
+      return res.status(400).json({ message: "All fields (ply, length, width, height, deckal, paper1GSM, paper2GSM, paper3GSM) are required" });
     }
 
-    const newOption = new PackagingOption({ name, ply, length, width, height });
+    // Check if identical data already exists
+    const existingOption = await PackagingOption.findOne({
+      party,
+      ply,
+      length,
+      width,
+      height, 
+      deckal,
+      paper1GSM,
+      paper2GSM,
+      paper3GSM,
+    });
+
+    if (existingOption) {
+      return res.status(400).json({ message: "Data already exists" });
+    }
+
+    const newOption = new PackagingOption({
+      party,
+      ply,
+      length,
+      width,
+      height, 
+      deckal,
+      paper1GSM,
+      paper2GSM,
+      paper3GSM,
+    });
     await newOption.save();
+    await newOption.populate("party"); // Populate party to include partyName in response
 
     return res.status(201).json({
       message: "Packaging option created successfully",
@@ -27,7 +58,9 @@ exports.createPackagingOption = async (req, res) => {
 // Get all Packaging Options
 exports.getAllPackagingOptions = async (req, res) => {
   try {
-    const options = await PackagingOption.find().sort({ createdAt: -1 });
+    const options = await PackagingOption.find()
+      .populate("party") // Populate the party reference
+      .sort({ createdAt: -1 });
     return res.status(200).json({ data: options });
   } catch (error) {
     return res
@@ -40,13 +73,36 @@ exports.getAllPackagingOptions = async (req, res) => {
 exports.updatePackagingOption = async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, ply, length, width, height } = req.body;
+    const { party, ply, length, width, height, deckal, paper1GSM, paper2GSM, paper3GSM } = req.body;
+
+    // Validate all required fields
+    if (!ply || !length || !width || !height || !deckal || !paper1GSM || !paper2GSM || !paper3GSM) {
+      return res.status(400).json({ message: "All fields (ply, length, width, height, deckal, paper1GSM, paper2GSM, paper3GSM) are required" });
+    }
+
+    // Check if identical data already exists (excluding the current record)
+    const existingOption = await PackagingOption.findOne({
+      party,
+      ply,
+      length,
+      width,
+      height, 
+      deckal,
+      paper1GSM,
+      paper2GSM,
+      paper3GSM,
+      _id: { $ne: id },
+    });
+
+    if (existingOption) {
+      return res.status(400).json({ message: "Data already exists" });
+    }
 
     const updatedOption = await PackagingOption.findByIdAndUpdate(
       id,
-      { name, ply, length, width, height },
+      { party, ply, length, width, height, deckal, paper1GSM, paper2GSM, paper3GSM },
       { new: true, runValidators: true }
-    );
+    ).populate("party");
 
     if (!updatedOption) {
       return res.status(404).json({ message: "Packaging option not found" });
@@ -84,17 +140,30 @@ exports.deletePackagingOption = async (req, res) => {
   }
 };
 
-// Bulk Upload Packaging Options
+
 exports.bulkUploadPackagingOptions = async (req, res) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
   try {
     if (!req.file) {
-      return res.status(400).json({ message: "No file uploaded" });
+      await session.abortTransaction();
+      session.endSession();
+      return res.status(400).json({
+        success: false,
+        message: "No file uploaded",
+      });
     }
 
     const fileContent = req.file.buffer.toString("utf8");
 
     if (!fileContent) {
-      return res.status(400).json({ message: "Uploaded file is empty" });
+      await session.abortTransaction();
+      session.endSession();
+      return res.status(400).json({
+        success: false,
+        message: "Uploaded file is empty",
+      });
     }
 
     const parsedData = Papa.parse(fileContent, {
@@ -103,28 +172,136 @@ exports.bulkUploadPackagingOptions = async (req, res) => {
     });
 
     const records = parsedData.data;
-
     const validRecords = [];
-    for (const row of records) {
-      const { name, ply, length, width, height } = row;
-      if (!ply || !length || !width || !height) {
-        return res
-          .status(400)
-          .json({ message: "All fields (ply, length, width, height) are required in every row" });
+    const skippedRecords = [];
+
+    for (const [index, row] of records.entries()) {
+      try {
+        const { party, ply, length, width, height, deckal, paper1GSM, paper2GSM, paper3GSM } = row;
+
+        // Validate required fields
+        if (!party || !ply || !length || !width || !height || !deckal || !paper1GSM || !paper2GSM || !paper3GSM) {
+          skippedRecords.push({
+            row: index + 1,
+            ...row,
+            reason: "Missing required fields",
+          });
+          continue;
+        }
+
+        // Find party by name in Party model
+        const partyDoc = await Party.findOne({ partyName: party.trim().toUpperCase() }).session(session);
+        if (!partyDoc) {
+          skippedRecords.push({
+            row: index + 1,
+            ...row,
+            reason: `Party not found: ${party}`,
+          });
+          continue;
+        }
+
+        // Check for duplicate
+        const existingOption = await PackagingOption.findOne({
+          party: partyDoc._id,
+          ply,
+          length,
+          width,
+          height, 
+          deckal,
+          paper1GSM,
+          paper2GSM,
+          paper3GSM,
+        }).session(session);
+
+        if (existingOption) {
+          skippedRecords.push({
+            row: index + 1,
+            ...row,
+            reason: "Data already exists",
+          });
+          continue;
+        }
+
+        // Push with ObjectId
+        validRecords.push({
+          party: partyDoc._id,
+          ply,
+          length,
+          width,
+          height, 
+          deckal,
+          paper1GSM,
+          paper2GSM,
+          paper3GSM,
+        });
+
+      } catch (err) {
+        skippedRecords.push({
+          row: index + 1,
+          ...row,
+          reason: err.message || "Invalid data",
+        });
+        continue;
       }
-      validRecords.push({ name, ply, length, width, height });
     }
 
-    const insertedOptions = await PackagingOption.insertMany(validRecords);
+    let insertedOptions = [];
+    if (validRecords.length > 0) {
+      insertedOptions = await PackagingOption.insertMany(validRecords, { session });
+    }
+
+    // Populate party for each inserted option
+    const populatedOptions = await Promise.all(
+      insertedOptions.map(async (opt) => {
+        return await PackagingOption.findById(opt._id).populate("party").session(session);
+      })
+    );
+
+    await session.commitTransaction();
+    session.endSession();
+
+    // Generate CSV for skipped records
+    let skippedCsv = "";
+    if (skippedRecords.length > 0) {
+      skippedCsv = Papa.unparse([
+        {
+          party: "party",
+          ply: "ply",
+          length: "length",
+          width: "width",
+          height: "height",
+          deckal: "deckal",
+          paper1GSM: "paper1GSM",
+          paper2GSM: "paper2GSM",
+          paper3GSM: "paper3GSM",
+          reason: "reason",
+        },
+        ...skippedRecords,
+      ]);
+    }
+
+    // Set headers for CSV download if there are skipped records
+    if (skippedCsv) {
+      res.setHeader("Content-Disposition", "attachment; filename=skipped_packaging_options.csv");
+      res.setHeader("Content-Type", "text/csv");
+    }
 
     return res.status(201).json({
-      message: "Bulk upload successful",
-      insertedCount: insertedOptions.length,
-      data: insertedOptions,
+      success: true,
+      message: "Bulk upload processed",
+      insertedCount: populatedOptions.length,
+      skippedCount: skippedRecords.length,
+      skippedRecords,
+      data: populatedOptions,
+      skippedCsv: skippedCsv || null, // Include CSV content in response
     });
   } catch (error) {
-    return res
-      .status(500)
-      .json({ message: "Server Error", error: error.message });
+    await session.abortTransaction();
+    session.endSession();
+    return res.status(500).json({
+      success: false,
+      message: "Server Error",
+      error: error.message,
+    });
   }
 };
