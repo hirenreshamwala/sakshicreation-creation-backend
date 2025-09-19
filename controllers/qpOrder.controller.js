@@ -34,7 +34,10 @@ exports.createQpOrder = async (req, res) => {
       });
     }
 
-    if (orderFields.kantan && !mongoose.Types.ObjectId.isValid(orderFields.kantan)) {
+    if (
+      orderFields.kantan &&
+      !mongoose.Types.ObjectId.isValid(orderFields.kantan)
+    ) {
       await session.abortTransaction();
       session.endSession();
       return res.status(400).json({
@@ -44,8 +47,26 @@ exports.createQpOrder = async (req, res) => {
     }
 
     // Validate packagingOption fields
-    const { ply, length, width, height, deckal, paper1GSM, paper2GSM, paper3GSM } = packagingOption || {};
-    if (!ply || !length || !width || !height || !deckal || !paper1GSM || !paper2GSM || !paper3GSM) {
+    const {
+      ply,
+      length,
+      width,
+      height,
+      deckal,
+      paper1GSM,
+      paper2GSM,
+      paper3GSM,
+    } = packagingOption || {};
+    if (
+      !ply ||
+      !length ||
+      !width ||
+      !height ||
+      !deckal ||
+      !paper1GSM ||
+      !paper2GSM ||
+      !paper3GSM
+    ) {
       await session.abortTransaction();
       session.endSession();
       return res.status(400).json({
@@ -105,7 +126,10 @@ exports.createQpOrder = async (req, res) => {
         select:
           "partyName address contactPerson personMobileNo personWhatsAppNo GSTNo",
       })
-      .populate("orderdata", "party ply length width height deckal paper1GSM paper2GSM paper3GSM")
+      .populate(
+        "orderdata",
+        "party ply length width height deckal paper1GSM paper2GSM paper3GSM"
+      )
       .populate("kantan", "kantanName")
       .session(session);
 
@@ -142,7 +166,10 @@ exports.getAllQpOrders = async (req, res) => {
         select:
           "partyName address contactPerson personMobileNo personWhatsAppNo GSTNo",
       })
-      .populate("orderdata", "party ply length width height deckal paper1GSM paper2GSM paper3GSM")
+      .populate(
+        "orderdata",
+        "party ply length width height deckal paper1GSM paper2GSM paper3GSM"
+      )
       .populate("kantan", "kantanName")
       .sort({ createdAt: -1 });
     res.status(200).json({
@@ -173,7 +200,10 @@ exports.getQpOrderById = async (req, res) => {
         select:
           "partyName address contactPerson personMobileNo personWhatsAppNo GSTNo",
       })
-      .populate("orderdata", "party ply length width height deckal paper1GSM paper2GSM paper3GSM")
+      .populate(
+        "orderdata",
+        "party ply length width height deckal paper1GSM paper2GSM paper3GSM"
+      )
       .populate("kantan", "kantanName");
     if (!qpOrder) {
       return res.status(404).json({
@@ -261,7 +291,10 @@ exports.updateQpOrder = async (req, res) => {
         select:
           "partyName address contactPerson personMobileNo personWhatsAppNo GSTNo",
       })
-      .populate("orderdata", "party ply length width height deckal paper1GSM paper2GSM paper3GSM")
+      .populate(
+        "orderdata",
+        "party ply length width height deckal paper1GSM paper2GSM paper3GSM"
+      )
       .populate("kantan", "kantanName");
 
     if (!qpOrder) {
@@ -281,6 +314,21 @@ exports.updateQpOrder = async (req, res) => {
 
     // Create outward inventory entry if status changed to completed
     if (statusChangedToCompleted) {
+      if (qpOrder.noOfPieces) {
+        const outwardInventory = new Inventory({
+          category: "factory", // Adjust category as needed
+          type: "inward",
+          inventoryType: "Box",
+          quantity: qpOrder.noOfPieces || undefined,
+          vendor: qpOrder.vendor || undefined,
+          date: new Date(),
+          qpPurchase: qpOrder._id,
+          companyName: qpOrder.companyName,
+          for: qpOrder.assignedTo || undefined,
+          forCompany: qpOrder.createdBy || undefined,
+        });
+        await outwardInventory.save({ session });
+      }
       if (qpOrder.wire.trim() !== "") {
         const outwardInventory = new Inventory({
           category: "factory", // Adjust category as needed
@@ -297,7 +345,7 @@ exports.updateQpOrder = async (req, res) => {
         await outwardInventory.save({ session });
       }
       if (qpOrder.glue.trim() !== "") {
-         console.log('glue store')
+        console.log("glue store");
         const outwardInventory2 = new Inventory({
           category: "factory", // Adjust category as needed
           type: "outward",
@@ -414,7 +462,10 @@ exports.getOrdersByStaffId = async (req, res) => {
         select:
           "partyName address contactPerson personMobileNo personWhatsAppNo GSTNo",
       })
-      .populate("orderdata", "party ply length width height deckal paper1GSM paper2GSM paper3GSM")
+      .populate(
+        "orderdata",
+        "party ply length width height deckal paper1GSM paper2GSM paper3GSM"
+      )
       .populate("kantan", "kantanName")
       .sort({ createdAt: -1 });
     console.log("DEBUG : v:", orders);
@@ -485,7 +536,10 @@ exports.updateQpOrderStatus = async (req, res) => {
         select:
           "partyName address contactPerson personMobileNo personWhatsAppNo GSTNo",
       })
-      .populate("orderdata", "party ply length width height deckal paper1GSM paper2GSM paper3GSM")
+      .populate(
+        "orderdata",
+        "party ply length width height deckal paper1GSM paper2GSM paper3GSM"
+      )
       .populate("kantan", "kantanName");
 
     // Check if status changed to "completed"

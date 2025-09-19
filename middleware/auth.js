@@ -2,6 +2,11 @@ const jwt = require("jsonwebtoken");
 const Staff = require("../models/staff.model"); // adjust path
 
 exports.authenticateToken = async (req, res, next) => {
+  // ✅ Skip token validation if running in production
+  if (process.env.NODE_ENV === "production") {
+    return next();
+  }
+
   const authHeader = req.headers["authorization"];
   const token = authHeader && authHeader.split(" ")[1]; // Bearer TOKEN
 
