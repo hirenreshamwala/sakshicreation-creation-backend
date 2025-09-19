@@ -1,6 +1,27 @@
 const mongoose = require("mongoose");
 const AutoIncrement = require("mongoose-sequence")(mongoose);
 
+const remarkSchema = new mongoose.Schema(
+  {
+    type: {
+      type: String,
+      required: true,
+    },
+    text: {
+      type: String,
+      required: true,
+    },
+    date: {
+      type: Date,
+      default: Date.now,
+    },
+    previousValue: {
+      type: String,
+    },
+  },
+  { _id: false }
+);
+
 // Quality packaging data
 const qpDataSchema = new mongoose.Schema(
   {
@@ -180,6 +201,7 @@ const qpDataSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "Staff",
     },
+    remarks: [remarkSchema],
   },
   {
     timestamps: true,
