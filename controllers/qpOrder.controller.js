@@ -2,15 +2,20 @@ const { default: mongoose } = require("mongoose");
 const QpData = require("../models/qpOrder.model"); // Adjust path to your model
 const Staff = require("../models/staff.model");
 const Inventory = require("../models/inventory.model"); // Import Inventory model
+const PackagingOption = require("../models/packagingOption.model");
 
 // Add a new QP Order
 exports.createQpOrder = async (req, res) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
   try {
-    const { companyName, party } = req.body;
+    const { companyName, party, packagingOption, ...orderFields } = req.body;
     const { id } = req.user;
-    req.body.createdBy = id;
 
     if (!companyName || !party) {
+      await session.abortTransaction();
+      session.endSession();
       return res.status(400).json({
         success: false,
         message: "Missing required fields: companyName and party",
@@ -21,35 +26,74 @@ exports.createQpOrder = async (req, res) => {
       !mongoose.Types.ObjectId.isValid(companyName) ||
       !mongoose.Types.ObjectId.isValid(party)
     ) {
+      await session.abortTransaction();
+      session.endSession();
       return res.status(400).json({
         success: false,
         message: "Invalid ID format for companyName or party",
       });
     }
 
-    if (req.body.size && !mongoose.Types.ObjectId.isValid(req.body.size)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid size ID format",
-      });
-    }
-
-    if (req.body.ply && !mongoose.Types.ObjectId.isValid(req.body.ply)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid ply ID format",
-      });
-    }
-
-    if (req.body.kantan && !mongoose.Types.ObjectId.isValid(req.body.kantan)) {
+    if (orderFields.kantan && !mongoose.Types.ObjectId.isValid(orderFields.kantan)) {
+      await session.abortTransaction();
+      session.endSession();
       return res.status(400).json({
         success: false,
         message: "Invalid kantan ID format",
       });
     }
 
-    const qpOrder = new QpData(req.body);
-    await qpOrder.save();
+    // Validate packagingOption fields
+    const { ply, length, width, height, deckal, paper1GSM, paper2GSM, paper3GSM } = packagingOption || {};
+    if (!ply || !length || !width || !height || !deckal || !paper1GSM || !paper2GSM || !paper3GSM) {
+      await session.abortTransaction();
+      session.endSession();
+      return res.status(400).json({
+        success: false,
+        message: "Missing required packaging option fields",
+      });
+    }
+
+    // Check if a PackagingOption exists for the provided data
+    let packaging = await PackagingOption.findOne({
+      party,
+      ply,
+      length,
+      width,
+      height,
+      deckal,
+      paper1GSM,
+      paper2GSM,
+      paper3GSM,
+    }).session(session);
+
+    if (!packaging) {
+      // Create new PackagingOption if none exists
+      packaging = new PackagingOption({
+        party,
+        ply,
+        length,
+        width,
+        height,
+        deckal,
+        paper1GSM,
+        paper2GSM,
+        paper3GSM,
+      });
+      await packaging.save({ session });
+    }
+
+    // Create QP Order with orderdata reference
+    const qpOrderData = {
+      companyName,
+      party,
+      orderdata: packaging._id,
+      createdBy: id,
+      ...orderFields,
+    };
+
+    const qpOrder = new QpData(qpOrderData);
+    await qpOrder.save({ session });
 
     const getOrder = await QpData.findById(qpOrder._id)
       .populate({
@@ -61,21 +105,21 @@ exports.createQpOrder = async (req, res) => {
         select:
           "partyName address contactPerson personMobileNo personWhatsAppNo GSTNo",
       })
-      .populate("ply", "ply")
-      .populate("name", "name")
-      .populate("length", "length")
-      .populate("width", "width")
-      .populate("height", "height")
-      .populate("paperLength", "gsm")
-      .populate("paperWidth", "gsm")
-      .populate("paperHeight", "gsm")
-      .populate("kantan", "kantanName");
+      .populate("orderdata", "party ply length width height deckal paper1GSM paper2GSM paper3GSM")
+      .populate("kantan", "kantanName")
+      .session(session);
+
+    await session.commitTransaction();
+    session.endSession();
+
     res.status(201).json({
       success: true,
       message: "QP Order created successfully",
       data: getOrder,
     });
   } catch (error) {
+    await session.abortTransaction();
+    session.endSession();
     console.error("❌ Error creating QP order:", error);
     res.status(500).json({
       success: false,
@@ -98,14 +142,7 @@ exports.getAllQpOrders = async (req, res) => {
         select:
           "partyName address contactPerson personMobileNo personWhatsAppNo GSTNo",
       })
-      .populate("ply", "ply")
-      .populate("name", "name")
-      .populate("length", "length")
-      .populate("width", "width")
-      .populate("height", "height")
-      .populate("paperLength", "gsm")
-      .populate("paperWidth", "gsm")
-      .populate("paperHeight", "gsm")
+      .populate("orderdata", "party ply length width height deckal paper1GSM paper2GSM paper3GSM")
       .populate("kantan", "kantanName")
       .sort({ createdAt: -1 });
     res.status(200).json({
@@ -136,14 +173,7 @@ exports.getQpOrderById = async (req, res) => {
         select:
           "partyName address contactPerson personMobileNo personWhatsAppNo GSTNo",
       })
-      .populate("ply", "ply")
-      .populate("name", "name")
-      .populate("length", "length")
-      .populate("width", "width")
-      .populate("height", "height")
-      .populate("paperLength", "gsm")
-      .populate("paperWidth", "gsm")
-      .populate("paperHeight", "gsm")
+      .populate("orderdata", "party ply length width height deckal paper1GSM paper2GSM paper3GSM")
       .populate("kantan", "kantanName");
     if (!qpOrder) {
       return res.status(404).json({
@@ -231,14 +261,7 @@ exports.updateQpOrder = async (req, res) => {
         select:
           "partyName address contactPerson personMobileNo personWhatsAppNo GSTNo",
       })
-      .populate("ply", "ply")
-      .populate("name", "name")
-      .populate("length", "length")
-      .populate("width", "width")
-      .populate("height", "height")
-      .populate("paperLength", "gsm")
-      .populate("paperWidth", "gsm")
-      .populate("paperHeight", "gsm")
+      .populate("orderdata", "party ply length width height deckal paper1GSM paper2GSM paper3GSM")
       .populate("kantan", "kantanName");
 
     if (!qpOrder) {
@@ -391,15 +414,7 @@ exports.getOrdersByStaffId = async (req, res) => {
         select:
           "partyName address contactPerson personMobileNo personWhatsAppNo GSTNo",
       })
-      .populate("ply", "ply")
-      .populate("name", "name")
-      .populate("name", "name")
-      .populate("length", "length")
-      .populate("width", "width")
-      .populate("height", "height")
-      .populate("paperLength", "gsm")
-      .populate("paperWidth", "gsm")
-      .populate("paperHeight", "gsm")
+      .populate("orderdata", "party ply length width height deckal paper1GSM paper2GSM paper3GSM")
       .populate("kantan", "kantanName")
       .sort({ createdAt: -1 });
     console.log("DEBUG : v:", orders);
@@ -470,14 +485,7 @@ exports.updateQpOrderStatus = async (req, res) => {
         select:
           "partyName address contactPerson personMobileNo personWhatsAppNo GSTNo",
       })
-      .populate("ply", "ply")
-      .populate("name", "name")
-      .populate("length", "length")
-      .populate("width", "width")
-      .populate("height", "height")
-      .populate("paperLength", "gsm")
-      .populate("paperWidth", "gsm")
-      .populate("paperHeight", "gsm")
+      .populate("orderdata", "party ply length width height deckal paper1GSM paper2GSM paper3GSM")
       .populate("kantan", "kantanName");
 
     // Check if status changed to "completed"

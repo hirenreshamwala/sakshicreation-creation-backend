@@ -2,10 +2,9 @@ const mongoose = require("mongoose");
 
 const packagingOptionSchema = new mongoose.Schema(
   {
-    name: {
-      type: String,
-      // required: true,
-      trim: true,
+    party: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Party",
     },
     ply: {
       type: String,
@@ -26,6 +25,23 @@ const packagingOptionSchema = new mongoose.Schema(
       type: String,
       required: true,
       trim: true,
+    },
+    deckal:{
+      type: String,
+      required: true,
+      trim: true,
+    },
+    paper1GSM: {
+      type: String,
+      required: true,
+    },
+    paper2GSM: {
+      type: String,
+      required: true,
+    },
+    paper3GSM: {
+      type: String,
+      required: true,
     },
   },
   { timestamps: true }
