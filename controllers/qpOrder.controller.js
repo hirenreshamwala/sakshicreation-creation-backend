@@ -258,15 +258,6 @@ exports.updateQpOrder = async (req, res) => {
       });
     }
 
-    if (req.body.ply && !mongoose.Types.ObjectId.isValid(req.body.ply)) {
-      await session.abortTransaction();
-      session.endSession();
-      return res.status(400).json({
-        success: false,
-        message: "Invalid ply ID format",
-      });
-    }
-
     if (req.body.kantan && !mongoose.Types.ObjectId.isValid(req.body.kantan)) {
       await session.abortTransaction();
       session.endSession();
@@ -277,7 +268,80 @@ exports.updateQpOrder = async (req, res) => {
     }
 
     // Update the order
-    const qpOrder = await QpData.findByIdAndUpdate(req.params.id, req.body, {
+    let packagingOptionId = currentOrder.orderdata; // Default to existing orderdata
+    if (req.body.packagingOption) {
+      const {
+        party,
+        ply,
+        length,
+        width,
+        height,
+        deckal,
+        paper1GSM,
+        paper2GSM,
+        paper3GSM,
+      } = req.body.packagingOption;
+
+      // Validate packagingOption fields
+      if (
+        !party ||
+        !ply ||
+        !length ||
+        !width ||
+        !height ||
+        !deckal ||
+        !paper1GSM ||
+        !paper2GSM ||
+        !paper3GSM
+      ) {
+        await session.abortTransaction();
+        session.endSession();
+        return res.status(400).json({
+          success: false,
+          message: "Missing required packaging option fields",
+        });
+      }
+
+      // Check if a PackagingOption exists for the provided data
+      let packaging = await PackagingOption.findOne({
+        party,
+        ply,
+        length,
+        width,
+        height,
+        deckal,
+        paper1GSM,
+        paper2GSM,
+        paper3GSM,
+      }).session(session);
+
+      if (!packaging) {
+        // Create new PackagingOption if none exists
+        packaging = new PackagingOption({
+          party,
+          ply,
+          length,
+          width,
+          height,
+          deckal,
+          paper1GSM,
+          paper2GSM,
+          paper3GSM,
+        });
+        await packaging.save({ session });
+      }
+
+      packagingOptionId = packaging._id; // Update the packagingOptionId to the new or existing PackagingOption
+    }
+
+    // Prepare update data
+    const updateData = {
+      ...req.body,
+      orderdata: packagingOptionId, // Update orderdata with the new or existing PackagingOption ID
+    };
+
+    // Update the order
+    const qpOrder = await QpData.findByIdAndUpdate(req.params.id, updateData, {
       new: true,
       runValidators: true,
       session,
