@@ -83,7 +83,7 @@ const qpDataSchema = new mongoose.Schema(
         type: String,
       },
       inch: {
-        type: String, 
+        type: String,
       }
     },
     kantanDeckal: {
@@ -159,6 +159,37 @@ const qpDataSchema = new mongoose.Schema(
       // type: String,
       type: mongoose.Schema.Types.ObjectId,
       ref: "Staff",
+    },
+    actualNoOfPieces: {
+      type: Number,
+    },
+    actualTotalKg: {
+      type: String,
+    },
+    actualTotalKantan: {
+      reel: {
+        type: String,
+      },
+      inch: {
+        type: String,
+      }
+    },
+    actualPaperKG: {
+      paper1: {
+        deckal : { type: String },
+        gsm: { type: String },
+        totalKg: { type: String }
+      },
+      paper2: {
+        deckal : { type: String },
+        gsm: { type: String },
+        totalKg: { type: String}
+      },
+      paper3: {
+        deckal : { type: String },
+        gsm: { type: String},
+        totalKg: { type: String}
+      }
     },
     remarks: [remarkSchema],
   },
