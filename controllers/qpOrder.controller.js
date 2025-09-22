@@ -228,7 +228,7 @@ exports.getQpOrderById = async (req, res) => {
 };
 
 function convertToReels(reels = 0, inches = 0) {
-  const totalInches = reels * 7200 + inches; // convert everything to inches
+  const totalInches = Number(reels) * 7200 + Number(inches); // convert everything to inches
   const totalReels = totalInches / 7200; // convert back to reels
   return parseFloat(totalReels.toFixed(3)); // round to 3 decimals (optional)
 }
@@ -508,7 +508,7 @@ exports.updateQpOrder = async (req, res) => {
             type: "outward",
             inventoryType: "Paper",
 
-            p3gsm: paper3 || undefined,
+            p3gsm: qpOrder.actualPaperKG.paper3 || undefined,
             date: new Date(),
             qpOrder: qpOrder._id,
             qpPurchase: qpOrder._id,
