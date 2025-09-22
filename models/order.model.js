@@ -1,5 +1,16 @@
 const mongoose = require("mongoose");
 
+const quotationHistory = new mongoose.Schema(
+  {
+    unitPrice: {
+      type: String,
+    },
+  },
+  {
+    timestamps: true,
+  }
+);
+
 const orderSchema = new mongoose.Schema(
   {
     companyName: {
@@ -499,6 +510,10 @@ const orderSchema = new mongoose.Schema(
         },
       },
     ],
+    quotationProof: {
+      type: String,
+      default: "",
+    },
     invoiceValidProof: [
       {
         path: {
@@ -582,6 +597,7 @@ const orderSchema = new mongoose.Schema(
       ref: "Staff",
       required: true,
     },
+    quotation: [quotationHistory],
   },
   {
     timestamps: true,

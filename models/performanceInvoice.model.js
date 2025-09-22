@@ -1,5 +1,15 @@
 const mongoose = require("mongoose");
 
+const quotationHistory = new mongoose.Schema(
+  {
+    unitPrice: {
+      type: String,
+    },
+  },
+  {
+    timestamps: true,
+  }
+);
 const performanceInvoiceSchema = new mongoose.Schema(
   {
     orderNumber: {
@@ -22,10 +32,10 @@ const performanceInvoiceSchema = new mongoose.Schema(
       ref: "Party",
       required: true,
     },
-     assignedTo: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: "Staff",
-  },
+    assignedTo: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Staff",
+    },
     quantity: {
       type: Number,
       required: true,
@@ -81,9 +91,13 @@ const performanceInvoiceSchema = new mongoose.Schema(
       min: 0,
       default: undefined,
     },
+    quotation: [quotationHistory],
   },
   { timestamps: true }
 );
 
-const PerformanceInvoice = mongoose.model("PerformanceInvoice", performanceInvoiceSchema);
+const PerformanceInvoice = mongoose.model(
+  "PerformanceInvoice",
+  performanceInvoiceSchema
+);
 module.exports = PerformanceInvoice;
