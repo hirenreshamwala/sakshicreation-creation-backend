@@ -159,7 +159,7 @@ exports.createAccountMaster = async (req, res) => {
       contactWhatsAppNo: req.body.contactWhatsAppNo,
       contactForPaymentEmail: req.body.contactForPaymentEmail || null,
       GSTNo: req.body.GSTNo || null,
-      partyTag: req.body.partyTag || "New",
+      partyTag: req.body.partyTag || "NEW",
       address: req.body.address,
       reference: req.body.reference,
       statusApproval: req.body.isRequestMode ? "PENDING" : "APPROVED", // Set based on isRequestMode
@@ -797,10 +797,10 @@ exports.bulkCreateAccountMasters = async (req, res) => {
         }
 
         // PartyTag logic
-        let partyTag = "New";
+        let partyTag = "NEW";
         if (row.partyTag) {
           const partyTagValue = String(row.partyTag).trim().toLowerCase();
-          if (partyTagValue === "customer") partyTag = "Customer";
+          if (partyTagValue === "customer") partyTag = "CUSTOMER";
         }
 
         // Market resolve

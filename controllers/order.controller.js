@@ -183,8 +183,8 @@ exports.createOrder = async (req, res) => {
     const order = new Order(orderData);
     await order.save();
     const partyDoc = await Party.findById(party);
-    if (partyDoc && partyDoc.partyTag === "New") {
-      partyDoc.partyTag = "Customer";
+    if (partyDoc && partyDoc.partyTag === "NEW") {
+      partyDoc.partyTag = "CUSTOMER";
       await partyDoc.save();
       console.log(`Updated party ${partyDoc._id} tag from New to Customer`);
       console.log("🚀 ~ Update:", Update);

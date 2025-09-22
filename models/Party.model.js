@@ -32,13 +32,13 @@ const partySchema = new mongoose.Schema(
     },
     partyTag: {
       type: String,
-      enum: ["New", "Customer"],
-      default: "New",
+      // enum: ["New", "Customer"],
+      default: "NEW",
     },
     statusApproval: {
       type: String,
-      enum: ["Pending", "Approved"],
-      default: "Pending",
+      // enum: ["Pending", "APPROVED"],
+      default: "PENDING",
     },
   },
   { timestamps: true }
@@ -74,7 +74,7 @@ partySchema.pre("save", async function (next) {
     const Order = mongoose.model("Order");
     const orderExists = await Order.findOne({ partyName: this.partyName });
     if (orderExists) {
-      this.partyTag = "Customer";
+      this.partyTag = "CUSTOMER";
     }
   }
   next();

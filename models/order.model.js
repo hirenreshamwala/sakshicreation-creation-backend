@@ -606,9 +606,9 @@ orderSchema.pre("save", async function (next) {
       // Find the party associated with this order
       const party = await Party.findById(this.party);
 
-      if (party && party.partyTag === "New") {
+      if (party && party.partyTag === "NEW") {
         // Update the party tag to "Customer"
-        party.partyTag = "Customer";
+        party.partyTag = "CUSTOMER";
         await party.save();
         console.log(`Updated party ${party._id} tag from New to Customer`);
       }
