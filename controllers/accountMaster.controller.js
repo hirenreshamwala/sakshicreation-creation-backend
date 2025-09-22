@@ -159,10 +159,10 @@ exports.createAccountMaster = async (req, res) => {
       contactWhatsAppNo: req.body.contactWhatsAppNo,
       contactForPaymentEmail: req.body.contactForPaymentEmail || null,
       GSTNo: req.body.GSTNo || null,
-      partyTag: req.body.partyTag || "NEW",
+      partyTag: req.body.partyTag || "New",
       address: req.body.address,
       reference: req.body.reference,
-      statusApproval: req.body.isRequestMode ? "PENDING" : "APPROVED", // Set based on isRequestMode
+      statusApproval: req.body.isRequestMode ? "Pending" : "Approved", // Set based on isRequestMode
     };
 
     const newParty = await Party.create(partyData);
@@ -241,7 +241,7 @@ exports.getAllAccountMasters = async (req, res) => {
 
     // Build query object
     const query = {};
-    if (statusApproval && ["PENDING", "APPROVED"].includes(statusApproval)) {
+    if (statusApproval && ["Pending", "Approved"].includes(statusApproval)) {
       query["party.statusApproval"] = statusApproval;
     }
 
@@ -797,10 +797,10 @@ exports.bulkCreateAccountMasters = async (req, res) => {
         }
 
         // PartyTag logic
-        let partyTag = "NEW";
+        let partyTag = "New";
         if (row.partyTag) {
           const partyTagValue = String(row.partyTag).trim().toLowerCase();
-          if (partyTagValue === "customer") partyTag = "CUSTOMER";
+          if (partyTagValue === "customer") partyTag = "Customer";
         }
 
         // Market resolve
@@ -840,7 +840,7 @@ exports.bulkCreateAccountMasters = async (req, res) => {
           GSTNo: row.GSTNo || null,
           address,
           reference: row.reference || null,
-          statusApproval: row.isRequestMode === "TRUE" ? "PENDING" : "APPROVED",
+          statusApproval: row.isRequestMode === "TRUE" ? "Pending" : "Approved",
           createdBy: staff._id,
           partyTag,
         };
@@ -1504,14 +1504,14 @@ exports.approveParty = async (req, res) => {
       });
     }
 
-    if (party.statusApproval === "APPROVED") {
+    if (party.statusApproval === "Approved") {
       return res.status(400).json({
         success: false,
         message: "Party is already approved",
       });
     }
 
-    party.statusApproval = "APPROVED";
+    party.statusApproval = "Approved";
     await party.save();
 
     const accountMaster = await AccountMaster.findOne({ party: id })

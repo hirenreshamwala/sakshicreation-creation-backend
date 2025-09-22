@@ -26,6 +26,7 @@ const packagingOptions = require("./packagingOption.routes");
 const paperGSM = require("./paperGSM.routes");
 const marketData = require("./marketData.routes");
 const kantan = require("./kantan.routes");
+const complain = require("./complain.routes");
 
 
 router.use("/staff", StaffRouter);
@@ -54,4 +55,5 @@ router.use("/material", MaterialRouter);
 router.use("/roleDepartment", RoleDepartmentRouter);
 router.use("/roleDepartmentCompany", RoleDepartmentCompanyRouter);
 router.use("/performance-invoice", performanceInvoiceRoutes);
+router.use("/complain", complain);
 module.exports = router;
