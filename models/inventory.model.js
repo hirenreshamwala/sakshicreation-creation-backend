@@ -47,6 +47,11 @@ const InventorySchema = new mongoose.Schema(
       ref: "Purchase",
       required: false,
     },
+     qpOrder: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "QpOrder",
+      required: false,
+    },
     qpPurchase: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "QualityPurchase",
@@ -55,7 +60,7 @@ const InventorySchema = new mongoose.Schema(
     companyName: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "CompanyName",
-      required: [true, "Company is required"],
+      required: false,
     },
     kantan: {
       type: mongoose.Schema.Types.ObjectId,
@@ -86,8 +91,8 @@ const InventorySchema = new mongoose.Schema(
       ref: "PaperGSM",
       required: false,
     },
-    inventoryType:{
-      type:String
+    inventoryType: {
+      type: String,
     },
     for: {
       type: mongoose.Schema.Types.ObjectId,
@@ -98,6 +103,37 @@ const InventorySchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "Staff",
       required: [false, "Staff is required"],
+    },
+    boxLength: {
+      type: String,
+    },
+    boxWidth: {
+      type: String,
+    },
+    boxHeight: {
+      type: String,
+    },
+    deckal:{
+      type:String
+    },
+    p1gsm: {
+      deckal: { type: String },
+      gsm: { type: String },
+      totalKg: { type: String },
+    },
+    p2gsm: {
+      deckal: { type: String },
+      gsm: { type: String },
+      totalKg: { type: String },
+    },
+    p3gsm: {
+      deckal: { type: String },
+      gsm: { type: String },
+      totalKg: { type: String },
+    },
+    booked: {
+      type: Boolean,
+      default: false,
     },
   },
   { timestamps: true }

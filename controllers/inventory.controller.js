@@ -18,6 +18,7 @@ exports.getInventoryByCategory = async (req, res) => {
       .populate("vendor", "name")
       .populate("companyName", "companyName")
       .populate("for", "roleName")
+      .populate("kantan", "kantanName")
       .populate("forCompany", "firstName lastName")
       .sort({ date: -1 });
 
@@ -79,6 +80,7 @@ exports.getAllInventory = async (req, res) => {
       .populate("vendor", "name")
       .populate("companyName", "companyName")
       .populate("for", "roleName")
+      .populate("kantan", "kantanName")
       .populate("forCompany", "firstName lastName")
       .sort({ date: -1 });
 

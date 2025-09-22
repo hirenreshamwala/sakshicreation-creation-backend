@@ -3,6 +3,7 @@ const QpData = require("../models/qpOrder.model"); // Adjust path to your model
 const Staff = require("../models/staff.model");
 const Inventory = require("../models/inventory.model"); // Import Inventory model
 const PackagingOption = require("../models/packagingOption.model");
+const _ = require("lodash");
 
 // Add a new QP Order
 exports.createQpOrder = async (req, res) => {
@@ -377,72 +378,205 @@ exports.updateQpOrder = async (req, res) => {
     const getRole = await Staff.findById(qpOrder);
 
     // Create outward inventory entry if status changed to completed
+    // inside updateQpOrder after statusChangedToCompleted check
+
     if (statusChangedToCompleted) {
-      if (qpOrder.noOfPieces) {
-        const outwardInventory = new Inventory({
-          category: "factory", // Adjust category as needed
+      // 🔹 Box Inward (with actualNoOfPieces)
+      if (qpOrder.actualNoOfPieces) {
+        const inwardBox = new Inventory({
+          category: "factory",
           type: "inward",
           inventoryType: "Box",
-          quantity: qpOrder.noOfPieces || undefined,
-          vendor: qpOrder.vendor || undefined,
+          quantity: qpOrder.actualNoOfPieces || undefined,
+          booked: qpOrder.booked || false,
+          boxLength: qpOrder.orderdata?.length || undefined,
+          boxWidth: qpOrder.orderdata?.width || undefined,
+          boxHeight: qpOrder.orderdata?.height || undefined,
+          p1gsm: qpOrder.actualPaperKG?.paper1 || undefined,
+          p2gsm: qpOrder.actualPaperKG?.paper2 || undefined,
+          p3gsm: qpOrder.actualPaperKG?.paper3 || undefined,
           date: new Date(),
           qpPurchase: qpOrder._id,
+          qpOrder: qpOrder._id,
           companyName: qpOrder.companyName,
           for: qpOrder.assignedTo || undefined,
           forCompany: qpOrder.createdBy || undefined,
         });
-        await outwardInventory.save({ session });
+
+        if (qpOrder.actualNoOfPieces) {
+          inwardBox.actualNoOfPieces = qpOrder.actualNoOfPieces;
+        }
+
+        await inwardBox.save({ session });
       }
-      if (qpOrder.wire.trim() !== "") {
-        const outwardInventory = new Inventory({
-          category: "factory", // Adjust category as needed
+
+      // 🔹 Box Outward (only noOfPieces)
+      if (qpOrder.noOfPieces) {
+        const outwardBox = new Inventory({
+          category: "factory",
           type: "outward",
-          inventoryType: "Wire",
-          kg: qpOrder.wire || undefined,
-          vendor: qpOrder.vendor || undefined,
+          inventoryType: "Box",
+          quantity: qpOrder.noOfPieces || undefined,
+          booked: qpOrder.booked || false,
+          boxLength: qpOrder.orderdata?.length || undefined,
+          boxWidth: qpOrder.orderdata?.width || undefined,
+          boxHeight: qpOrder.orderdata?.height || undefined,
+          p1gsm: qpOrder.actualPaperKG?.paper1 || undefined,
+          p2gsm: qpOrder.actualPaperKG?.paper2 || undefined,
+          p3gsm: qpOrder.actualPaperKG?.paper3 || undefined,
           date: new Date(),
+          qpOrder: qpOrder._id,
           qpPurchase: qpOrder._id,
           companyName: qpOrder.companyName,
           for: qpOrder.assignedTo || undefined,
           forCompany: qpOrder.createdBy || undefined,
         });
-        await outwardInventory.save({ session });
+
+        await outwardBox.save({ session });
       }
-      if (qpOrder.glue.trim() !== "") {
-        console.log("glue store");
-        const outwardInventory2 = new Inventory({
-          category: "factory", // Adjust category as needed
+      if (qpOrder.actualPaperKG) {
+        // for paper1
+        const outwardPaper1 = new Inventory({
+          category: "factory",
+          type: "outward",
+          inventoryType: "Paper",
+          p1gsm: qpOrder.actualPaperKG?.paper1 || undefined,
+          p2gsm: qpOrder.actualPaperKG?.paper1 || undefined,
+          p3gsm: qpOrder.actualPaperKG?.paper1 || undefined,
+          date: new Date(),
+          qpOrder: qpOrder._id,
+          qpPurchase: qpOrder._id,
+          companyName: qpOrder.companyName,
+          for: qpOrder.assignedTo || undefined,
+          forCompany: qpOrder.createdBy || undefined,
+        });
+
+        await outwardPaper1.save({ session });
+
+        // for paper 2
+        if (
+          !_.isEqual(qpOrder.actualPaperKG.paper1, qpOrder.actualPaperKG.paper2)
+        ) {
+          const outwardPaper2 = new Inventory({
+            category: "factory",
+            type: "outward",
+            inventoryType: "Paper",
+            p1gsm: qpOrder.actualPaperKG?.paper2 || undefined,
+            p2gsm: qpOrder.actualPaperKG?.paper2 || undefined,
+            p3gsm: qpOrder.actualPaperKG?.paper2 || undefined,
+            date: new Date(),
+            qpOrder: qpOrder._id,
+            qpPurchase: qpOrder._id,
+            companyName: qpOrder.companyName,
+            for: qpOrder.assignedTo || undefined,
+            forCompany: qpOrder.createdBy || undefined,
+          });
+
+          await outwardPaper2.save({ session });
+        }
+
+        if (
+          !_.isEqual(qpOrder.actualPaperKG.paper1, qpOrder.actualPaperKG.paper2)
+        ) {
+          const outwardPaper2 = new Inventory({
+            category: "factory",
+            type: "outward",
+            inventoryType: "Paper",
+            p1gsm: qpOrder.actualPaperKG?.paper3 || undefined,
+            p2gsm: qpOrder.actualPaperKG?.paper3 || undefined,
+            p3gsm: qpOrder.actualPaperKG?.paper3 || undefined,
+            date: new Date(),
+            qpOrder: qpOrder._id,
+            qpPurchase: qpOrder._id,
+            companyName: qpOrder.companyName,
+            for: qpOrder.assignedTo || undefined,
+            forCompany: qpOrder.createdBy || undefined,
+          });
+
+          await outwardPaper2.save({ session });
+        }
+
+        if (
+          !_.isEqual(
+            qpOrder.actualPaperKG.paper3,
+            qpOrder.actualPaperKG.paper1
+          ) &&
+          !_.isEqual(qpOrder.actualPaperKG.paper3, qpOrder.actualPaperKG.paper2)
+        ) {
+          const outwardPaper3 = new Inventory({
+            category: "factory",
+            type: "outward",
+            inventoryType: "Paper",
+
+            p3gsm: paper3 || undefined,
+            date: new Date(),
+            qpOrder: qpOrder._id,
+            qpPurchase: qpOrder._id,
+            companyName: qpOrder.companyName,
+            for: qpOrder.assignedTo || undefined,
+            forCompany: qpOrder.createdBy || undefined,
+          });
+
+          await outwardPaper3.save({ session });
+        }
+      }
+      // 🔹 Kantan Outward
+      if (qpOrder.kantan && qpOrder.actualTotalKantan?.reel) {
+        const outwardKantan = new Inventory({
+          category: "factory",
+          type: "outward",
+          inventoryType: "Kantan",
+          reel:
+            convertToReels(
+              qpOrder.actualTotalKantan.reel,
+              qpOrder.actualTotalKantan.inch
+            ) || undefined,
+          kantan: qpOrder.kantan || undefined,
+          vendor: qpOrder.vendor || undefined,
+          date: new Date(),
+          qpOrder: qpOrder._id,
+          qpPurchase: qpOrder._id,
+          companyName: qpOrder.companyName,
+          for: qpOrder.assignedTo || undefined,
+          forCompany: qpOrder.createdBy || undefined,
+        });
+        await outwardKantan.save({ session });
+      }
+
+      // 🔹 Glue Outward
+      if (qpOrder.glue && qpOrder.glue.trim() !== "") {
+        const outwardGlue = new Inventory({
+          category: "factory",
           type: "outward",
           inventoryType: "Glue",
           kg: qpOrder.glue || undefined,
           vendor: qpOrder.vendor || undefined,
           date: new Date(),
+          qpOrder: qpOrder._id,
           qpPurchase: qpOrder._id,
           companyName: qpOrder.companyName,
           for: qpOrder.assignedTo || undefined,
           forCompany: qpOrder.createdBy || undefined,
         });
-        await outwardInventory2.save({ session });
+        await outwardGlue.save({ session });
       }
-      if (qpOrder.kantan !== null) {
-        const outwardInventory3 = new Inventory({
-          category: "factory", // Adjust category as needed
+
+      // 🔹 Wire Outward
+      if (qpOrder.wire && qpOrder.wire.trim() !== "") {
+        const outwardWire = new Inventory({
+          category: "factory",
           type: "outward",
-          inventoryType: "Kantan",
-          reel:
-            convertToReels(
-              qpOrder.totalKantan.reel,
-              qpOrder.totalKantan.inch
-            ) || undefined,
+          inventoryType: "Wire",
+          kg: qpOrder.wire || undefined,
           vendor: qpOrder.vendor || undefined,
           date: new Date(),
+          qpOrder: qpOrder._id,
           qpPurchase: qpOrder._id,
           companyName: qpOrder.companyName,
-          kantan: qpOrder.kantan || undefined,
           for: qpOrder.assignedTo || undefined,
           forCompany: qpOrder.createdBy || undefined,
         });
-        await outwardInventory3.save({ session });
+        await outwardWire.save({ session });
       }
     }
 
