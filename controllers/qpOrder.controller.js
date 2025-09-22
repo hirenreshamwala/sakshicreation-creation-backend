@@ -507,8 +507,7 @@ exports.updateQpOrder = async (req, res) => {
             category: "factory",
             type: "outward",
             inventoryType: "Paper",
-
-            p3gsm: paper3 || undefined,
+            p3gsm: qpOrder.actualPaperKG.paper3 || undefined,
             date: new Date(),
             qpOrder: qpOrder._id,
             qpPurchase: qpOrder._id,
