@@ -162,7 +162,7 @@ exports.createAccountMaster = async (req, res) => {
       partyTag: req.body.partyTag || "New",
       address: req.body.address,
       reference: req.body.reference,
-      statusApproval: req.body.isRequestMode ? "Pending" : "Approved", // Set based on isRequestMode
+      statusApproval: req.body.isRequestMode ? "PENDING" : "APPROVED", // Set based on isRequestMode
     };
 
     const newParty = await Party.create(partyData);
@@ -241,7 +241,7 @@ exports.getAllAccountMasters = async (req, res) => {
 
     // Build query object
     const query = {};
-    if (statusApproval && ["Pending", "Approved"].includes(statusApproval)) {
+    if (statusApproval && ["PENDING", "APPROVED"].includes(statusApproval)) {
       query["party.statusApproval"] = statusApproval;
     }
 
@@ -840,7 +840,7 @@ exports.bulkCreateAccountMasters = async (req, res) => {
           GSTNo: row.GSTNo || null,
           address,
           reference: row.reference || null,
-          statusApproval: row.isRequestMode === "TRUE" ? "Pending" : "Approved",
+          statusApproval: row.isRequestMode === "TRUE" ? "PENDING" : "APPROVED",
           createdBy: staff._id,
           partyTag,
         };
@@ -1504,14 +1504,14 @@ exports.approveParty = async (req, res) => {
       });
     }
 
-    if (party.statusApproval === "Approved") {
+    if (party.statusApproval === "APPROVED") {
       return res.status(400).json({
         success: false,
         message: "Party is already approved",
       });
     }
 
-    party.statusApproval = "Approved";
+    party.statusApproval = "APPROVED";
     await party.save();
 
     const accountMaster = await AccountMaster.findOne({ party: id })

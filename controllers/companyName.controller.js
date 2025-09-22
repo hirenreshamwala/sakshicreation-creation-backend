@@ -279,7 +279,7 @@ exports.getPartywithCompany = async (req, res) => {
   })
   .populate({
     path: 'party',
-    match: { statusApproval: "Approved" },
+    match: { statusApproval: "APPROVED" },
     select: 'partyName _id statusApproval address.unitNo address.marketName',
     populate: {
       path: 'address.marketName', // nested populate
