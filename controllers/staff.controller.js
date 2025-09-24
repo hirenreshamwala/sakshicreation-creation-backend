@@ -111,20 +111,7 @@ exports.createStaff = async (req, res) => {
         message: "Invalid role ID. No matching role found.",
       });
     }
-    const companyId = req.body.CompanyName;
-    if (!mongoose.Types.ObjectId.isValid(companyId)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid company ID format.",
-      });
-    }
-    const companyExists = await CompanyName.findById(companyId);
-    if (!companyExists) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid company ID. No matching company found.",
-      });
-    }
+  
     const hashedPassword = encryptData(req.body.password);
 
     const staffData = {
@@ -137,7 +124,7 @@ exports.createStaff = async (req, res) => {
       aadharNo: req.body.aadharNo,
       joiningDate: new Date(req.body.joiningDate),
       birthDay: req.body.birthDay ? new Date(req.body.birthDay) : null,
-      CompanyName: companyId,
+      CompanyName: req.body.CompanyName  ,
       password: hashedPassword,
       role: roleId,
       aadharFiles: req.body.aadharFiles, // Required
@@ -396,13 +383,7 @@ exports.loginStaff = async (req, res) => {
     }
 
     // Find staff by email and populate role
-    const staff = await Staff.findOne({ email }).populate("role").populate({
-    path: "role",
-    populate: {
-      path: "company", // field in Role schema
-      model: "CompanyName", // optional if Mongoose infers
-    },
-  });
+    const staff = await Staff.findOne({ email }).populate(["role","CompanyName"]);
     if (!staff) {
       return res.status(401).json({
         success: false,
@@ -463,6 +444,7 @@ exports.loginStaff = async (req, res) => {
         lastName: staff.lastName,
         email: staff.email,
         role: staff.role,
+        company:staff.CompanyName,
         requestType,
         deviceToken,
         token,

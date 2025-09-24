@@ -23,11 +23,11 @@ const staffSchema = new mongoose.Schema(
       ref: "Role",
       required: true,
     },
-    CompanyName: {
+    CompanyName: [{
       type: mongoose.Schema.Types.ObjectId,
       ref: "CompanyName",
       required: true,
-    },
+    }],
     status: { type: Boolean, default: true },
     resetPasswordToken: { type: String },
     resetPasswordExpires: { type: Date },

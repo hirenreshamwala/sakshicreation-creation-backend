@@ -5,11 +5,6 @@ const roleSchema = new mongoose.Schema({
   roleName: { type: String },
   isDelete: { type: Boolean, default: false },
   totalUser: { type: Number, default: 0 },
-  company: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: "CompanyName",
-    required: false,
-  },
   permissions: permissionSchema,
 });
 
