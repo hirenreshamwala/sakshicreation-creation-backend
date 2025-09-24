@@ -5,6 +5,12 @@ const quotationHistory = new mongoose.Schema(
     unitPrice: {
       type: String,
     },
+    qty: {
+      type: String,
+    },
+    gst: {
+      type: String,
+    },
   },
   {
     timestamps: true,
