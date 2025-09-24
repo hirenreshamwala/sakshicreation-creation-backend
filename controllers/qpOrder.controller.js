@@ -154,8 +154,8 @@ exports.createQpOrder = async (req, res) => {
   }
 };
 
-// Get all QP Orders
-// Get all QP Orders with filters in req.body
+
+
 exports.getAllQpOrders = async (req, res) => {
   try {
     const { status, companyName, party, createdBy, orderNo } = req.body; // filters from body

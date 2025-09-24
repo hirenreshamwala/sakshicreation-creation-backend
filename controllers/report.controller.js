@@ -347,6 +347,37 @@ const getSCReport = async (req, res) => {
       const completedTasks = await AssignTask.countDocuments({ assignTo: staff._id, companyName: company._id, status: { $regex: '^completed$', $options: 'i' }, ...taskLeadDateFilter });
       const cancelledTasks = await AssignTask.countDocuments({ assignTo: staff._id, companyName: company._id, status: { $regex: '^cancelled$', $options: 'i' }, ...taskLeadDateFilter });
       const rescheduledTasks = await AssignTask.countDocuments({ assignTo: staff._id, companyName: company._id, status: { $regex: '^rescheduled$', $options: 'i' }, ...taskLeadDateFilter });
+      const visitTasks = await AssignTask.find({
+        assignTo: staff._id,
+        companyName: company._id,
+        reasonForVisit: { $regex: '^visit$', $options: 'i' },
+        ...taskLeadDateFilter,
+      }).select('partyName status');
+
+      let partyVisit = 0;
+      let donePartyVisit = 0;
+      let cancelledPartyVisit = 0;
+
+      if (visitTasks.length > 0) {
+        // Fetch all partyIds
+        const partyIds = visitTasks.map(t => t.partyName);
+
+        // Get only NEW parties
+        const newParties = await Party.find({ _id: { $in: partyIds }, partyTag: 'NEW' }).select('_id');
+        const newPartyIds = newParties.map(p => p._id.toString());
+
+        // Loop and bucket them
+        for (const task of visitTasks) {
+          if (newPartyIds.includes(task.partyName.toString())) {
+            partyVisit++;
+            if (/^completed$/i.test(task.status)) {
+              donePartyVisit++;
+            } else if (/^cancelled$/i.test(task.status)) {
+              cancelledPartyVisit++;
+            }
+          }
+        }
+      }
 
       const completedLeads = await Lead.countDocuments({ assignedTo: staff._id, companyName: company._id, status: { $regex: '^completed$', $options: 'i' }, ...taskLeadDateFilter });
       const cancelledLeads = await Lead.countDocuments({ assignedTo: staff._id, companyName: company._id, status: { $regex: '^cancelled$', $options: 'i' }, ...taskLeadDateFilter });
@@ -355,10 +386,56 @@ const getSCReport = async (req, res) => {
       const qpOrders = await QpData.countDocuments({ createdBy: staff._id, companyName: company._id, ...otherModelsDateFilter });
       const sakshiOrders = await Order.countDocuments({ createdBy: staff._id, companyName: company._id, ...otherModelsDateFilter });
       const ordersGiven = sakshiOrders;
+      const totalSaleData = await Order.aggregate([
+        {
+          $match: {
+            companyName: company._id,
+            createdBy: staff._id,
+            ...otherModelsDateFilter,
+          },
+        },
+        {
+          $project: {
+            lastQuotation: { $arrayElemAt: ["$quotation", -1] }, // last entry
+          },
+        },
+        {
+          $project: {
+            unitPrice: { $toDouble: "$lastQuotation.unitPrice" },
+            qty: { $toDouble: "$lastQuotation.qty" },
+            gst: { $toDouble: "$lastQuotation.gst" },
+          },
+        },
+        {
+          $project: {
+            total: { $multiply: ["$unitPrice", "$qty"] },
+            gstAmount: {
+              $divide: [
+                { $multiply: ["$unitPrice", "$qty", "$gst"] },
+                100,
+              ],
+            },
+          },
+        },
+        {
+          $project: {
+            grandTotal: { $add: ["$total", "$gstAmount"] },
+          },
+        },
+        {
+          $group: {
+            _id: null,
+            totalSale: { $sum: "$grandTotal" },
+          },
+        },
+      ]);
+
+
+      const totalSale = totalSaleData.length > 0 ? totalSaleData[0].totalSale : 0;
 
       const qpOrderParties = await QpData.find({ createdBy: staff._id, companyName: company._id, ...otherModelsDateFilter }).distinct('party');
       const sakshiOrderParties = await Order.find({ createdBy: staff._id, companyName: company._id, ...otherModelsDateFilter }).distinct('party');
-      const newToCustomerParties = await Party.countDocuments({ _id: { $in: [...new Set([ ...sakshiOrderParties])] }, partyTag: 'CUSTOMER' });
+      const newToCustomerParties = await Party.countDocuments({ _id: { $in: [...new Set([...sakshiOrderParties])] }, partyTag: 'CUSTOMER' });
 
       const createdParties = await AccountMaster.find({ createdBy: staff._id, companyName: company._id, ...otherModelsDateFilter }).distinct('party');
       const newPartiesStillNew = await Party.countDocuments({ _id: { $in: createdParties }, partyTag: 'NEW' });
@@ -370,16 +447,20 @@ const getSCReport = async (req, res) => {
         companyName: company.companyName,
         completedTasks,
         cancelledTasks,
-        doneTask: completedTasks+cancelledTasks,
+        doneTask: completedTasks + cancelledTasks,
         rescheduledTasks,
         completedLeads,
         cancelledLeads,
-        doneLeads: completedLeads+cancelledLeads,
+        doneLeads: completedLeads + cancelledLeads,
         rescheduledLeads,
         ordersGiven,
         newToCustomerParties,
         createdParties: createdParties.length,
         newPartiesStillNew,
+        totalSale,
+        partyVisit,
+        donePartyVisit,
+        cancelledPartyVisit,
       };
     }));
 
@@ -410,6 +491,37 @@ const getQPReport = async (req, res) => {
       const completedTasks = await AssignTask.countDocuments({ assignTo: staff._id, companyName: company._id, status: { $regex: '^completed$', $options: 'i' }, ...taskLeadDateFilter });
       const cancelledTasks = await AssignTask.countDocuments({ assignTo: staff._id, companyName: company._id, status: { $regex: '^cancelled$', $options: 'i' }, ...taskLeadDateFilter });
       const rescheduledTasks = await AssignTask.countDocuments({ assignTo: staff._id, companyName: company._id, status: { $regex: '^rescheduled$', $options: 'i' }, ...taskLeadDateFilter });
+      const visitTasks = await AssignTask.find({
+        assignTo: staff._id,
+        companyName: company._id,
+        reasonForVisit: { $regex: '^visit$', $options: 'i' },
+        ...taskLeadDateFilter,
+      }).select('partyName status');
+
+      let partyVisit = 0;
+      let donePartyVisit = 0;
+      let cancelledPartyVisit = 0;
+
+      if (visitTasks.length > 0) {
+        // Fetch all partyIds
+        const partyIds = visitTasks.map(t => t.partyName);
+
+        // Get only NEW parties
+        const newParties = await Party.find({ _id: { $in: partyIds }, partyTag: 'NEW' }).select('_id');
+        const newPartyIds = newParties.map(p => p._id.toString());
+
+        // Loop and bucket them
+        for (const task of visitTasks) {
+          if (newPartyIds.includes(task.partyName.toString())) {
+            partyVisit++;
+            if (/^completed$/i.test(task.status)) {
+              donePartyVisit++;
+            } else if (/^cancelled$/i.test(task.status)) {
+              cancelledPartyVisit++;
+            }
+          }
+        }
+      }
 
       const completedLeads = await Lead.countDocuments({ assignedTo: staff._id, companyName: company._id, status: { $regex: '^completed$', $options: 'i' }, ...taskLeadDateFilter });
       const cancelledLeads = await Lead.countDocuments({ assignedTo: staff._id, companyName: company._id, status: { $regex: '^cancelled$', $options: 'i' }, ...taskLeadDateFilter });
@@ -418,6 +530,25 @@ const getQPReport = async (req, res) => {
       const qpOrders = await QpData.countDocuments({ createdBy: staff._id, companyName: company._id, ...otherModelsDateFilter });
       const sakshiOrders = await Order.countDocuments({ createdBy: staff._id, companyName: company._id, ...otherModelsDateFilter });
       const ordersGiven = qpOrders;
+
+      const qpTotalSaleData = await QpData.aggregate([
+        {
+          $match: {
+            companyName: company._id,
+            createdBy: staff._id,
+            amount: { $ne: null, $ne: "" }, // sirf jinke amount filled hai
+            ...otherModelsDateFilter,
+          },
+        },
+        {
+          $group: {
+            _id: null,
+            totalSale: { $sum: { $toDouble: "$amount" } }, // string → number convert
+          },
+        },
+      ]);
+
+      const totalSale = qpTotalSaleData.length > 0 ? qpTotalSaleData[0].totalSale : 0;
 
       const qpOrderParties = await QpData.find({ createdBy: staff._id, companyName: company._id, ...otherModelsDateFilter }).distinct('party');
       const sakshiOrderParties = await Order.find({ createdBy: staff._id, companyName: company._id, ...otherModelsDateFilter }).distinct('party');
@@ -433,16 +564,20 @@ const getQPReport = async (req, res) => {
         companyName: company.companyName,
         completedTasks,
         cancelledTasks,
-        doneTask: completedTasks+cancelledTasks,
+        doneTask: completedTasks + cancelledTasks,
         rescheduledTasks,
         completedLeads,
         cancelledLeads,
-        doneLeads: completedLeads+cancelledLeads,
+        doneLeads: completedLeads + cancelledLeads,
         rescheduledLeads,
         ordersGiven,
         newToCustomerParties,
         createdParties: createdParties.length,
         newPartiesStillNew,
+        partyVisit,
+        donePartyVisit,
+        cancelledPartyVisit,
+        totalSale
       };
     }));
 
