@@ -8,7 +8,7 @@ router.post("/create", AssignTaskController.createAssignTask);
 router.post("/create/bulk", AssignTaskController.bulkCreateTasks);
 
 // Get all assign tasks
-router.get("/getall", AssignTaskController.getAllAssignTasks);
+router.post("/getall", AssignTaskController.getAllAssignTasks);
 
 // Get a single assign task by ID
 router.get("/getbyid/:id", AssignTaskController.getAssignTaskById);

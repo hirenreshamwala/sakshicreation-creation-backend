@@ -265,7 +265,7 @@ exports.getPartywithCompany = async (req, res) => {
   try {
     const { id } = req.params;
 
-    // Validate if companyId is a valid ObjectId
+    // Validate ObjectId
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({
         success: false,
@@ -273,43 +273,56 @@ exports.getPartywithCompany = async (req, res) => {
       });
     }
 
-    // Find all account masters that belong to the specified company
-    const accountMasters = await AccountMaster.find({ 
-    companyName: id 
-  })
-  .populate({
-    path: 'party',
-    match: { statusApproval: "APPROVED" },
-    select: 'partyName _id statusApproval address.unitNo address.marketName',
-    populate: {
-      path: 'address.marketName', // nested populate
-      model: 'Market',            // the referenced model
-      select: 'marketName _id'    // pick fields you need
+    const user = req.user;
+    console.log("DEBUG : user:", user);
+
+    let query = { companyName: id };
+    console.log("DEBUG : query:", query);
+
+
+
+    if (!["admin", "manager"].includes(user.role?.toLowerCase())) {
+      query.createdBy = user.id;
+      console.log("DEBUG : query.createdBy:", query.createdBy);
+
     }
-  })
-  .sort({ 'party.partyName': 1 });
 
+    // Find all account masters that belong to the specified company
+    const accountMasters = await AccountMaster.find(query)
+      .populate({
+        path: "party",
+        match: { statusApproval: "APPROVED" },
+        select: "partyName _id statusApproval address.unitNo address.marketName",
+        populate: {
+          path: "address.marketName", // nested populate
+          model: "Market",
+          select: "marketName _id",
+        },
+      })
+      .sort({ "party.partyName": 1 });
 
-    // Filter out any account masters where party is null (due to the match condition)
-    const filteredAccounts = accountMasters.filter(account => account.party !== null);
+    // Filter out null parties (due to match)
+    const filteredAccounts = accountMasters.filter(
+      (account) => account.party !== null
+    );
 
-    // Transform the data
-    const parties = filteredAccounts.map(account => ({
+    // Transform data
+    const parties = filteredAccounts.map((account) => ({
       _id: account.party._id,
       partyName: account.party.partyName,
       unitNo: account.party.address.unitNo,
-      marketName: account.party.address.marketName?.marketName || ""
+      marketName: account.party.address.marketName?.marketName || "",
     }));
 
     res.status(200).json({
       success: true,
       data: parties,
       count: parties.length,
-      message: parties.length > 0 
-        ? "Approved parties fetched successfully" 
-        : "No approved parties found for this company",
+      message:
+        parties.length > 0
+          ? "Approved parties fetched successfully"
+          : "No approved parties found for this company",
     });
-
   } catch (error) {
     console.error("Error fetching approved parties by company:", error);
     res.status(500).json({

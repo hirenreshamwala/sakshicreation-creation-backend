@@ -237,65 +237,82 @@ exports.createAccountMaster = async (req, res) => {
 
 exports.getAllAccountMasters = async (req, res) => {
   try {
-    const { statusApproval } = req.query; // Optional query parameter
+    const filters = req.body || {};
 
-    // Build query object
+    // Base query object
     const query = {};
-    if (statusApproval && ["Pending", "Approved"].includes(statusApproval)) {
-      query["party.statusApproval"] = statusApproval;
+
+    // companyName filter
+    if (filters.companyName) {
+      query.companyName = filters.companyName;
     }
 
-    const accountMasters = await AccountMaster.find()
+    // createdBy (Staff Id) filter
+    if (filters.createdBy) {
+      query.createdBy = filters.createdBy;
+    }
+
+    // reasonToVisit filter
+    if (filters.reasonToVisit) {
+      query.reasonToVisit = { $regex: filters.reasonToVisit, $options: "i" };
+    }
+
+    if (filters.startDate || filters.endDate) {
+      query.createdAt = {};
+      if (filters.startDate) {
+        query.createdAt.$gte = new Date(filters.startDate).setHours(0, 0, 0, 0);
+      }
+      if (filters.endDate) {
+        query.createdAt.$lte = new Date(filters.endDate).setHours(23, 59, 59, 999);
+      }
+    }
+
+    let partyMatch = {};
+
+    if (filters.partyName) {
+      partyMatch.partyName = { $regex: filters.partyName, $options: "i" };
+    }
+
+    if (filters.ownerWhatsAppNo) {
+      partyMatch.ownerWhatsAppNo = filters.ownerWhatsAppNo;
+    }
+
+    if (filters.statusApproval) {
+      partyMatch.statusApproval = filters.statusApproval;
+    }
+
+    if (filters.partyTag) {
+      partyMatch.partyTag = filters.partyTag;
+    }
+
+    const accountMasters = await AccountMaster.find(query)
       .populate("createdBy", "firstName lastName email")
       .populate("companyName", "companyName avatar _id")
       .populate({
         path: "party",
         select: "-__v",
+        match: partyMatch, // यहाँ सारे party filters लगेंगे
         populate: [
-          {
-            path: "address.marketName",
-            model: "Market",
-            select: "marketName", // only marketName
-          },
-          {
-            path: "address.streetAddress",
-            model: "Market",
-            select: "streetAddress", // only streetAddress
-          },
-          {
-            path: "address.landMark",
-            model: "Market",
-            select: "landmark", // only landMark
-          },
-          {
-            path: "address.area",
-            model: "Market",
-            select: "area", // only area
-          },
-          {
-            path: "address.pincode",
-            model: "Market",
-            select: "pincode", // only pincode
-          },
+          { path: "address.marketName", model: "Market", select: "marketName" },
+          { path: "address.streetAddress", model: "Market", select: "streetAddress" },
+          { path: "address.landMark", model: "Market", select: "landmark" },
+          { path: "address.area", model: "Market", select: "area" },
+          { path: "address.pincode", model: "Market", select: "pincode" },
         ],
       })
       .sort({ createdAt: -1 });
 
-    // Filter out null parties (in case some don't match the statusApproval)
+    // Filter out null parties (अगर match नहीं हुआ तो null आएगा)
     const filteredAccountMasters = accountMasters.filter(
       (account) => account.party !== null
     );
 
+    // AssignTask logic same रहेगा
     const assignTasks = await AssignTask.aggregate([
-      {
-        $sort: { createdAt: -1 },
-      },
+      { $sort: { createdAt: -1 } },
       {
         $group: {
-          _id: {
-            partyName: "$partyName",
-            companyName: "$companyName",
-          },
+          _id: { partyName: "$partyName", companyName: "$companyName" },
           latestTask: { $first: "$$ROOT" },
         },
       },
@@ -356,12 +373,11 @@ exports.getAllAccountMasters = async (req, res) => {
             contactForPayment: account.party.contactForPayment,
             contactMobileNo: account.party.contactMobileNo,
             contactWhatsAppNo: account.party.contactWhatsAppNo,
-            contactForPaymentEmail:
-              account.party.contactForPaymentEmail || "N/A",
+            contactForPaymentEmail: account.party.contactForPaymentEmail || "N/A",
             GSTNo: account.party.GSTNo,
             address: account.party.address,
             partyTag: account.party.partyTag,
-            statusApproval: account.party.statusApproval, // Include statusApproval
+            statusApproval: account.party.statusApproval,
             createdAt: account.party.createdAt,
             updatedAt: account.party.updatedAt,
           },
@@ -384,6 +400,7 @@ exports.getAllAccountMasters = async (req, res) => {
     });
   }
 };
+
 // exports.bulkCreateAccountMasters = async (req, res) => {
 //   const session = await mongoose.startSession();
 //   session.startTransaction();
@@ -1300,10 +1317,10 @@ exports.updateAccountMasterStatus = async (req, res) => {
         : null,
       assignedTo: assignedTo
         ? {
-            _id: assignedTo._id,
-            name: `${assignedTo.firstName} ${assignedTo.lastName}`,
-            email: assignedTo.email,
-          }
+          _id: assignedTo._id,
+          name: `${assignedTo.firstName} ${assignedTo.lastName}`,
+          email: assignedTo.email,
+        }
         : null,
       remarks,
       status,
@@ -1721,16 +1738,35 @@ exports.searchParties = async (req, res) => {
 exports.getQualityPackingParties = async (req, res) => {
   try {
     // Find the CompanyName document for "Quality Packaging"
-    const company = await CompanyName.findOne({ companyName: "Quality Packaging" });
+    const searchName = "Quality Packaging";
+
+    const company = await CompanyName.aggregate([
+      {
+        $match: {
+          $expr: {
+            $eq: [
+              { $toLower: { $trim: { input: "$companyName" } } },
+              searchName.trim().toLowerCase()
+            ]
+          }
+        }
+      }
+    ]);
+    console.log("DEBUG : company:", company);
+
 
     if (!company) {
       return res.status(404).json({ message: "Company 'Quality Packaging' not found" });
     }
 
     // Find all parties associated with the company and populate only partyName
-    const parties = await Party.find({ companyName: company._id })
+    console.log("DEBUG : company._id:", company[0]._id);
+    const parties = await Party.find({ companyName: company[0]._id })
+
       .select("partyName") // Select only the partyName field
       .lean(); // Use lean for better performance since we don't need Mongoose documents
+    console.log("DEBUG : parties:", parties);
+
 
     return res.status(200).json({
       message: "Parties retrieved successfully",

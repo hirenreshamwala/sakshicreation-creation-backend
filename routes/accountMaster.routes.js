@@ -9,7 +9,7 @@ const router = express.Router();
 router.post("/create",authenticateToken, AccountMasterController.createAccountMaster);
 
 // Get all account masters
-router.get("/getall",authenticateToken, AccountMasterController.getAllAccountMasters);
+router.post("/getall",authenticateToken, AccountMasterController.getAllAccountMasters);
 router.get("/getqp",authenticateToken, AccountMasterController.getQualityPackingParties);
 
 router.put("/party/:id/approve",authenticateToken, AccountMasterController.approveParty);
