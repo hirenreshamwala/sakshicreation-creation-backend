@@ -155,9 +155,39 @@ exports.createQpOrder = async (req, res) => {
 };
 
 // Get all QP Orders
+// Get all QP Orders with filters in req.body
 exports.getAllQpOrders = async (req, res) => {
   try {
-    const qpOrders = await QpData.find()
+    const { status, companyName, party, createdBy, orderNo } = req.body; // filters from body
+
+    const filter = {};
+
+    if (status) {
+      // Allow array or single status
+      if (Array.isArray(status)) {
+        filter.status = { $in: status };
+      } else {
+        filter.status = status;
+      }
+    }
+
+    if (companyName && mongoose.Types.ObjectId.isValid(companyName)) {
+      filter.companyName = companyName;
+    }
+
+    if (party && mongoose.Types.ObjectId.isValid(party)) {
+      filter.party = party;
+    }
+
+    if (createdBy && mongoose.Types.ObjectId.isValid(createdBy)) {
+      filter.createdBy = createdBy;
+    }
+
+    if (orderNo) {
+      filter.orderNo = orderNo;
+    }
+
+    const qpOrders = await QpData.find(filter)
       .populate({
         path: "companyName",
         select: "companyName avatar",
@@ -173,6 +203,7 @@ exports.getAllQpOrders = async (req, res) => {
       )
       .populate("kantan", "kantanName")
       .sort({ createdAt: -1 });
+
     res.status(200).json({
       success: true,
       message: "QP Orders fetched successfully",

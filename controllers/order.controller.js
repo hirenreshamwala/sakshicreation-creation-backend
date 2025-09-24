@@ -216,79 +216,62 @@ exports.createOrder = async (req, res) => {
 exports.getAllOrders = async (req, res) => {
   try {
     const {
-      page = 1,
-      limit = 10,
-      status,
+      status,       // array of statuses
       companyName,
       party,
-      search,
-    } = req.query;
+      staff,        // createdBy staff id
+      startDate,
+      endDate,
+    } = req.body;
 
-    console.log("=== GET ALL ORDERS DEBUG ===");
-    console.log("Query params:", req.query);
-    console.log("===========================");
-
-    // Build filter object
     const filter = {};
 
-    if (status) {
-      filter.status = status;
+    // ✅ Status filter (multiple)
+    if (status && Array.isArray(status) && status.length > 0) {
+      filter.status = { $in: status };
     }
 
+    // Company filter
     if (companyName && mongoose.Types.ObjectId.isValid(companyName)) {
       filter.companyName = companyName;
     }
 
+    // Party filter
     if (party && mongoose.Types.ObjectId.isValid(party)) {
       filter.party = party;
     }
 
-    const skip = (Number.parseInt(page) - 1) * Number.parseInt(limit);
+    // Staff filter → match createdBy
+    if (staff && mongoose.Types.ObjectId.isValid(staff)) {
+      filter.createdBy = staff;
+    }
 
-    // Get orders with population
+    // Date range filter
+    if (startDate && endDate) {
+      const start = new Date(startDate);
+      start.setHours(0, 0, 0, 0);
+      const end = new Date(endDate);
+      end.setHours(23, 59, 59, 999);
+      filter.createdAt = { $gte: start, $lte: end };
+    }
+
+    // Fetch orders without pagination
     const orders = await Order.find(filter)
-      .populate("companyName")
-      .populate("party")
+      .populate("companyName", "companyName avatar")
+      .populate("party", "partyName")
       .populate("productItem", "itemName")
-      .populate("createdBy")
+      .populate("createdBy", "firstName lastName")
       .populate("designer", "firstName lastName")
       .populate("printer", "firstName lastName")
-      .populate("deliveryStaff", "name")
-
       .populate("binder", "firstName lastName")
       .populate("bookletBinder", "firstName lastName")
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(Number.parseInt(limit));
-
-    // Then conditionally remove GST if isGst is false
-    // orders = orders.map((order) => {
-    //   if (!order.isGst && order.party) {
-    //     // Create a new party object without GSTNo
-    //     const { GSTNo, ...partyWithoutGst } = order.party.toObject();
-    //     return {
-    //       ...order.toObject(),
-    //       party: partyWithoutGst,
-    //     };
-    //   }
-    //   return order;
-    // });
-
-    // Get total count
-    const totalCount = await Order.countDocuments(filter);
-
-    console.log(`📊 Found ${orders.length} orders out of ${totalCount} total`);
+      .populate("deliveryStaff", "firstName lastName")
+      .sort({ createdAt: -1 });
 
     res.status(200).json({
       success: true,
+      count: orders.length,
       data: orders,
-      pagination: {
-        currentPage: Number.parseInt(page),
-        totalPages: Math.ceil(totalCount / Number.parseInt(limit)),
-        totalCount,
-        hasNext: skip + orders.length < totalCount,
-        hasPrev: Number.parseInt(page) > 1,
-      },
     });
   } catch (error) {
     console.error("❌ Get all orders error:", error);
@@ -299,6 +282,9 @@ exports.getAllOrders = async (req, res) => {
     });
   }
 };
+
+
+
 
 exports.getOrderById = async (req, res) => {
   try {

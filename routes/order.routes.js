@@ -18,7 +18,7 @@ const { authenticateToken } = require("../middleware/auth");
 
 router.post("/create", authenticateToken, createOrder);
 
-router.get("/all", getAllOrders);
+router.post("/all", getAllOrders);
 router.get("/getbystaffid/:id", getOrdersByStaffId);
 
 router.get("/printer", authenticateToken, getPrinterById);

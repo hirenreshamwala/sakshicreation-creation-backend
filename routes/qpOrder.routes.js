@@ -4,7 +4,7 @@ const QpOrderController = require("../controllers/qpOrder.controller");
 const { authenticateToken } = require("../middleware/auth");
 
 router.post("/create",authenticateToken,QpOrderController.createQpOrder);
-router.get("/getall", QpOrderController.getAllQpOrders);
+router.post("/getall", QpOrderController.getAllQpOrders);
 router.get("/getbyid/:id", QpOrderController.getQpOrderById);
 router.put("/update/:id", QpOrderController.updateQpOrder);
 router.delete("/delete/:id", QpOrderController.deleteQpOrder);

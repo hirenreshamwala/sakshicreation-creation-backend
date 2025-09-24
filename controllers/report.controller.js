@@ -1,30 +1,30 @@
-const Staff = require('../models/staff.model'); 
-const AssignTask = require('../models/assignTask.model'); 
-const QpData = require('../models/qpOrder.model'); 
+const Staff = require('../models/staff.model');
+const AssignTask = require('../models/assignTask.model');
+const QpData = require('../models/qpOrder.model');
 const Order = require('../models/order.model')
 const CompanyName = require('../models/companyName.model');
 const Lead = require("../models/lead.model")
-const Role = require('../models/role.model'); 
-const Party = require('../models/Party.model'); 
-const AccountMaster = require('../models/accountMaster.model'); 
+const Role = require('../models/role.model');
+const Party = require('../models/Party.model');
+const AccountMaster = require('../models/accountMaster.model');
 const mongoose = require('mongoose');
 
 // Helper function to build date filter
 const buildDateFilter = (startDate, endDate, useCreatedAt = false) => {
   const filter = {};
-  
+
   if (startDate && endDate) {
     const start = new Date(startDate);
     const end = new Date(endDate);
     end.setHours(23, 59, 59, 999); // End of day
-    
+
     if (useCreatedAt) {
       filter.createdAt = { $gte: start, $lte: end };
     } else {
       filter.date = { $gte: start, $lte: end };
     }
   }
-  
+
   return filter;
 };
 
@@ -39,14 +39,14 @@ const getStaffReport = async (req, res) => {
     if (startDate && endDate) {
       const start = new Date(startDate);
       const end = new Date(endDate);
-      
+
       if (isNaN(start.getTime()) || isNaN(end.getTime())) {
         return res.status(400).json({
           success: false,
           message: 'Invalid date format. Use ISO format (YYYY-MM-DD)',
         });
       }
-      
+
       if (start > end) {
         return res.status(400).json({
           success: false,
@@ -112,31 +112,47 @@ const getStaffReport = async (req, res) => {
           const completedTasks = await AssignTask.countDocuments({
             assignTo: staff._id,
             companyName: company._id,
-            status: 'Completed',
+            status: { $regex: '^completed$', $options: 'i' }, // ✅ case-insensitive match
             ...taskLeadDateFilter,
           });
 
-          // Count cancelled tasks for this staff and company (using date field)
+          // Cancelled Tasks
           const cancelledTasks = await AssignTask.countDocuments({
             assignTo: staff._id,
             companyName: company._id,
-            status: 'Cancelled',
+            status: { $regex: '^cancelled$', $options: 'i' },
             ...taskLeadDateFilter,
           });
 
-          // Count completed leads for this staff and company (using date field)
+          // Rescheduled Tasks
+          const rescheduledTasks = await AssignTask.countDocuments({
+            assignTo: staff._id,
+            companyName: company._id,
+            status: { $regex: '^rescheduled$', $options: 'i' },
+            ...taskLeadDateFilter,
+          });
+
+          // Completed Leads
           const completedLeads = await Lead.countDocuments({
             assignedTo: staff._id,
             companyName: company._id,
-            status: 'completed',
+            status: { $regex: '^completed$', $options: 'i' },
             ...taskLeadDateFilter,
           });
 
-          // Count cancelled leads for this staff and company (using date field)
+          // Cancelled Leads
           const cancelledLeads = await Lead.countDocuments({
             assignedTo: staff._id,
             companyName: company._id,
-            status: 'cancelled',
+            status: { $regex: '^cancelled$', $options: 'i' },
+            ...taskLeadDateFilter,
+          });
+
+          // Rescheduled Leads
+          const rescheduledLeads = await Lead.countDocuments({
+            assignedTo: staff._id,
+            companyName: company._id,
+            status: { $regex: '^rescheduled$', $options: 'i' },
             ...taskLeadDateFilter,
           });
 
@@ -197,8 +213,10 @@ const getStaffReport = async (req, res) => {
             companyName: company.companyName,
             completedTasks,
             cancelledTasks,
+            rescheduledTasks,
             completedLeads,
             cancelledLeads,
+            rescheduledLeads,
             ordersGiven,
             newToCustomerParties,
             createdParties: createdParties.length, // Total parties created
@@ -310,4 +328,132 @@ const getStaffReport = async (req, res) => {
   }
 };
 
-module.exports = { getStaffReport };
+const getSCReport = async (req, res) => {
+  try {
+    const { startDate, endDate } = req.body;
+
+    const company = await CompanyName.findOne({ companyName: 'Sakshi Creation' }).select('_id companyName');
+    if (!company) return res.status(404).json({ success: false, message: 'Company not found' });
+
+    const salesRoles = await Role.find({ roleName: { $regex: 'Sales Staff', $options: 'i' }, isDelete: false }).select('_id');
+    const salesRoleIds = salesRoles.map(r => r._id);
+
+    const staffList = await Staff.find({ role: { $in: salesRoleIds } }).select('firstName lastName _id');
+
+    const taskLeadDateFilter = buildDateFilter(startDate, endDate, false);
+    const otherModelsDateFilter = buildDateFilter(startDate, endDate, true);
+
+    const reports = await Promise.all(staffList.map(async (staff) => {
+      const completedTasks = await AssignTask.countDocuments({ assignTo: staff._id, companyName: company._id, status: { $regex: '^completed$', $options: 'i' }, ...taskLeadDateFilter });
+      const cancelledTasks = await AssignTask.countDocuments({ assignTo: staff._id, companyName: company._id, status: { $regex: '^cancelled$', $options: 'i' }, ...taskLeadDateFilter });
+      const rescheduledTasks = await AssignTask.countDocuments({ assignTo: staff._id, companyName: company._id, status: { $regex: '^rescheduled$', $options: 'i' }, ...taskLeadDateFilter });
+
+      const completedLeads = await Lead.countDocuments({ assignedTo: staff._id, companyName: company._id, status: { $regex: '^completed$', $options: 'i' }, ...taskLeadDateFilter });
+      const cancelledLeads = await Lead.countDocuments({ assignedTo: staff._id, companyName: company._id, status: { $regex: '^cancelled$', $options: 'i' }, ...taskLeadDateFilter });
+      const rescheduledLeads = await Lead.countDocuments({ assignedTo: staff._id, companyName: company._id, status: { $regex: '^rescheduled$', $options: 'i' }, ...taskLeadDateFilter });
+
+      const qpOrders = await QpData.countDocuments({ createdBy: staff._id, companyName: company._id, ...otherModelsDateFilter });
+      const sakshiOrders = await Order.countDocuments({ createdBy: staff._id, companyName: company._id, ...otherModelsDateFilter });
+      const ordersGiven = sakshiOrders;
+
+      const qpOrderParties = await QpData.find({ createdBy: staff._id, companyName: company._id, ...otherModelsDateFilter }).distinct('party');
+      const sakshiOrderParties = await Order.find({ createdBy: staff._id, companyName: company._id, ...otherModelsDateFilter }).distinct('party');
+      const newToCustomerParties = await Party.countDocuments({ _id: { $in: [...new Set([ ...sakshiOrderParties])] }, partyTag: 'CUSTOMER' });
+
+      const createdParties = await AccountMaster.find({ createdBy: staff._id, companyName: company._id, ...otherModelsDateFilter }).distinct('party');
+      const newPartiesStillNew = await Party.countDocuments({ _id: { $in: createdParties }, partyTag: 'NEW' });
+
+      return {
+        staffId: staff._id,
+        staffName: `${staff.firstName} ${staff.lastName}`,
+        companyId: company._id,
+        companyName: company.companyName,
+        completedTasks,
+        cancelledTasks,
+        doneTask: completedTasks+cancelledTasks,
+        rescheduledTasks,
+        completedLeads,
+        cancelledLeads,
+        doneLeads: completedLeads+cancelledLeads,
+        rescheduledLeads,
+        ordersGiven,
+        newToCustomerParties,
+        createdParties: createdParties.length,
+        newPartiesStillNew,
+      };
+    }));
+
+    res.status(200).json({ success: true, data: reports, filters: { startDate, endDate, companyName: company.companyName } });
+
+  } catch (error) {
+    console.error('Error generating SC report:', error);
+    res.status(500).json({ success: false, message: 'Server error', error: error.message });
+  }
+};
+
+const getQPReport = async (req, res) => {
+  try {
+    const { startDate, endDate } = req.body;
+
+    const company = await CompanyName.findOne({ companyName: 'Quality Packaging' }).select('_id companyName');
+    if (!company) return res.status(404).json({ success: false, message: 'Company not found' });
+
+    const salesRoles = await Role.find({ roleName: { $regex: 'Sales Staff', $options: 'i' }, isDelete: false }).select('_id');
+    const salesRoleIds = salesRoles.map(r => r._id);
+
+    const staffList = await Staff.find({ role: { $in: salesRoleIds } }).select('firstName lastName _id');
+
+    const taskLeadDateFilter = buildDateFilter(startDate, endDate, false);
+    const otherModelsDateFilter = buildDateFilter(startDate, endDate, true);
+
+    const reports = await Promise.all(staffList.map(async (staff) => {
+      const completedTasks = await AssignTask.countDocuments({ assignTo: staff._id, companyName: company._id, status: { $regex: '^completed$', $options: 'i' }, ...taskLeadDateFilter });
+      const cancelledTasks = await AssignTask.countDocuments({ assignTo: staff._id, companyName: company._id, status: { $regex: '^cancelled$', $options: 'i' }, ...taskLeadDateFilter });
+      const rescheduledTasks = await AssignTask.countDocuments({ assignTo: staff._id, companyName: company._id, status: { $regex: '^rescheduled$', $options: 'i' }, ...taskLeadDateFilter });
+
+      const completedLeads = await Lead.countDocuments({ assignedTo: staff._id, companyName: company._id, status: { $regex: '^completed$', $options: 'i' }, ...taskLeadDateFilter });
+      const cancelledLeads = await Lead.countDocuments({ assignedTo: staff._id, companyName: company._id, status: { $regex: '^cancelled$', $options: 'i' }, ...taskLeadDateFilter });
+      const rescheduledLeads = await Lead.countDocuments({ assignedTo: staff._id, companyName: company._id, status: { $regex: '^rescheduled$', $options: 'i' }, ...taskLeadDateFilter });
+
+      const qpOrders = await QpData.countDocuments({ createdBy: staff._id, companyName: company._id, ...otherModelsDateFilter });
+      const sakshiOrders = await Order.countDocuments({ createdBy: staff._id, companyName: company._id, ...otherModelsDateFilter });
+      const ordersGiven = qpOrders;
+
+      const qpOrderParties = await QpData.find({ createdBy: staff._id, companyName: company._id, ...otherModelsDateFilter }).distinct('party');
+      const sakshiOrderParties = await Order.find({ createdBy: staff._id, companyName: company._id, ...otherModelsDateFilter }).distinct('party');
+      const newToCustomerParties = await Party.countDocuments({ _id: { $in: [...new Set([...qpOrderParties])] }, partyTag: 'CUSTOMER' });
+
+      const createdParties = await AccountMaster.find({ createdBy: staff._id, companyName: company._id, ...otherModelsDateFilter }).distinct('party');
+      const newPartiesStillNew = await Party.countDocuments({ _id: { $in: createdParties }, partyTag: 'NEW' });
+
+      return {
+        staffId: staff._id,
+        staffName: `${staff.firstName} ${staff.lastName}`,
+        companyId: company._id,
+        companyName: company.companyName,
+        completedTasks,
+        cancelledTasks,
+        doneTask: completedTasks+cancelledTasks,
+        rescheduledTasks,
+        completedLeads,
+        cancelledLeads,
+        doneLeads: completedLeads+cancelledLeads,
+        rescheduledLeads,
+        ordersGiven,
+        newToCustomerParties,
+        createdParties: createdParties.length,
+        newPartiesStillNew,
+      };
+    }));
+
+    res.status(200).json({ success: true, data: reports, filters: { startDate, endDate, companyName: company.companyName } });
+
+  } catch (error) {
+    console.error('Error generating QP report:', error);
+    res.status(500).json({ success: false, message: 'Server error', error: error.message });
+  }
+};
+
+
+
+module.exports = { getStaffReport, getSCReport, getQPReport };
