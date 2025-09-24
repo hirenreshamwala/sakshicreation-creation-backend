@@ -204,6 +204,29 @@ qpDataSchema.plugin(AutoIncrement, {
   start_seq: 1000,
 });
 
+qpDataSchema.pre("save", async function (next) {
+  try {
+    // Only proceed if this is a new QpData (not an update)
+    if (this.isNew) {
+      const Party = mongoose.model("Party");
+
+      // Find the party associated with this QpData
+      const party = await Party.findById(this.party);
+
+      if (party && party.partyTag === "NEW") {
+        // Update the party tag to "CUSTOMER"
+        party.partyTag = "CUSTOMER";
+        await party.save();
+        console.log(`Updated party ${party._id} tag from New to Customer in QpData`);
+      }
+    }
+    next();
+  } catch (error) {
+    console.error("Error updating party tag in QpData:", error);
+    next(error);
+  }
+});
+
 const QpData = mongoose.model("QpOrder", qpDataSchema);
 
 module.exports = QpData;

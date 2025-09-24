@@ -268,52 +268,54 @@ exports.bulkCreateTasks = async (req, res) => {
 
 exports.getAllAssignTasks = async (req, res) => {
   try {
-    const tasks = await AssignTask.find()
-      .populate({
-        path: "companyName",
-        // select: "companyName"
-      })
-      .populate({
-        path: "partyName",
-        // select: "partyName address ownerName personMobileNo"
-      })
-      .populate({
-        path: "assignTo",
-        select: "firstName lastName",
-      })
-      .populate({
-        path: "originalTaskId",
-        // select: "date status"
-      })
+    const { staffId, startDate, endDate, status, companyName, partyName } = req.body;
+    let filter = {};
+
+    // Staff filter
+    if (staffId) {
+      filter.assignTo = staffId;
+    }
+
+    // Company filter
+    if (companyName) {
+      filter.companyName = companyName;
+    }
+
+    // Party filter
+    if (partyName) {
+      filter.partyName = partyName;
+    }
+
+    // ✅ Status filter (multiple status allowed)
+    if (status && Array.isArray(status) && status.length > 0) {
+      filter.status = { $in: status };
+    }
+
+    // Date filter (date field of AssignTask)
+    if (startDate && endDate) {
+      const start = new Date(startDate);
+      start.setHours(0, 0, 0, 0);
+
+      const end = new Date(endDate);
+      end.setHours(23, 59, 59, 999);
+
+      filter.date = { $gte: start, $lte: end };
+    }
+
+    const tasks = await AssignTask.find(filter)
+      .populate("companyName")
+      .populate("partyName")
+      .populate("assignTo", "firstName lastName")
+      .populate("originalTaskId")
       .populate({
         path: "partyName",
         select: "-__v",
         populate: [
-          {
-            path: "address.marketName",
-            model: "Market",
-            select: "marketName", // only marketName
-          },
-          {
-            path: "address.streetAddress",
-            model: "Market",
-            select: "streetAddress", // only streetAddress
-          },
-          {
-            path: "address.landMark",
-            model: "Market",
-            select: "landmark", // only landMark
-          },
-          {
-            path: "address.area",
-            model: "Market",
-            select: "area", // only area
-          },
-          {
-            path: "address.pincode",
-            model: "Market",
-            select: "pincode", // only pincode
-          },
+          { path: "address.marketName", model: "Market", select: "marketName" },
+          { path: "address.streetAddress", model: "Market", select: "streetAddress" },
+          { path: "address.landMark", model: "Market", select: "landmark" },
+          { path: "address.area", model: "Market", select: "area" },
+          { path: "address.pincode", model: "Market", select: "pincode" },
         ],
       })
       .sort({ createdAt: -1 });

@@ -27,11 +27,13 @@ const paperGSM = require("./paperGSM.routes");
 const marketData = require("./marketData.routes");
 const kantan = require("./kantan.routes");
 const complain = require("./complain.routes");
+const report = require("./report.routes");
 
 
 router.use("/staff", StaffRouter);
 router.use(authenticateToken);
 router.use("/company", CompanyRouter);
+router.use("/report", report);
 router.use("/account-master", AccountMasterRouter);
 router.use("/assign-task", AssignTaskRouter);
 router.use("/orders", Order);

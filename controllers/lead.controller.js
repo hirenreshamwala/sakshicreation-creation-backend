@@ -153,21 +153,15 @@ exports.createLead = async (req, res) => {
 // Get all Leads
 exports.getAllLeads = async (req, res) => {
   try {
-    const { status, partyName, companyName } = req.query;
+    const { status, partyName, companyName, startDate, endDate, assignedTo } = req.body; 
     let filter = {};
 
-    // Apply filters based on query parameters
-    if (status) {
-      const validStatuses = ["pending", "completed", "cancelled"];
-      if (!validStatuses.includes(status)) {
-        return res.status(400).json({
-          success: false,
-          message: "Invalid status provided",
-        });
-      }
-      filter.status = status;
+    // ✅ Status filter (multiple allowed)
+    if (status && Array.isArray(status) && status.length > 0) {
+      filter.status = { $in: status };
     }
 
+    // Party filter
     if (partyName) {
       if (!mongoose.Types.ObjectId.isValid(partyName)) {
         return res.status(400).json({
@@ -178,6 +172,7 @@ exports.getAllLeads = async (req, res) => {
       filter.partyName = partyName;
     }
 
+    // Company filter
     if (companyName) {
       if (!mongoose.Types.ObjectId.isValid(companyName)) {
         return res.status(400).json({
@@ -188,7 +183,29 @@ exports.getAllLeads = async (req, res) => {
       filter.companyName = companyName;
     }
 
-    // Fetch leads with population
+    // AssignedTo filter
+    if (assignedTo) {
+      if (!mongoose.Types.ObjectId.isValid(assignedTo)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid assignedTo ID format",
+        });
+      }
+      filter.assignedTo = assignedTo;
+    }
+
+    // ✅ Date filter
+    if (startDate && endDate) {
+      const start = new Date(startDate);
+      start.setHours(0, 0, 0, 0);
+
+      const end = new Date(endDate);
+      end.setHours(23, 59, 59, 999);
+
+      filter.date = { $gte: start, $lte: end };
+    }
+
+    // Fetch leads
     const leads = await Lead.find(filter)
       .populate("companyName")
       .populate("partyName")
@@ -196,36 +213,11 @@ exports.getAllLeads = async (req, res) => {
         path: "partyName",
         select: "-__v",
         populate: [
-          {
-            path: "address.marketName",
-            model: "Market",
-            select: "marketName",
-            strictPopulate: false, // prevents CastError → returns null if not valid
-          },
-          {
-            path: "address.streetAddress",
-            model: "Market",
-            select: "streetAddress",
-            strictPopulate: false,
-          },
-          {
-            path: "address.landMark",
-            model: "Market",
-            select: "landmark",
-            strictPopulate: false,
-          },
-          {
-            path: "address.area",
-            model: "Market",
-            select: "area",
-            strictPopulate: false,
-          },
-          {
-            path: "address.pincode",
-            model: "Market",
-            select: "pincode",
-            strictPopulate: false,
-          },
+          { path: "address.marketName", model: "Market", select: "marketName", strictPopulate: false },
+          { path: "address.streetAddress", model: "Market", select: "streetAddress", strictPopulate: false },
+          { path: "address.landMark", model: "Market", select: "landmark", strictPopulate: false },
+          { path: "address.area", model: "Market", select: "area", strictPopulate: false },
+          { path: "address.pincode", model: "Market", select: "pincode", strictPopulate: false },
         ],
       })
       .populate("assignedTo", "firstName lastName email")
@@ -233,19 +225,8 @@ exports.getAllLeads = async (req, res) => {
       .sort({ createdAt: -1 })
       .lean();
 
-    // Filter out leads with missing partyName or companyName
-    const validLeads = leads.filter(
-      (lead) => lead.partyName && lead.companyName
-    );
-    if (validLeads.length === 0) {
-      return res.status(200).json({
-        success: true,
-        count: 0,
-        data: [],
-        message: "No leads found",
-      });
-    }
-    // Fetch AccountMaster records to get createdBy for each valid lead
+    const validLeads = leads.filter((lead) => lead.partyName && lead.companyName);
+
     const populatedLeads = await Promise.all(
       validLeads.map(async (lead) => {
         const accountMaster = await AccountMaster.findOne({
@@ -279,6 +260,7 @@ exports.getAllLeads = async (req, res) => {
     });
   }
 };
+
 // In lead.controller.js
 exports.bulkCreateLeads = async (req, res) => {
   try {

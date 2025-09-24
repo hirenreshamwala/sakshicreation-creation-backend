@@ -7,7 +7,7 @@ const router = express.Router();
 router.post("/create", LeadController.createLead);
 
 // Get all leads
-router.get("/getall", LeadController.getAllLeads);
+router.post("/getall", LeadController.getAllLeads);
 
 // Get lead by ID
 router.get("/getbyid/:id", LeadController.getLeadById);
