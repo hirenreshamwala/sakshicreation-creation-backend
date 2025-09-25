@@ -219,7 +219,7 @@ exports.getAllOrders = async (req, res) => {
       status,       // array of statuses
       companyName,
       party,
-      staff,        // createdBy staff id
+      staffId,        // createdBy staff id
       startDate,
       endDate,
     } = req.body;
@@ -242,8 +242,8 @@ exports.getAllOrders = async (req, res) => {
     }
 
     // Staff filter → match createdBy
-    if (staff && mongoose.Types.ObjectId.isValid(staff)) {
-      filter.createdBy = staff;
+    if (staffId && mongoose.Types.ObjectId.isValid(staffId)) {
+      filter.createdBy = staffId;
     }
 
     // Date range filter

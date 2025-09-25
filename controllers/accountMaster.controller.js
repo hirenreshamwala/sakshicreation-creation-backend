@@ -248,8 +248,8 @@ exports.getAllAccountMasters = async (req, res) => {
     }
 
     // createdBy (Staff Id) filter
-    if (filters.createdBy) {
-      query.createdBy = filters.createdBy;
+    if (filters.staffId) {
+      query.createdBy = filters.staffId;
     }
 
     // reasonToVisit filter
@@ -260,12 +260,17 @@ exports.getAllAccountMasters = async (req, res) => {
     if (filters.startDate || filters.endDate) {
       query.createdAt = {};
       if (filters.startDate) {
-        query.createdAt.$gte = new Date(filters.startDate).setHours(0, 0, 0, 0);
+        const start = new Date(filters.startDate);
+        start.setHours(0, 0, 0, 0);
+        query.createdAt.$gte = start;
       }
       if (filters.endDate) {
-        query.createdAt.$lte = new Date(filters.endDate).setHours(23, 59, 59, 999);
+        const end = new Date(filters.endDate);
+        end.setHours(23, 59, 59, 999);
+        query.createdAt.$lte = end;
       }
     }
+
 
     let partyMatch = {};
 
@@ -282,8 +287,15 @@ exports.getAllAccountMasters = async (req, res) => {
     }
 
     if (filters.partyTag) {
-      partyMatch.partyTag = filters.partyTag;
+      if (Array.isArray(filters.partyTag)) {
+        // If it's an array, match any of the tags (case-insensitive)
+        partyMatch.partyTag = { $in: filters.partyTag.map(tag => new RegExp(tag.trim(), "i")) };
+      } else {
+        // Single value
+        partyMatch.partyTag = new RegExp(filters.partyTag.trim(), "i");
+      }
     }
+
 
     const accountMasters = await AccountMaster.find(query)
       .populate("createdBy", "firstName lastName email")
@@ -291,7 +303,7 @@ exports.getAllAccountMasters = async (req, res) => {
       .populate({
         path: "party",
         select: "-__v",
-        match: partyMatch, // यहाँ सारे party filters लगेंगे
+        match: partyMatch,
         populate: [
           { path: "address.marketName", model: "Market", select: "marketName" },
           { path: "address.streetAddress", model: "Market", select: "streetAddress" },

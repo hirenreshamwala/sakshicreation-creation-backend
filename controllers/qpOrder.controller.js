@@ -158,10 +158,18 @@ exports.createQpOrder = async (req, res) => {
 
 exports.getAllQpOrders = async (req, res) => {
   try {
-    const { status, companyName, party, createdBy, orderNo } = req.body; // filters from body
+    const { status, companyName, party, staffId, orderNo } = req.body; // filters from body
 
     const filter = {};
-
+    if (req.body.startDate || req.body.endDate) {
+      filter.createdAt = {};
+      if (req.body.startDate) {
+        filter.createdAt.$gte = new Date(req.body.startDate).setHours(0, 0, 0, 0);
+      }
+      if (req.body.endDate) {
+        filter.createdAt.$lte = new Date(req.body.endDate).setHours(23, 59, 59, 999);
+      }
+    }
     if (status) {
       // Allow array or single status
       if (Array.isArray(status)) {
@@ -179,8 +187,8 @@ exports.getAllQpOrders = async (req, res) => {
       filter.party = party;
     }
 
-    if (createdBy && mongoose.Types.ObjectId.isValid(createdBy)) {
-      filter.createdBy = createdBy;
+    if (staffId && mongoose.Types.ObjectId.isValid(staffId)) {
+      filter.createdBy = staffId;
     }
 
     if (orderNo) {
@@ -794,9 +802,8 @@ exports.updateQpOrderStatus = async (req, res) => {
         gsm: updatedOrder.gsm || undefined,
         for: updatedOrder.assignedTo || undefined,
         forCompany: updatedOrder.createdBy || undefined,
-        remarks: `Outward entry for completed QP order ${
-          updatedOrder.orderNumber || updatedOrder._id
-        }`,
+        remarks: `Outward entry for completed QP order ${updatedOrder.orderNumber || updatedOrder._id
+          }`,
       });
 
       await outwardInventory.save({ session });

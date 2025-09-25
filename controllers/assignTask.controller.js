@@ -268,7 +268,9 @@ exports.bulkCreateTasks = async (req, res) => {
 
 exports.getAllAssignTasks = async (req, res) => {
   try {
-    const { staffId, startDate, endDate, status, companyName, partyName } = req.body;
+    const { staffId, startDate, endDate, status, companyName, partyName, reason } = req.body;
+
+
     let filter = {};
 
     // Staff filter
@@ -285,11 +287,19 @@ exports.getAllAssignTasks = async (req, res) => {
     if (partyName) {
       filter.partyName = partyName;
     }
+    if (reason) {
+      filter.reasonForVisit = new RegExp(reason.trim(), "i");
+    }
+
 
     // ✅ Status filter (multiple status allowed)
+    // ✅ Status filter (multiple status allowed, case-insensitive)
     if (status && Array.isArray(status) && status.length > 0) {
-      filter.status = { $in: status };
+      filter.status = {
+        $in: status.map((s) => new RegExp(`^${s}$`, "i"))
+      };
     }
+
 
     // Date filter (date field of AssignTask)
     if (startDate && endDate) {
@@ -302,7 +312,9 @@ exports.getAllAssignTasks = async (req, res) => {
       filter.date = { $gte: start, $lte: end };
     }
 
+    console.log("DEBUG : filter:", filter);
     const tasks = await AssignTask.find(filter)
+
       .populate("companyName")
       .populate("partyName")
       .populate("assignTo", "firstName lastName")

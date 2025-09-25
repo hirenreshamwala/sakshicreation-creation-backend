@@ -435,10 +435,10 @@ const getSCReport = async (req, res) => {
 
       const qpOrderParties = await QpData.find({ createdBy: staff._id, companyName: company._id, ...otherModelsDateFilter }).distinct('party');
       const sakshiOrderParties = await Order.find({ createdBy: staff._id, companyName: company._id, ...otherModelsDateFilter }).distinct('party');
-      const newToCustomerParties = await Party.countDocuments({ _id: { $in: [...new Set([...sakshiOrderParties])] }, partyTag: 'CUSTOMER' });
+      const newToCustomerParties = await Party.countDocuments({ _id: { $in: [...new Set([...sakshiOrderParties])] }, partyTag: 'CUSTOMER',createdBy: staff._id, });
 
       const createdParties = await AccountMaster.find({ createdBy: staff._id, companyName: company._id, ...otherModelsDateFilter }).distinct('party');
-      const newPartiesStillNew = await Party.countDocuments({ _id: { $in: createdParties }, partyTag: 'NEW' });
+      const newPartiesStillNew = await Party.countDocuments({ _id: { $in: createdParties }, partyTag: 'NEW' ,createdBy: staff._id});
 
       return {
         staffId: staff._id,
