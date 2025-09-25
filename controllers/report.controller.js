@@ -350,7 +350,7 @@ const getSCReport = async (req, res) => {
       const visitTasks = await AssignTask.find({
         assignTo: staff._id,
         companyName: company._id,
-        reasonForVisit: { $regex: '^visit$', $options: 'i' },
+        reasonForVisit: { $regex: '^get visit$', $options: 'i' },
         ...taskLeadDateFilter,
       }).select('partyName status');
 
@@ -372,7 +372,7 @@ const getSCReport = async (req, res) => {
             partyVisit++;
             if (/^completed$/i.test(task.status)) {
               donePartyVisit++;
-            } else if (/^cancelled$/i.test(task.status)) {
+            } else if (/^Cancelled$/i.test(task.status)) {
               cancelledPartyVisit++;
             }
           }
