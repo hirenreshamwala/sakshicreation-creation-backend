@@ -1463,17 +1463,12 @@ exports.getAccountMasterByCompanyAndParty = async (req, res) => {
       })
       .populate({
         path: "party",
-        select: "-__v", // All party fields except version
-      })
-      .populate({
-        path: "party",
         select: "-__v",
         populate: [
-          {
-            path: "address.marketName",
-            model: "Market",
-            select: "marketName", // only marketName
-          },
+          { path: "address.marketName", model: "Market", select: "marketName" },
+          { path: "address.landMark", model: "Market", select: "landmark" },
+          { path: "address.area", model: "Market", select: "area" },
+          { path: "address.pincode", model: "Market", select: "pincode" },
         ],
       })
       .populate({
