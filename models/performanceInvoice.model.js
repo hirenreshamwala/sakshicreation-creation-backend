@@ -59,7 +59,7 @@ const performanceInvoiceSchema = new mongoose.Schema(
     },
     partyAddress: {
       unitNo: { type: String, default: "" },
-      streetAddress: { type: String, default: "" },
+      // streetAddress: { type: String, default: "" },
       marketName: { type: String, default: "" },
       landMark: { type: String, default: "" },
       area: { type: String, default: "" },

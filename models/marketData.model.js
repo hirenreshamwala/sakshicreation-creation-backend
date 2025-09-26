@@ -12,10 +12,10 @@ const marketSchema = new mongoose.Schema(
       required: true,
       trim: true,
     },
-    streetAddress: {
-      type: String,
-      trim: true,
-    },
+    // streetAddress: {
+    //   type: String,
+    //   trim: true,
+    // },
     landmark: {
       type: String,
       trim: true,

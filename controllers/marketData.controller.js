@@ -4,7 +4,9 @@ const Papa = require("papaparse");
 // ✅ Create a new Market
 exports.createMarket = async (req, res) => {
   try {
-    const { marketName, area, streetAddress, landmark, pincode } = req.body;
+    const { marketName, area,
+      //  streetAddress,
+       landmark, pincode } = req.body;
 
     if (!marketName || !area || !pincode) {
       return res
@@ -16,7 +18,7 @@ exports.createMarket = async (req, res) => {
     const normalizedData = {
       marketName: marketName.trim(),
       area: area.trim(),
-      streetAddress: streetAddress?.trim() || "",
+      // streetAddress: streetAddress?.trim() || "",
       landmark: landmark?.trim() || "",
       pincode: pincode.trim(),
     };
@@ -25,7 +27,7 @@ exports.createMarket = async (req, res) => {
     const existingMarket = await Market.findOne({
       marketName: normalizedData.marketName,
       area: normalizedData.area,
-      streetAddress: normalizedData.streetAddress,
+      // streetAddress: normalizedData.streetAddress,
       landmark: normalizedData.landmark,
       pincode: normalizedData.pincode,
     });
@@ -55,7 +57,7 @@ exports.createMarket = async (req, res) => {
 // ✅ Get all Markets
 exports.getAllMarkets = async (req, res) => {
   try {
-    const markets = await Market.find().select("marketName area streetAddress landmark pincode").sort({ createdAt: -1 });
+    const markets = await Market.find().select("marketName area landmark pincode").sort({ createdAt: -1 });
     return res.status(200).json({ data: markets });
   } catch (error) {
     return res.status(500).json({
@@ -69,11 +71,15 @@ exports.getAllMarkets = async (req, res) => {
 exports.updateMarket = async (req, res) => {
   try {
     const { id } = req.params;
-    const { marketName, area, streetAddress, landmark, pincode } = req.body;
+    const { marketName, area, 
+      // streetAddress,
+       landmark, pincode } = req.body;
 
     const updatedMarket = await Market.findByIdAndUpdate(
       id,
-      { marketName, area, streetAddress, landmark, pincode },
+      { marketName, area,
+        //  streetAddress,
+          landmark, pincode },
       { new: true, runValidators: true }
     );
 
@@ -135,7 +141,9 @@ exports.bulkUploadMarkets = async (req, res) => {
     const validRecords = [];
 
     for (const row of records) {
-      const { marketName, area, streetAddress, landmark, pincode } = row;
+      const { marketName, area,
+        //  streetAddress,
+          landmark, pincode } = row;
 
       if (!marketName || !area || !pincode) {
         return res.status(400).json({
@@ -147,7 +155,7 @@ exports.bulkUploadMarkets = async (req, res) => {
       const normalizedData = {
         marketName: marketName.trim(),
         area: area.trim(),
-        streetAddress: streetAddress?.trim() || "",
+        // streetAddress: streetAddress?.trim() || "",
         landmark: landmark?.trim() || "",
         pincode: pincode.trim(),
       };
@@ -156,7 +164,7 @@ exports.bulkUploadMarkets = async (req, res) => {
       const existing = await Market.findOne({
         marketName: normalizedData.marketName,
         area: normalizedData.area,
-        streetAddress: normalizedData.streetAddress,
+        // streetAddress: normalizedData.streetAddress,
         landmark: normalizedData.landmark,
         pincode: normalizedData.pincode,
       });

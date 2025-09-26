@@ -40,7 +40,7 @@ exports.createAccountMaster = async (req, res) => {
     const requiredAddressFields = [
       "unitNo",
       "marketName",
-      "streetAddress",
+      // "streetAddress",
       "area",
       "pincode",
     ];
@@ -190,11 +190,11 @@ exports.createAccountMaster = async (req, res) => {
             model: "Market",
             select: "marketName", // only marketName
           },
-          {
-            path: "address.streetAddress",
-            model: "Market",
-            select: "streetAddress", // only streetAddress
-          },
+          // {
+          //   path: "address.streetAddress",
+          //   model: "Market",
+          //   select: "streetAddress", // only streetAddress
+          // },
           {
             path: "address.landMark",
             model: "Market",
@@ -306,7 +306,7 @@ exports.getAllAccountMasters = async (req, res) => {
         match: partyMatch,
         populate: [
           { path: "address.marketName", model: "Market", select: "marketName" },
-          { path: "address.streetAddress", model: "Market", select: "streetAddress" },
+          // { path: "address.streetAddress", model: "Market", select: "streetAddress" },
           { path: "address.landMark", model: "Market", select: "landmark" },
           { path: "address.area", model: "Market", select: "area" },
           { path: "address.pincode", model: "Market", select: "pincode" },
@@ -842,7 +842,7 @@ exports.bulkCreateAccountMasters = async (req, res) => {
         const address = {
           unitNo: row.unitNo || null,
           marketName: marketId,
-          streetAddress: marketId,
+          // streetAddress: marketId,
           landMark: marketId,
           area: marketId,
           pincode: marketId,
@@ -944,11 +944,11 @@ exports.getAccountMasterById = async (req, res) => {
             model: "Market",
             select: "marketName", // only marketName
           },
-          {
-            path: "address.streetAddress",
-            model: "Market",
-            select: "streetAddress", // only streetAddress
-          },
+          // {
+          //   path: "address.streetAddress",
+          //   model: "Market",
+          //   select: "streetAddress", // only streetAddress
+          // },
           {
             path: "address.landMark",
             model: "Market",
@@ -996,7 +996,7 @@ exports.getAccountMasterById = async (req, res) => {
       address: {
         unitNo: accountMaster.party.address.unitNo,
         marketName: accountMaster.party.address.marketName,
-        streetAddress: accountMaster.party.address.streetAddress,
+        // streetAddress: accountMaster.party.address.streetAddress,
         landMark: accountMaster.party.address.landMark || "", // Handle optional field
         area: accountMaster.party.address.area,
         pincode: accountMaster.party.address.pincode,
@@ -1191,11 +1191,11 @@ exports.updateAccountMaster = async (req, res) => {
             model: "Market",
             select: "marketName", // only marketName
           },
-          {
-            path: "address.streetAddress",
-            model: "Market",
-            select: "streetAddress", // only streetAddress
-          },
+          // {
+          //   path: "address.streetAddress",
+          //   model: "Market",
+          //   select: "streetAddress", // only streetAddress
+          // },
           {
             path: "address.landMark",
             model: "Market",
@@ -1314,7 +1314,7 @@ exports.updateAccountMasterStatus = async (req, res) => {
       address: {
         unitNo: updatedAccountMaster.address.unitNo,
         marketName: updatedAccountMaster.address.marketName,
-        streetAddress: updatedAccountMaster.address.streetAddress,
+        // streetAddress: updatedAccountMaster.address.streetAddress,
         landMark: updatedAccountMaster.address.landMark,
         area: updatedAccountMaster.address.area,
         pincode: updatedAccountMaster.address.pincode,
@@ -1600,11 +1600,11 @@ exports.getAccountMasterByStaffId = async (req, res) => {
             model: "Market",
             select: "marketName", // only marketName
           },
-          {
-            path: "address.streetAddress",
-            model: "Market",
-            select: "streetAddress", // only streetAddress
-          },
+          // {
+          //   path: "address.streetAddress",
+          //   model: "Market",
+          //   select: "streetAddress", // only streetAddress
+          // },
           {
             path: "address.landMark",
             model: "Market",

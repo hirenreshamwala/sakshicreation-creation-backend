@@ -214,7 +214,7 @@ exports.getAllLeads = async (req, res) => {
         select: "-__v",
         populate: [
           { path: "address.marketName", model: "Market", select: "marketName", strictPopulate: false },
-          { path: "address.streetAddress", model: "Market", select: "streetAddress", strictPopulate: false },
+          // { path: "address.streetAddress", model: "Market", select: "streetAddress", strictPopulate: false },
           { path: "address.landMark", model: "Market", select: "landmark", strictPopulate: false },
           { path: "address.area", model: "Market", select: "area", strictPopulate: false },
           { path: "address.pincode", model: "Market", select: "pincode", strictPopulate: false },
@@ -463,11 +463,11 @@ exports.getLeadById = async (req, res) => {
             model: "Market",
             select: "marketName", // only marketName
           },
-          {
-            path: "address.streetAddress",
-            model: "Market",
-            select: "streetAddress", // only streetAddress
-          },
+          // {
+          //   path: "address.streetAddress",
+          //   model: "Market",
+          //   select: "streetAddress", // only streetAddress
+          // },
           {
             path: "address.landMark",
             model: "Market",
@@ -961,11 +961,11 @@ exports.getLeadsByStaffId = async (req, res) => {
             model: "Market",
             select: "marketName", // only marketName
           },
-          {
-            path: "address.streetAddress",
-            model: "Market",
-            select: "streetAddress", // only streetAddress
-          },
+          // {
+          //   path: "address.streetAddress",
+          //   model: "Market",
+          //   select: "streetAddress", // only streetAddress
+          // },
           {
             path: "address.landMark",
             model: "Market",

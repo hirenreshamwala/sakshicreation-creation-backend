@@ -324,7 +324,7 @@ exports.getAllAssignTasks = async (req, res) => {
         select: "-__v",
         populate: [
           { path: "address.marketName", model: "Market", select: "marketName" },
-          { path: "address.streetAddress", model: "Market", select: "streetAddress" },
+          // { path: "address.streetAddress", model: "Market", select: "streetAddress" },
           { path: "address.landMark", model: "Market", select: "landmark" },
           { path: "address.area", model: "Market", select: "area" },
           { path: "address.pincode", model: "Market", select: "pincode" },
@@ -473,11 +473,11 @@ exports.getAssignTaskById = async (req, res) => {
             model: "Market",
             select: "marketName", // only marketName
           },
-          {
-            path: "address.streetAddress",
-            model: "Market",
-            select: "streetAddress", // only streetAddress
-          },
+          // {
+          //   path: "address.streetAddress",
+          //   model: "Market",
+          //   select: "streetAddress", // only streetAddress
+          // },
           {
             path: "address.landMark",
             model: "Market",
@@ -932,11 +932,11 @@ exports.getTasksByStaffId = async (req, res) => {
             model: "Market",
             select: "marketName", // only marketName
           },
-          {
-            path: "address.streetAddress",
-            model: "Market",
-            select: "streetAddress", // only streetAddress
-          },
+          // {
+          //   path: "address.streetAddress",
+          //   model: "Market",
+          //   select: "streetAddress", // only streetAddress
+          // },
           {
             path: "address.landMark",
             model: "Market",

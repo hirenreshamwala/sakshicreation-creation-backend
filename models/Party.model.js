@@ -25,7 +25,7 @@ const partySchema = new mongoose.Schema(
     address: {
       unitNo: { type: String },
       marketName: { type: mongoose.Schema.Types.ObjectId, ref: "Market" },
-      streetAddress: { type: mongoose.Schema.Types.ObjectId, ref: "Market" },
+      // streetAddress: { type: mongoose.Schema.Types.ObjectId, ref: "Market" },
       landMark: { type: mongoose.Schema.Types.ObjectId, ref: "Market" },
       area: { type: mongoose.Schema.Types.ObjectId, ref: "Market" },
       pincode: { type: mongoose.Schema.Types.ObjectId, ref: "Market" },
