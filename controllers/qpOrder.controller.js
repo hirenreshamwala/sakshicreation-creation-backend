@@ -210,6 +210,14 @@ exports.getAllQpOrders = async (req, res) => {
         "party ply length width height deckal paper1GSM paper2GSM paper3GSM"
       )
       .populate("kantan", "kantanName")
+      .populate({
+        path: "printer",
+        select: "firstName lastName", // Add printer name population
+      })
+      .populate({
+        path: "binder",
+        select: "firstName lastName", // Add binder name population
+      })
       .sort({ createdAt: -1 });
 
     res.status(200).json({
@@ -227,7 +235,6 @@ exports.getAllQpOrders = async (req, res) => {
   }
 };
 
-// Get single QP Order by ID
 exports.getQpOrderById = async (req, res) => {
   try {
     const qpOrder = await QpData.findById(req.params.id)
@@ -244,7 +251,16 @@ exports.getQpOrderById = async (req, res) => {
         "orderdata",
         "party ply length width height deckal paper1GSM paper2GSM paper3GSM"
       )
-      .populate("kantan", "kantanName");
+      .populate("kantan", "kantanName")
+      .populate({
+        path: "printer",
+        select: "firstName lastName", // Add printer name population
+      })
+      .populate({
+        path: "binder",
+        select: "firstName lastName", // Add binder name population
+      });
+      
     if (!qpOrder) {
       return res.status(404).json({
         success: false,
@@ -399,6 +415,14 @@ exports.updateQpOrder = async (req, res) => {
         "orderdata",
         "party ply length width height deckal paper1GSM paper2GSM paper3GSM"
       )
+      .populate({
+        path: "printer",
+        select: "firstName lastName", // Add printer name population
+      })
+      .populate({
+        path: "binder",
+        select: "firstName lastName", // Add binder name population
+      })
       .populate("kantan", "kantanName");
 
     if (!qpOrder) {
@@ -703,6 +727,14 @@ exports.getOrdersByStaffId = async (req, res) => {
         "orderdata",
         "party ply length width height deckal paper1GSM paper2GSM paper3GSM"
       )
+      .populate({
+        path: "printer",
+        select: "firstName lastName", // Add printer name population
+      })
+      .populate({
+        path: "binder",
+        select: "firstName lastName", // Add binder name population
+      })
       .populate("kantan", "kantanName")
       .sort({ createdAt: -1 });
     console.log("DEBUG : v:", orders);
@@ -777,6 +809,14 @@ exports.updateQpOrderStatus = async (req, res) => {
         "orderdata",
         "party ply length width height deckal paper1GSM paper2GSM paper3GSM"
       )
+      .populate({
+        path: "printer",
+        select: "firstName lastName", // Add printer name population
+      })
+      .populate({
+        path: "binder",
+        select: "firstName lastName", // Add binder name population
+      })
       .populate("kantan", "kantanName");
 
     // Check if status changed to "completed"

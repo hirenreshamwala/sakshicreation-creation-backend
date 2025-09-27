@@ -89,6 +89,13 @@ const permissionSchema = new mongoose.Schema(
       edit: { type: Boolean },
       delete: { type: Boolean },
     },
+    qp_task: {
+      view_global: { type: Boolean, default: false },
+      view_own: { type: Boolean, default: false },
+      create: { type: Boolean, default: false },
+      edit: { type: Boolean, default: false },
+      delete: { type: Boolean, default: false },
+    },
     history: {
       view_global: { type: Boolean },
       view_own: { type: Boolean },
