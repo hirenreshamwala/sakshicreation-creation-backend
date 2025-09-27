@@ -78,7 +78,7 @@ exports.createQpOrder = async (req, res) => {
 
     // Check if a PackagingOption exists for the provided data
     let packaging = await PackagingOption.findOne({
-      party,
+      party: party, // Use the party ID from req.body
       ply,
       length,
       width,
@@ -92,7 +92,7 @@ exports.createQpOrder = async (req, res) => {
     if (!packaging) {
       // Create new PackagingOption if none exists
       packaging = new PackagingOption({
-        party,
+        party: party, // Explicitly set the party ID
         ply,
         length,
         width,
