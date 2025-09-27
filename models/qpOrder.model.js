@@ -160,6 +160,9 @@ const qpDataSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "Staff",
     },
+    operatorNoOfPieces:{
+      type: Number,
+    },
     actualNoOfPieces: {
       type: Number,
     },
@@ -175,6 +178,23 @@ const qpDataSchema = new mongoose.Schema(
       }
     },
     actualPaperKG: {
+      paper1: {
+        deckal : { type: String },
+        gsm: { type: String },
+        totalKg: { type: String }
+      },
+      paper2: {
+        deckal : { type: String },
+        gsm: { type: String },
+        totalKg: { type: String}
+      },
+      paper3: {
+        deckal : { type: String },
+        gsm: { type: String},
+        totalKg: { type: String}
+      }
+    },
+    paperKG: {
       paper1: {
         deckal : { type: String },
         gsm: { type: String },
