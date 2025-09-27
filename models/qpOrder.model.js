@@ -227,7 +227,17 @@ const qpDataSchema = new mongoose.Schema(
     driver:{
       type: mongoose.Schema.Types.ObjectId,
       ref: "Staff",
-    }
+    },
+    kantanStart: { type : Date},
+    kantanEnd: { type : Date},
+    printer: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Staff",
+    },
+    binder: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Staff",
+    },
   },
   {
     timestamps: true,
