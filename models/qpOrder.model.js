@@ -50,7 +50,7 @@ const qpDataSchema = new mongoose.Schema(
       ref: "packagingOption",
     },
     gsm: {
-      type: String
+      type: String,
     },
     deckalCalculation: {
       type: String,
@@ -84,7 +84,7 @@ const qpDataSchema = new mongoose.Schema(
       },
       inch: {
         type: String,
-      }
+      },
     },
     kantanDeckal: {
       type: String,
@@ -160,7 +160,7 @@ const qpDataSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "Staff",
     },
-    operatorNoOfPieces:{
+    operatorNoOfPieces: {
       type: Number,
     },
     actualNoOfPieces: {
@@ -175,43 +175,59 @@ const qpDataSchema = new mongoose.Schema(
       },
       inch: {
         type: String,
-      }
+      },
     },
     actualPaperKG: {
       paper1: {
-        deckal : { type: String },
+        deckal: { type: String },
         gsm: { type: String },
-        totalKg: { type: String }
+        totalKg: { type: String },
       },
       paper2: {
-        deckal : { type: String },
+        deckal: { type: String },
         gsm: { type: String },
-        totalKg: { type: String}
+        totalKg: { type: String },
       },
       paper3: {
-        deckal : { type: String },
-        gsm: { type: String},
-        totalKg: { type: String}
-      }
+        deckal: { type: String },
+        gsm: { type: String },
+        totalKg: { type: String },
+      },
     },
     paperKG: {
       paper1: {
-        deckal : { type: String },
+        deckal: { type: String },
         gsm: { type: String },
-        totalKg: { type: String }
+        totalKg: { type: String },
       },
       paper2: {
-        deckal : { type: String },
+        deckal: { type: String },
         gsm: { type: String },
-        totalKg: { type: String}
+        totalKg: { type: String },
       },
       paper3: {
-        deckal : { type: String },
-        gsm: { type: String},
-        totalKg: { type: String}
-      }
+        deckal: { type: String },
+        gsm: { type: String },
+        totalKg: { type: String },
+      },
     },
     remarks: [remarkSchema],
+    deliveryStatus: {
+      type: String,
+    },
+    loadingStartDate: {
+      type: String,
+    },
+    loadingEndDate: {
+      type: String,
+    },
+    deliveryStartTime: {
+      type: String,
+    },
+    driver:{
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Staff",
+    }
   },
   {
     timestamps: true,
@@ -237,7 +253,9 @@ qpDataSchema.pre("save", async function (next) {
         // Update the party tag to "CUSTOMER"
         party.partyTag = "CUSTOMER";
         await party.save();
-        console.log(`Updated party ${party._id} tag from New to Customer in QpData`);
+        console.log(
+          `Updated party ${party._id} tag from New to Customer in QpData`
+        );
       }
     }
     next();
