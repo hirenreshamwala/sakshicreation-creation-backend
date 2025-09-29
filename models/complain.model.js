@@ -9,6 +9,10 @@ const complainSchema = new mongoose.Schema({
         type: mongoose.Schema.Types.ObjectId,
         ref: "Order"
     },
+    party:{
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Party"
+    },
     qporder: {
         type: mongoose.Schema.Types.ObjectId,
         ref: "QpOrder"

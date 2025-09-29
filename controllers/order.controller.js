@@ -258,7 +258,21 @@ exports.getAllOrders = async (req, res) => {
     // Fetch orders without pagination
     const orders = await Order.find(filter)
       .populate("companyName", "companyName avatar")
-      .populate("party", "partyName")
+      .populate({
+        path: "party",
+        select:
+          "partyName address contactPerson personMobileNo personWhatsAppNo GSTNo marketName area",
+        populate: [
+          {
+            path: "address.marketName",
+            select: "marketName", // adjust field name as per your schema
+          },
+          {
+            path: "address.area",
+            select: "area", // adjust field name as per your schema
+          },
+        ],
+      })
       .populate("productItem", "itemName")
       .populate("createdBy", "firstName lastName")
       .populate("designer", "firstName lastName")
@@ -282,9 +296,6 @@ exports.getAllOrders = async (req, res) => {
     });
   }
 };
-
-
-
 
 exports.getOrderById = async (req, res) => {
   try {
@@ -1076,7 +1087,17 @@ exports.getOrdersByStaffId = async (req, res) => {
       .populate({
         path: "party",
         select:
-          "partyName address contactPerson personMobileNo personWhatsAppNo GSTNo",
+          "partyName address contactPerson personMobileNo personWhatsAppNo GSTNo marketName area",
+        populate: [
+          {
+            path: "marketName",
+            select: "marketName", // adjust field name as per your schema
+          },
+          {
+            path: "area",
+            select: "area", // adjust field name as per your schema
+          },
+        ],
       })
       .populate({
         path: "productItem",

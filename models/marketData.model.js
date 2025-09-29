@@ -6,11 +6,13 @@ const marketSchema = new mongoose.Schema(
       type: String,
       required: true,
       trim: true,
+      set: (v) => v.toUpperCase(), 
     },
     area: {
       type: String,
       required: true,
       trim: true,
+      set: (v) => v.toUpperCase(), 
     },
     // streetAddress: {
     //   type: String,
@@ -19,6 +21,7 @@ const marketSchema = new mongoose.Schema(
     landmark: {
       type: String,
       trim: true,
+      set: (v) => v.toUpperCase(), 
     },
     pincode: {
       type: String,
