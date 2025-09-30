@@ -243,6 +243,8 @@ exports.getAllQpOrders = async (req, res) => {
   }
 };
 
+
+
 exports.getQpOrderById = async (req, res) => {
   try {
     const qpOrder = await QpData.findById(req.params.id)
@@ -886,33 +888,32 @@ exports.updateQPOrderStatus = async (req, res) => {
   try {
     const { orderId } = req.params;
     const { status, deliveryStatus, billPhotos } = req.body;
+    const driverId = req.user?.id; // driver from auth middleware
+    const currentTime = new Date();
 
-    // Validate order ID
     if (!mongoose.Types.ObjectId.isValid(orderId)) {
       await session.abortTransaction();
       session.endSession();
-      return res.status(400).json({
-        success: false,
-        message: "Invalid order ID format",
-      });
+      return res
+        .status(400)
+        .json({ success: false, message: "Invalid order ID" });
     }
 
-    // Find the current order
     const currentOrder = await QpData.findById(orderId).session(session);
     if (!currentOrder) {
       await session.abortTransaction();
       session.endSession();
-      return res.status(404).json({
-        success: false,
-        message: "QP Order not found",
-      });
+      return res
+        .status(404)
+        .json({ success: false, message: "QP Order not found" });
     }
 
-    // Prepare update data
     const updateData = {};
-    const currentTime = new Date();
 
-    // Handle status updates with proper transitions
+    // Assign driver if not already assigned
+    if (driverId && !currentOrder.driver) updateData.driver = driverId;
+
+    // Handle status
     if (status) {
       const validStatuses = [
         "pending",
@@ -922,120 +923,69 @@ exports.updateQPOrderStatus = async (req, res) => {
         "going_to_delivery",
         "delivered",
       ];
-
-      if (!validStatuses.includes(status)) {
-        await session.abortTransaction();
-        session.endSession();
-        return res.status(400).json({
-          success: false,
-          message: "Invalid status value",
-        });
-      }
+      if (!validStatuses.includes(status)) throw new Error("Invalid status");
 
       updateData.status = status;
 
-      // Set timestamps based on status changes
       switch (status) {
         case "loading":
           updateData.loadingStartDate = currentTime;
           updateData.deliveryStatus = "loading";
           break;
-
         case "going_to_delivery":
+          if (!billPhotos || !billPhotos.length) {
+            throw new Error("Bill photo required for dispatch");
+          }
           updateData.deliveryStartTime = currentTime;
           updateData.loadingEndDate = currentTime;
           updateData.deliveryStatus = "in_transit";
+          updateData.dispatchTime = currentTime; // capture dispatch time
+          updateData.billPhotos = billPhotos.map((p) => ({
+            url: p.url,
+            filename: p.filename || `bill_${Date.now()}`,
+          }));
           break;
-
         case "delivered":
           updateData.deliveryEndTime = currentTime;
           updateData.deliveredAt = currentTime;
           updateData.deliveryStatus = "delivered";
           break;
-
-        default:
-          break;
       }
     }
 
-    // Handle delivery status updates
-    if (deliveryStatus) {
-      const validDeliveryStatuses = [
-        "not_started",
-        "loading",
-        "in_transit",
-        "delivered",
-        "cancelled",
-      ];
+    // Handle deliveryStatus override
+    if (deliveryStatus) updateData.deliveryStatus = deliveryStatus;
 
-      if (!validDeliveryStatuses.includes(deliveryStatus)) {
-        await session.abortTransaction();
-        session.endSession();
-        return res.status(400).json({
-          success: false,
-          message: "Invalid delivery status value",
-        });
-      }
-
-      updateData.deliveryStatus = deliveryStatus;
-    }
-
-    // Handle bill photos
-    if (billPhotos && Array.isArray(billPhotos)) {
-      updateData.billPhotos = billPhotos.map((photo) => ({
-        url: photo.url,
-        filename:
-          photo.filename ||
-          `bill_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      }));
-    }
-
-    // Update the order
     const updatedOrder = await QpData.findByIdAndUpdate(orderId, updateData, {
       new: true,
       runValidators: true,
       session,
     })
-      .populate({
-        path: "companyName",
-        select: "companyName avatar",
-      })
-      .populate({
-        path: "party",
-        select:
-          "partyName address contactPerson personMobileNo personWhatsAppNo GSTNo",
-      })
+      .populate("companyName", "companyName avatar")
+      .populate(
+        "party",
+        "partyName address contactPerson personMobileNo personWhatsAppNo GSTNo"
+      )
       .populate(
         "orderdata",
         "party ply length width height deckal paper1GSM paper2GSM paper3GSM"
       )
-      .populate("kantan", "kantanName");
-
-    if (!updatedOrder) {
-      await session.abortTransaction();
-      session.endSession();
-      return res.status(404).json({
-        success: false,
-        message: "QP Order not found after update",
-      });
-    }
+      .populate("kantan", "kantanName")
+      .populate("driver", "firstName lastName email");
 
     await session.commitTransaction();
     session.endSession();
 
-    res.status(200).json({
-      success: true,
-      message: "QP Order status updated successfully",
-      data: updatedOrder,
-    });
-  } catch (error) {
+    res
+      .status(200)
+      .json({ success: true, message: "QP Order updated", data: updatedOrder });
+  } catch (err) {
     await session.abortTransaction();
     session.endSession();
-    console.error("❌ Error updating QP order status:", error);
+    console.error(err);
     res.status(500).json({
       success: false,
-      message: "Failed to update QP order status",
-      error: error.message,
+      message: err.message || "Failed to update order",
     });
   }
 };
@@ -1047,186 +997,69 @@ exports.bulkUpdateQPOrderStatus = async (req, res) => {
 
   try {
     const { orderIds, status, deliveryStatus, billPhotos } = req.body;
-    const driverId = req.user?.id; // assuming you set user in req.user via auth middleware
-
-    // Validate input
-    if (!orderIds || !Array.isArray(orderIds) || orderIds.length === 0) {
-      await session.abortTransaction();
-      session.endSession();
-      return res.status(400).json({
-        success: false,
-        message: "Order IDs are required and must be an array",
-      });
-    }
-
-    if (!status && !deliveryStatus && !billPhotos) {
-      await session.abortTransaction();
-      session.endSession();
-      return res.status(400).json({
-        success: false,
-        message: "Either status, deliveryStatus, or billPhotos is required",
-      });
-    }
-
-    // Validate all order IDs
-    const invalidIds = orderIds.filter(
-      (id) => !mongoose.Types.ObjectId.isValid(id)
-    );
-    if (invalidIds.length > 0) {
-      await session.abortTransaction();
-      session.endSession();
-      return res.status(400).json({
-        success: false,
-        message: "Invalid order ID format",
-        invalidIds,
-      });
-    }
-
-    // 🔒 Check driver assignment
-    const conflictingOrders = await QpData.find({
-      _id: { $in: orderIds },
-      driver: { $exists: true, $ne: null, $ne: driverId }, // assigned to another driver
-    }).session(session);
-
-    if (conflictingOrders.length > 0) {
-      await session.abortTransaction();
-      session.endSession();
-      return res.status(403).json({
-        success: false,
-        message: "Some orders are already assigned to another driver",
-        conflictingOrders: conflictingOrders.map((o) => o._id),
-      });
-    }
-
-    // Prepare update data
-    const updateData = {};
+    const driverId = req.user?.id;
     const currentTime = new Date();
 
-    // Always set driver if updating
-    if (driverId) {
-      updateData.driver = driverId;
-    }
+    if (!orderIds || !orderIds.length) throw new Error("Order IDs required");
 
-    // Handle status updates
-    if (status) {
-      const validStatuses = [
-        "pending",
-        "in_progress",
-        "completed",
-        "loading",
-        "going_to_delivery",
-        "delivered",
-      ];
+    // Check conflicting driver assignments
+    const conflictingOrders = await QpData.find({
+      _id: { $in: orderIds },
+      driver: { $exists: true, $ne: null, $ne: driverId },
+    }).session(session);
 
-      if (!validStatuses.includes(status)) {
-        await session.abortTransaction();
-        session.endSession();
-        return res.status(400).json({
-          success: false,
-          message: "Invalid status value",
-        });
-      }
+    if (conflictingOrders.length > 0)
+      throw new Error("Some orders assigned to another driver");
 
-      updateData.status = status;
+    const updateData = {};
+    if (driverId) updateData.driver = driverId;
 
-      switch (status) {
-        case "loading":
-          updateData.loadingStartDate = currentTime;
-          if (!deliveryStatus) {
-            updateData.deliveryStatus = "loading";
-            updateData.driver = driverId;
-          }
-          break;
-
-        case "going_to_delivery":
-          updateData.deliveryStartTime = currentTime;
-          updateData.loadingEndDate = currentTime;
-          if (!deliveryStatus) updateData.deliveryStatus = "in_transit";
-          break;
-
-        case "delivered":
-          updateData.deliveryEndTime = currentTime;
-          updateData.deliveredAt = currentTime;
-          if (!deliveryStatus) updateData.deliveryStatus = "delivered";
-          break;
-      }
-    }
-
-    // Handle deliveryStatus updates
+    // Status handling
     if (deliveryStatus) {
-      const validDeliveryStatuses = [
-        "not_started",
-        "loading",
-        "in_transit",
-        "delivered",
-        "cancelled",
-      ];
-
-      if (!validDeliveryStatuses.includes(deliveryStatus)) {
-        await session.abortTransaction();
-        session.endSession();
-        return res.status(400).json({
-          success: false,
-          message: "Invalid delivery status value",
-        });
-      }
-
-      updateData.deliveryStatus = deliveryStatus;
-
+      updateData.status = deliveryStatus;
       switch (deliveryStatus) {
         case "loading":
           updateData.loadingStartDate = currentTime;
+          if (!deliveryStatus) updateData.deliveryStatus = "loading";
           break;
         case "in_transit":
+          if (!billPhotos || !billPhotos.length)
+            throw new Error("Bill photo required for dispatch");
           updateData.deliveryStartTime = currentTime;
           updateData.loadingEndDate = currentTime;
+          updateData.deliveryStatus = "in_transit";
+          updateData.dispatchTime = currentTime;
+          // Map string URLs to objects
+          updateData.billPhoto = billPhotos[0];
           break;
         case "delivered":
           updateData.deliveryEndTime = currentTime;
           updateData.deliveredAt = currentTime;
+          updateData.deliveryStatus = "delivered";
           break;
       }
     }
 
-    // Handle bill photos
-    if (billPhotos && Array.isArray(billPhotos)) {
-      updateData.billPhotos = billPhotos.map((photo) => ({
-        url: photo.url,
-        filename:
-          photo.filename ||
-          `bill_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      }));
-    }
+    // DeliveryStatus override
+    if (deliveryStatus) updateData.deliveryStatus = deliveryStatus;
 
     // Bulk update
-    const bulkUpdateResult = await QpData.updateMany(
-      { _id: { $in: orderIds } },
-      updateData,
-      { session }
-    );
-
-    if (bulkUpdateResult.matchedCount === 0) {
-      await session.abortTransaction();
-      session.endSession();
-      return res.status(404).json({
-        success: false,
-        message: "No orders found with the provided IDs",
-      });
-    }
+    await QpData.updateMany({ _id: { $in: orderIds } }, updateData, {
+      session,
+    });
 
     const updatedOrders = await QpData.find({ _id: { $in: orderIds } })
-      .populate({ path: "companyName", select: "companyName avatar" })
-      .populate({
-        path: "party",
-        select:
-          "partyName address contactPerson personMobileNo personWhatsAppNo GSTNo",
-      })
+      .populate("companyName", "companyName avatar")
+      .populate(
+        "party",
+        "partyName address contactPerson personMobileNo personWhatsAppNo GSTNo"
+      )
       .populate(
         "orderdata",
         "party ply length width height deckal paper1GSM paper2GSM paper3GSM"
       )
       .populate("kantan", "kantanName")
-      .populate("driver", "firstName lastName email") // include driver details
+      .populate("driver", "firstName lastName email")
       .session(session);
 
     await session.commitTransaction();
@@ -1234,17 +1067,16 @@ exports.bulkUpdateQPOrderStatus = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      message: `Successfully updated ${bulkUpdateResult.modifiedCount} orders`,
+      message: `Updated ${updatedOrders.length} orders successfully`,
       data: updatedOrders,
     });
-  } catch (error) {
+  } catch (err) {
     await session.abortTransaction();
     session.endSession();
-    console.error("❌ Error bulk updating QP order status:", error);
+    console.error(err);
     res.status(500).json({
       success: false,
-      message: "Failed to bulk update QP order status",
-      error: error.message,
+      message: err.message || "Failed to update orders",
     });
   }
 };

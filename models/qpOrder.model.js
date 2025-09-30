@@ -238,6 +238,9 @@ const qpDataSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "Staff",
     },
+    billPhoto:{
+      type:String
+    }
   },
   {
     timestamps: true,
