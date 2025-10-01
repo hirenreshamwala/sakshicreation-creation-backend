@@ -925,8 +925,6 @@ exports.updateQPOrderStatus = async (req, res) => {
       ];
       if (!validStatuses.includes(status)) throw new Error("Invalid status");
 
-      updateData.status = status;
-
       switch (status) {
         case "loading":
           updateData.loadingStartDate = currentTime;
@@ -1016,7 +1014,6 @@ exports.bulkUpdateQPOrderStatus = async (req, res) => {
 
     // Status handling
     if (deliveryStatus) {
-      updateData.status = deliveryStatus;
       switch (deliveryStatus) {
         case "loading":
           updateData.loadingStartDate = currentTime;

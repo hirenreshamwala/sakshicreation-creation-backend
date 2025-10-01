@@ -1090,11 +1090,11 @@ exports.getOrdersByStaffId = async (req, res) => {
           "partyName address contactPerson personMobileNo personWhatsAppNo GSTNo marketName area",
         populate: [
           {
-            path: "marketName",
+            path: "address.marketName",
             select: "marketName", // adjust field name as per your schema
           },
           {
-            path: "area",
+            path: "address.area",
             select: "area", // adjust field name as per your schema
           },
         ],

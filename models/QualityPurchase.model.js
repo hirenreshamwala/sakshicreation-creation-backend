@@ -46,6 +46,9 @@ const PurchaseSchema = new mongoose.Schema(
     reel: {
       type: String,
     },
+    paperMil: {
+      type: String,
+    },
     for: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Role",
