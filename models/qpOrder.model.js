@@ -233,10 +233,12 @@ const qpDataSchema = new mongoose.Schema(
     printer: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Staff",
+      required:false
     },
     binder: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Staff",
+      required:false
     },
     billPhoto:{
       type:String
