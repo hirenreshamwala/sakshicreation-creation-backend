@@ -96,3 +96,82 @@ exports.getAllInventory = async (req, res) => {
     });
   }
 };
+
+exports.updateInventory = async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    // Validate if the ID is a valid MongoDB ObjectId
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid inventory ID format",
+      });
+    }
+
+    // Check if inventory exists
+    const existingInventory = await Inventory.findById(id);
+    if (!existingInventory) {
+      return res.status(404).json({
+        success: false,
+        message: "Inventory item not found",
+      });
+    }
+
+    // Extract update data from request body
+    const {
+      material,
+      vendor,
+      companyName,
+      category,
+      type,
+      quantity,
+      date,
+      for: assignedTo,
+      kantan,
+      forCompany,
+      remarks,
+      usedKg
+    } = req.body;
+
+    // Create update object with only provided fields
+    const updateData = {};
+    
+    if (material !== undefined) updateData.material = material;
+    if (vendor !== undefined) updateData.vendor = vendor;
+    if (companyName !== undefined) updateData.companyName = companyName;
+    if (category !== undefined) updateData.category = category;
+    if (type !== undefined) updateData.type = type;
+    if (quantity !== undefined) updateData.quantity = quantity;
+    if (date !== undefined) updateData.date = date;
+    if (assignedTo !== undefined) updateData.for = assignedTo;
+    if (kantan !== undefined) updateData.kantan = kantan;
+    if (forCompany !== undefined) updateData.forCompany = forCompany;
+    if (remarks !== undefined) updateData.remarks = remarks;
+    if (usedKg !== undefined) updateData.usedKg = usedKg;
+
+    // Update the inventory item
+    const updatedInventory = await Inventory.findByIdAndUpdate(
+      id,
+      updateData,
+      { new: true, runValidators: true }
+    )
+      .populate("material", "materialName materialSize materialGSM")
+      .populate("vendor", "name")
+      .populate("companyName", "companyName")
+      .populate("for", "roleName")
+      .populate("kantan", "kantanName")
+      .populate("forCompany", "firstName lastName");
+
+    res.status(200).json({
+      success: true,
+      message: "Inventory updated successfully",
+      data: updatedInventory,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Error updating inventory: " + error.message,
+    });
+  }
+};

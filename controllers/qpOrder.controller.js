@@ -243,8 +243,6 @@ exports.getAllQpOrders = async (req, res) => {
   }
 };
 
-
-
 exports.getQpOrderById = async (req, res) => {
   try {
     const qpOrder = await QpData.findById(req.params.id)
@@ -270,7 +268,7 @@ exports.getQpOrderById = async (req, res) => {
         path: "binder",
         select: "firstName lastName", // Add binder name population
       });
-      
+
     if (!qpOrder) {
       return res.status(404).json({
         success: false,
@@ -293,10 +291,11 @@ exports.getQpOrderById = async (req, res) => {
 };
 
 function convertToReels(reels = 0, inches = 0) {
-  const totalInches = Number(reels) * 7200 + Number(inches); // convert everything to inches
-  const totalReels = totalInches / 7200; // convert back to reels
-  return parseFloat(totalReels.toFixed(3)); // round to 3 decimals (optional)
+  const totalInches = Number(reels) * 7200 + Number(inches);
+  const totalReels = totalInches / 7200;
+  return parseFloat(totalReels.toFixed(3));
 }
+
 // Update QP Order with inventory outward creation on completion
 exports.updateQpOrder = async (req, res) => {
   const session = await mongoose.startSession();
@@ -333,8 +332,17 @@ exports.updateQpOrder = async (req, res) => {
       });
     }
 
-    // Update the order
-    let packagingOptionId = currentOrder.orderdata; // Default to existing orderdata
+    // Handle paper allocations first
+    // if (req.body.selectedPapers) {
+    //   await handlePaperAllocations(currentOrder, req.body, session);
+    // }
+
+    if (req.body.selectedPapers) {
+      currentOrder.selectedPapers = req.body.selectedPapers;
+    }
+
+    // Update packaging option if provided
+    let packagingOptionId = currentOrder.orderdata;
     if (req.body.packagingOption) {
       const {
         party,
@@ -348,7 +356,6 @@ exports.updateQpOrder = async (req, res) => {
         paper3GSM,
       } = req.body.packagingOption;
 
-      // Validate packagingOption fields
       if (
         !party ||
         !ply ||
@@ -368,7 +375,6 @@ exports.updateQpOrder = async (req, res) => {
         });
       }
 
-      // Check if a PackagingOption exists for the provided data
       let packaging = await PackagingOption.findOne({
         party,
         ply,
@@ -382,7 +388,6 @@ exports.updateQpOrder = async (req, res) => {
       }).session(session);
 
       if (!packaging) {
-        // Create new PackagingOption if none exists
         packaging = new PackagingOption({
           party,
           ply,
@@ -397,21 +402,28 @@ exports.updateQpOrder = async (req, res) => {
         await packaging.save({ session });
       }
 
-      packagingOptionId = packaging._id; // Update the packagingOptionId to the new or existing PackagingOption
+      packagingOptionId = packaging._id;
     }
 
     // Prepare update data
     const updateData = {
       ...req.body,
-      orderdata: packagingOptionId, // Update orderdata with the new or existing PackagingOption ID
+      orderdata: packagingOptionId,
     };
 
+    // Remove paperAllocations from updateData as it's handled separately
+    delete updateData.paperAllocations;
+
     // Update the order
-    const qpOrder = await QpData.findByIdAndUpdate(req.params.id, updateData, {
-      new: true,
-      runValidators: true,
-      session,
-    })
+    const qpOrder = await QpData.findByIdAndUpdate(
+      req.params.id,
+      { $set: updateData },
+      {
+        new: true,
+        runValidators: true,
+        session,
+      }
+    )
       .populate({
         path: "companyName",
         select: "companyName avatar",
@@ -427,13 +439,17 @@ exports.updateQpOrder = async (req, res) => {
       )
       .populate({
         path: "printer",
-        select: "firstName lastName", // Add printer name population
+        select: "firstName lastName",
       })
       .populate({
         path: "binder",
-        select: "firstName lastName", // Add binder name population
+        select: "firstName lastName",
       })
-      .populate("kantan", "kantanName");
+      .populate("kantan", "kantanName")
+      .populate(
+        "paperAllocations.inventoryId",
+        "paperName paperMillName gsm deckal kg"
+      );
 
     if (!qpOrder) {
       await session.abortTransaction();
@@ -448,209 +464,9 @@ exports.updateQpOrder = async (req, res) => {
     const statusChangedToCompleted =
       req.body.status === "Completed" && currentOrder.status !== "Completed";
 
-    const getRole = await Staff.findById(qpOrder);
-
-    // Create outward inventory entry if status changed to completed
-    // inside updateQpOrder after statusChangedToCompleted check
-
+    // Create outward inventory entries if status changed to completed
     if (statusChangedToCompleted) {
-      // 🔹 Box Inward (with actualNoOfPieces)
-      if (qpOrder.actualNoOfPieces) {
-        const inwardBox = new Inventory({
-          category: "factory",
-          type: "inward",
-          inventoryType: "Box",
-          quantity: qpOrder.actualNoOfPieces || undefined,
-          booked: qpOrder.booked || false,
-          boxLength: qpOrder.orderdata?.length || undefined,
-          boxWidth: qpOrder.orderdata?.width || undefined,
-          boxHeight: qpOrder.orderdata?.height || undefined,
-          p1gsm: qpOrder.actualPaperKG?.paper1 || undefined,
-          p2gsm: qpOrder.actualPaperKG?.paper2 || undefined,
-          p3gsm: qpOrder.actualPaperKG?.paper3 || undefined,
-          date: new Date(),
-          qpPurchase: qpOrder._id,
-          qpOrder: qpOrder._id,
-          companyName: qpOrder.companyName,
-          for: qpOrder.assignedTo || undefined,
-          forCompany: qpOrder.createdBy || undefined,
-        });
-
-        if (qpOrder.actualNoOfPieces) {
-          inwardBox.actualNoOfPieces = qpOrder.actualNoOfPieces;
-        }
-
-        await inwardBox.save({ session });
-      }
-
-      // 🔹 Box Outward (only noOfPieces)
-      if (qpOrder.noOfPieces) {
-        const outwardBox = new Inventory({
-          category: "factory",
-          type: "outward",
-          inventoryType: "Box",
-          quantity: qpOrder.noOfPieces || undefined,
-          booked: qpOrder.booked || false,
-          boxLength: qpOrder.orderdata?.length || undefined,
-          boxWidth: qpOrder.orderdata?.width || undefined,
-          boxHeight: qpOrder.orderdata?.height || undefined,
-          p1gsm: qpOrder.actualPaperKG?.paper1 || undefined,
-          p2gsm: qpOrder.actualPaperKG?.paper2 || undefined,
-          p3gsm: qpOrder.actualPaperKG?.paper3 || undefined,
-          date: new Date(),
-          qpOrder: qpOrder._id,
-          qpPurchase: qpOrder._id,
-          companyName: qpOrder.companyName,
-          for: qpOrder.assignedTo || undefined,
-          forCompany: qpOrder.createdBy || undefined,
-        });
-
-        await outwardBox.save({ session });
-      }
-      if (qpOrder.actualPaperKG) {
-        // for paper1
-        const outwardPaper1 = new Inventory({
-          category: "factory",
-          type: "outward",
-          inventoryType: "Paper",
-          p1gsm: qpOrder.actualPaperKG?.paper1 || undefined,
-          p2gsm: qpOrder.actualPaperKG?.paper1 || undefined,
-          p3gsm: qpOrder.actualPaperKG?.paper1 || undefined,
-          date: new Date(),
-          qpOrder: qpOrder._id,
-          qpPurchase: qpOrder._id,
-          companyName: qpOrder.companyName,
-          for: qpOrder.assignedTo || undefined,
-          forCompany: qpOrder.createdBy || undefined,
-        });
-
-        await outwardPaper1.save({ session });
-
-        // for paper 2
-        if (
-          !_.isEqual(qpOrder.actualPaperKG.paper1, qpOrder.actualPaperKG.paper2)
-        ) {
-          const outwardPaper2 = new Inventory({
-            category: "factory",
-            type: "outward",
-            inventoryType: "Paper",
-            p1gsm: qpOrder.actualPaperKG?.paper2 || undefined,
-            p2gsm: qpOrder.actualPaperKG?.paper2 || undefined,
-            p3gsm: qpOrder.actualPaperKG?.paper2 || undefined,
-            date: new Date(),
-            qpOrder: qpOrder._id,
-            qpPurchase: qpOrder._id,
-            companyName: qpOrder.companyName,
-            for: qpOrder.assignedTo || undefined,
-            forCompany: qpOrder.createdBy || undefined,
-          });
-
-          await outwardPaper2.save({ session });
-        }
-
-        if (
-          !_.isEqual(qpOrder.actualPaperKG.paper1, qpOrder.actualPaperKG.paper2)
-        ) {
-          const outwardPaper2 = new Inventory({
-            category: "factory",
-            type: "outward",
-            inventoryType: "Paper",
-            p1gsm: qpOrder.actualPaperKG?.paper3 || undefined,
-            p2gsm: qpOrder.actualPaperKG?.paper3 || undefined,
-            p3gsm: qpOrder.actualPaperKG?.paper3 || undefined,
-            date: new Date(),
-            qpOrder: qpOrder._id,
-            qpPurchase: qpOrder._id,
-            companyName: qpOrder.companyName,
-            for: qpOrder.assignedTo || undefined,
-            forCompany: qpOrder.createdBy || undefined,
-          });
-
-          await outwardPaper2.save({ session });
-        }
-
-        if (
-          !_.isEqual(
-            qpOrder.actualPaperKG.paper3,
-            qpOrder.actualPaperKG.paper1
-          ) &&
-          !_.isEqual(qpOrder.actualPaperKG.paper3, qpOrder.actualPaperKG.paper2)
-        ) {
-          const outwardPaper3 = new Inventory({
-            category: "factory",
-            type: "outward",
-            inventoryType: "Paper",
-
-            p3gsm: qpOrder.actualPaperKG.paper3 || undefined,
-            date: new Date(),
-            qpOrder: qpOrder._id,
-            qpPurchase: qpOrder._id,
-            companyName: qpOrder.companyName,
-            for: qpOrder.assignedTo || undefined,
-            forCompany: qpOrder.createdBy || undefined,
-          });
-
-          await outwardPaper3.save({ session });
-        }
-      }
-      // 🔹 Kantan Outward
-      if (qpOrder.kantan && qpOrder.actualTotalKantan?.reel) {
-        const outwardKantan = new Inventory({
-          category: "factory",
-          type: "outward",
-          inventoryType: "Kantan",
-          reel:
-            convertToReels(
-              qpOrder.actualTotalKantan.reel,
-              qpOrder.actualTotalKantan.inch
-            ) || undefined,
-          kantan: qpOrder.kantan || undefined,
-          vendor: qpOrder.vendor || undefined,
-          date: new Date(),
-          qpOrder: qpOrder._id,
-          qpPurchase: qpOrder._id,
-          companyName: qpOrder.companyName,
-          for: qpOrder.assignedTo || undefined,
-          forCompany: qpOrder.createdBy || undefined,
-        });
-        await outwardKantan.save({ session });
-      }
-
-      // 🔹 Glue Outward
-      if (qpOrder.glue && qpOrder.glue.trim() !== "") {
-        const outwardGlue = new Inventory({
-          category: "factory",
-          type: "outward",
-          inventoryType: "Glue",
-          kg: qpOrder.glue || undefined,
-          vendor: qpOrder.vendor || undefined,
-          date: new Date(),
-          qpOrder: qpOrder._id,
-          qpPurchase: qpOrder._id,
-          companyName: qpOrder.companyName,
-          for: qpOrder.assignedTo || undefined,
-          forCompany: qpOrder.createdBy || undefined,
-        });
-        await outwardGlue.save({ session });
-      }
-
-      // 🔹 Wire Outward
-      if (qpOrder.wire && qpOrder.wire.trim() !== "") {
-        const outwardWire = new Inventory({
-          category: "factory",
-          type: "outward",
-          inventoryType: "Wire",
-          kg: qpOrder.wire || undefined,
-          vendor: qpOrder.vendor || undefined,
-          date: new Date(),
-          qpOrder: qpOrder._id,
-          qpPurchase: qpOrder._id,
-          companyName: qpOrder.companyName,
-          for: qpOrder.assignedTo || undefined,
-          forCompany: qpOrder.createdBy || undefined,
-        });
-        await outwardWire.save({ session });
-      }
+      await createOutwardInventoryEntries(qpOrder, session);
     }
 
     await session.commitTransaction();
@@ -673,6 +489,145 @@ exports.updateQpOrder = async (req, res) => {
     });
   }
 };
+
+// Helper function to create outward inventory entries
+async function createOutwardInventoryEntries(qpOrder, session) {
+  const Inventory = mongoose.model("Inventory");
+
+  // 🔹 Box Inward (with actualNoOfPieces)
+  if (qpOrder.actualNoOfPieces) {
+    const inwardBox = new Inventory({
+      category: "factory",
+      type: "inward",
+      inventoryType: "Box",
+      quantity: qpOrder.actualNoOfPieces,
+      booked: qpOrder.booked || false,
+      boxLength: qpOrder.orderdata?.length,
+      boxWidth: qpOrder.orderdata?.width,
+      boxHeight: qpOrder.orderdata?.height,
+      p1gsm: qpOrder.actualPaperKG?.paper1,
+      p2gsm: qpOrder.actualPaperKG?.paper2,
+      p3gsm: qpOrder.actualPaperKG?.paper3,
+      date: new Date(),
+      qpPurchase: qpOrder._id,
+      qpOrder: qpOrder._id,
+      companyName: qpOrder.companyName,
+      for: qpOrder.assignedTo,
+      forCompany: qpOrder.createdBy,
+    });
+
+    await inwardBox.save({ session });
+  }
+
+  // 🔹 Box Outward (only noOfPieces)
+  if (qpOrder.noOfPieces) {
+    const outwardBox = new Inventory({
+      category: "factory",
+      type: "outward",
+      inventoryType: "Box",
+      quantity: qpOrder.noOfPieces,
+      booked: qpOrder.booked || false,
+      boxLength: qpOrder.orderdata?.length,
+      boxWidth: qpOrder.orderdata?.width,
+      boxHeight: qpOrder.orderdata?.height,
+      p1gsm: qpOrder.actualPaperKG?.paper1,
+      p2gsm: qpOrder.actualPaperKG?.paper2,
+      p3gsm: qpOrder.actualPaperKG?.paper3,
+      date: new Date(),
+      qpOrder: qpOrder._id,
+      qpPurchase: qpOrder._id,
+      companyName: qpOrder.companyName,
+      for: qpOrder.assignedTo,
+      forCompany: qpOrder.createdBy,
+    });
+
+    await outwardBox.save({ session });
+  }
+
+  // 🔹 Paper Outward - Use allocated papers
+  // if (qpOrder.paperAllocations && qpOrder.paperAllocations.length > 0) {
+  //   for (const allocation of qpOrder.paperAllocations) {
+  //     const outwardPaper = new Inventory({
+  //       category: "factory",
+  //       type: "outward",
+  //       inventoryType: "Paper",
+  //       kg: allocation.allocatedKg,
+  //       paperName: allocation.paperName,
+  //       paperMillName: allocation.paperMillName,
+  //       gsm: allocation.gsm,
+  //       deckal: allocation.deckal,
+  //       date: new Date(),
+  //       qpOrder: qpOrder._id,
+  //       qpPurchase: qpOrder._id,
+  //       companyName: qpOrder.companyName,
+  //       for: qpOrder.assignedTo,
+  //       forCompany: qpOrder.createdBy,
+  //       // Reference to the source inventory
+  //       sourceInventory: allocation.inventoryId,
+  //     });
+
+  //     await outwardPaper.save({ session });
+  //   }
+  // }
+
+  // 🔹 Kantan Outward
+  if (qpOrder.kantan && qpOrder.actualTotalKantan?.reel) {
+    const outwardKantan = new Inventory({
+      category: "factory",
+      type: "outward",
+      inventoryType: "Kantan",
+      reel: convertToReels(
+        qpOrder.actualTotalKantan.reel,
+        qpOrder.actualTotalKantan.inch
+      ),
+      kantan: qpOrder.kantan,
+      vendor: qpOrder.vendor,
+      date: new Date(),
+      qpOrder: qpOrder._id,
+      qpPurchase: qpOrder._id,
+      companyName: qpOrder.companyName,
+      for: qpOrder.assignedTo,
+      forCompany: qpOrder.createdBy,
+    });
+    await outwardKantan.save({ session });
+  }
+
+  // 🔹 Glue Outward
+  if (qpOrder.glue && qpOrder.glue.trim() !== "") {
+    const outwardGlue = new Inventory({
+      category: "factory",
+      type: "outward",
+      inventoryType: "Glue",
+      kg: qpOrder.glue,
+      vendor: qpOrder.vendor,
+      date: new Date(),
+      qpOrder: qpOrder._id,
+      qpPurchase: qpOrder._id,
+      companyName: qpOrder.companyName,
+      for: qpOrder.assignedTo,
+      forCompany: qpOrder.createdBy,
+    });
+    await outwardGlue.save({ session });
+  }
+
+  // 🔹 Wire Outward
+  if (qpOrder.wire && qpOrder.wire.trim() !== "") {
+    const outwardWire = new Inventory({
+      category: "factory",
+      type: "outward",
+      inventoryType: "Wire",
+      kg: qpOrder.wire,
+      vendor: qpOrder.vendor,
+      date: new Date(),
+      qpOrder: qpOrder._id,
+      qpPurchase: qpOrder._id,
+      companyName: qpOrder.companyName,
+      for: qpOrder.assignedTo,
+      forCompany: qpOrder.createdBy,
+    });
+    await outwardWire.save({ session });
+  }
+}
 
 // Delete QP Order
 exports.deleteQpOrder = async (req, res) => {
@@ -1074,6 +1029,60 @@ exports.bulkUpdateQPOrderStatus = async (req, res) => {
     res.status(500).json({
       success: false,
       message: err.message || "Failed to update orders",
+    });
+  }
+};
+// Helper function to get available papers with allocations
+exports.getAvailablePapers = async (req, res) => {
+  try {
+    const Inventory = mongoose.model("Inventory");
+    const { gsm, deckal, requiredKg } = req.query;
+
+    const papers = await Inventory.find({
+      inventoryType: "Paper",
+      type: "inward",
+      gsm: gsm,
+      deckal: deckal,
+      $or: [{ qpOrder: { $exists: false } }, { qpOrder: null }],
+    }).populate("allocations.qpOrder", "orderNo companyName");
+
+    const availablePapers = papers.map((paper) => {
+      const totalAllocated = paper.allocations.reduce(
+        (sum, alloc) => sum + alloc.allocatedKg,
+        0
+      );
+      const availableKg = (paper.kg || 0) - totalAllocated;
+
+      return {
+        _id: paper._id,
+        paperName: paper.paperName,
+        paperMillName: paper.paperMillName,
+        gsm: paper.gsm,
+        deckal: paper.deckal,
+        totalKg: paper.kg,
+        allocatedKg: totalAllocated,
+        availableKg: availableKg,
+        isSufficient: availableKg >= parseFloat(requiredKg || 0),
+        allocations: paper.allocations.map((alloc) => ({
+          orderNo: alloc.qpOrder?.orderNo,
+          companyName: alloc.qpOrder?.companyName,
+          allocatedKg: alloc.allocatedKg,
+          paperType: alloc.paperType,
+          allocatedAt: alloc.allocatedAt,
+        })),
+      };
+    });
+
+    res.status(200).json({
+      success: true,
+      data: availablePapers,
+    });
+  } catch (error) {
+    console.error("Error fetching available papers:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch available papers",
+      error: error.message,
     });
   }
 };

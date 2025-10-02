@@ -22,6 +22,30 @@ const remarkSchema = new mongoose.Schema(
   { _id: false }
 );
 
+const paperAllocationSchema = new mongoose.Schema(
+  {
+    inventoryId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Inventory",
+      required: true,
+    },
+    allocatedKg: {
+      type: Number,
+      required: true,
+    },
+    paperType: {
+      type: String,
+      enum: ["paper1", "paper2", "paper3"],
+      required: true,
+    },
+    paperName: String,
+    paperMillName: String,
+    gsm: String,
+    deckal: String,
+  },
+  { _id: false }
+);
+
 // Quality packaging data
 const qpDataSchema = new mongoose.Schema(
   {
@@ -242,7 +266,24 @@ const qpDataSchema = new mongoose.Schema(
     },
     billPhoto:{
       type:String
-    }
+    },
+     paperAllocations: [paperAllocationSchema],
+    
+    selectedPapers: {
+      paper1: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Inventory",
+      },
+      paper2: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Inventory",
+      },
+      paper3: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Inventory",
+      },
+    },
+    
   },
   {
     timestamps: true,

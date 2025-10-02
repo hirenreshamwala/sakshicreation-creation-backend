@@ -1,5 +1,31 @@
 const mongoose = require("mongoose");
 
+const allocationSchema = new mongoose.Schema(
+  {
+    qpOrder: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "QpOrder",
+      required: true,
+    },
+    allocatedKg: {
+      type: Number,
+      required: true,
+    },
+    paperType: {
+      type: String,
+      enum: ["paper1", "paper2", "paper3"],
+      required: true,
+    },
+    orderNo: Number,
+    companyName: String,
+    allocatedAt: {
+      type: Date,
+      default: Date.now,
+    },
+  },
+  { _id: false }
+);
+
 const InventorySchema = new mongoose.Schema(
   {
     category: {
@@ -47,7 +73,7 @@ const InventorySchema = new mongoose.Schema(
       ref: "Purchase",
       required: false,
     },
-     qpOrder: {
+    qpOrder: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "QpOrder",
       required: false,
@@ -113,8 +139,11 @@ const InventorySchema = new mongoose.Schema(
     boxHeight: {
       type: String,
     },
-    deckal:{
-      type:String
+    deckal: {
+      type: String,
+    },
+    gsm: {
+      type: String,
     },
     p1gsm: {
       deckal: { type: String },
@@ -134,6 +163,15 @@ const InventorySchema = new mongoose.Schema(
     booked: {
       type: Boolean,
       default: false,
+    },
+    allocations: [allocationSchema],
+    
+    // Calculated available quantity
+    availableKg: {
+      type: Number,
+      default: function() {
+        return this.kg || 0;
+      }
     },
   },
   { timestamps: true }

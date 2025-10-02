@@ -106,6 +106,7 @@ exports.createPurchase = async (req, res) => {
       reel,
       category, // 👈 pass either "factory" or "godown" from frontend
     } = req.body;
+    console.log('req body',req.body)
 
     // Required validations
     if (
@@ -235,6 +236,7 @@ exports.createPurchase = async (req, res) => {
       inventoryType: type,
       quantity: type === "paper" ? 1 : undefined,
       kg: kg || undefined,
+      gsm: type === "paper" ? gsm : undefined,
       reel: reel || undefined,
       vendor: vendorName,
       date: new Date(),
@@ -491,7 +493,7 @@ exports.updatePurchase = async (req, res) => {
       updateData.deckal = undefined;
       updateData.gsm = undefined;
     }
-    if (type && !(type === "kantan" || type === "glue" || type === "wire")) {
+    if (type && !(type === "kantan" || type === "glue" || type === "wire" || type === "paper")) {
       updateData.kg = 0;
     }
 
@@ -514,6 +516,7 @@ exports.updatePurchase = async (req, res) => {
       type: "inward",
       inventoryType: type,
       quantity: type === "paper" ? 1 : undefined,
+      gsm: type === "paper" ? gsm : undefined,
       kg: kg || undefined,
       reel: reel || undefined,
       vendor: vendorName,
