@@ -194,6 +194,26 @@ const qpDataSchema = new mongoose.Schema(
         totalKg: { type: String },
       },
     },
+    operatorTotalKg: {
+      type: String,
+    },
+    operatorPaperKG: {
+      paper1: {
+        deckal: { type: String },
+        gsm: { type: String },
+        totalKg: { type: String },
+      },
+      paper2: {
+        deckal: { type: String },
+        gsm: { type: String },
+        totalKg: { type: String },
+      },
+      paper3: {
+        deckal: { type: String },
+        gsm: { type: String },
+        totalKg: { type: String },
+      },
+    },
     paperKG: {
       paper1: {
         deckal: { type: String },
