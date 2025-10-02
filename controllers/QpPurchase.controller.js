@@ -3,14 +3,10 @@ const Purchase = require("../models/QualityPurchase.model");
 const CompanyName = require("../models/companyName.model");
 const Role = require("../models/role.model");
 const Staff = require("../models/staff.model");
-const Material = require("../models/material.model");
 const Vendor = require("../models/vendor.model");
 const Kantan = require("../models/kantan.model");
 const PaperGSM = require("../models/paperGSM.model"); // Add PaperGSM model import
 const Inventory = require("../models/inventory.model");
-const csv = require("csv-parser");
-const fs = require("fs");
-const path = require("path");
 const xlsx = require("xlsx");
 
 // Get all companies
@@ -104,7 +100,7 @@ exports.createPurchase = async (req, res) => {
       forCompany: staff,
       type,
       kantan,
-      paperName,
+      paperMil,
       deckal,
       gsm,
       reel,
@@ -144,7 +140,7 @@ exports.createPurchase = async (req, res) => {
     }
 
     // Paper fields required
-    if (type === "paper" && (!paperName || !gsm || !deckal)) {
+    if (type === "paper" && (!gsm || !deckal)) {
       return res.status(400).json({
         success: false,
         message:
@@ -158,8 +154,7 @@ exports.createPurchase = async (req, res) => {
       !mongoose.Types.ObjectId.isValid(companyName) ||
       !mongoose.Types.ObjectId.isValid(role) ||
       !mongoose.Types.ObjectId.isValid(staff) ||
-      (kantan && !mongoose.Types.ObjectId.isValid(kantan)) ||
-      (paperName && !mongoose.Types.ObjectId.isValid(paperName))
+      (kantan && !mongoose.Types.ObjectId.isValid(kantan))
     ) {
       return res.status(400).json({
         success: false,
@@ -214,14 +209,6 @@ exports.createPurchase = async (req, res) => {
           .json({ success: false, message: "Invalid kantan" });
     }
 
-    if (paperName) {
-      const paperExists = await PaperGSM.findById(paperName);
-      if (!paperExists)
-        return res
-          .status(400)
-          .json({ success: false, message: "Invalid paper" });
-    }
-
     // ✅ Save Quality Purchase
     const newPurchase = new Purchase({
       vendorName,
@@ -230,13 +217,13 @@ exports.createPurchase = async (req, res) => {
       companyName,
       for: role,
       forCompany: staff,
+      paperMil: type === "paper" ? paperMil : undefined,
       type,
       reel: type === "kantan" ? reel : undefined,
       kantan: type === "kantan" ? kantan : undefined,
-      paperName: type === "paper" ? paperName : undefined,
       deckal: type === "paper" ? deckal : undefined,
       gsm: type === "paper" ? gsm : undefined,
-      category:category
+      category: category,
     });
 
     const savedPurchase = await newPurchase.save();
@@ -245,8 +232,7 @@ exports.createPurchase = async (req, res) => {
     const newInventory = new Inventory({
       category, // 👈 directly from req.body ("factory" | "godown")
       type: "inward",
-      inventoryType:type,
-      material: type === "paper" ? paperName : undefined,
+      inventoryType: type,
       quantity: type === "paper" ? 1 : undefined,
       kg: kg || undefined,
       reel: reel || undefined,
@@ -255,7 +241,6 @@ exports.createPurchase = async (req, res) => {
       qpPurchase: savedPurchase._id,
       companyName,
       kantan: type === "kantan" ? kantan : undefined,
-      paperName: type === "paper" ? paperName : undefined,
       deckal: type === "paper" ? deckal : undefined,
       gsm: type === "paper" ? gsm : undefined,
       for: role,
@@ -268,7 +253,6 @@ exports.createPurchase = async (req, res) => {
     const populatedPurchase = await Purchase.findById(savedPurchase._id)
       .populate("vendorName", "name")
       .populate("kantan", "kantanName")
-      .populate("paperName", "name")
       .populate("companyName", "companyName avatar")
       .populate("for", "roleName")
       .populate("forCompany", "firstName lastName");
@@ -291,7 +275,6 @@ exports.getAllPurchases = async (req, res) => {
     const purchases = await Purchase.find()
       .populate("vendorName", "name")
       .populate("kantan", "kantanName")
-      .populate("paperName", "name")
       .populate("companyName", "companyName avatar")
       .populate("for", "roleName")
       .populate("forCompany", "firstName lastName")
@@ -316,7 +299,6 @@ exports.getPurchaseById = async (req, res) => {
     const purchase = await Purchase.findById(req.params.id)
       .populate("vendorName", "name")
       .populate("kantan", "kantanName")
-      .populate("paperName", "name")
       .populate("companyName", "companyName avatar")
       .populate("for", "roleName")
       .populate("forCompany", "firstName lastName");
@@ -352,10 +334,10 @@ exports.updatePurchase = async (req, res) => {
       forCompany: staff,
       type,
       kantan,
-      paperName,
       deckal,
       gsm,
       reel,
+      paperMil,
       category,
     } = req.body;
 
@@ -389,12 +371,6 @@ exports.updatePurchase = async (req, res) => {
       return res.status(400).json({
         success: false,
         message: "Invalid kantan ID",
-      });
-    }
-    if (paperName && !mongoose.Types.ObjectId.isValid(paperName)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid paper ID",
       });
     }
 
@@ -471,27 +447,6 @@ exports.updatePurchase = async (req, res) => {
       }
     }
 
-    // Verify paper exists and dimensions match if provided
-    if (paperName) {
-      const paperExists = await PaperGSM.findById(paperName);
-      if (!paperExists) {
-        return res.status(400).json({
-          success: false,
-          message: "Invalid paper",
-        });
-      }
-      // if (
-      //   type === "paper" &&
-      //   (paperExists.deckal !== deckal ||   
-      //     paperExists.gsm !== gsm )
-      // ) {
-      //   return res.status(400).json({
-      //     success: false,
-      //     message: "Provided dimensions do not match the selected paper",
-      //   });
-      // }
-    }
-
     // Validate required fields for specific types
     if (type === "kantan" && (!kantan || !reel)) {
       return res.status(400).json({
@@ -505,11 +460,10 @@ exports.updatePurchase = async (req, res) => {
         message: "KG is required for glue and wire types",
       });
     }
-    if (type === "paper" && (!paperName || !deckal || !gsm)) {
+    if (type === "paper" && (!deckal || !gsm)) {
       return res.status(400).json({
         success: false,
-        message:
-          "Paper name, height, width, and length are required for paper type",
+        message: "height, width, and length are required for paper type",
       });
     }
 
@@ -524,8 +478,8 @@ exports.updatePurchase = async (req, res) => {
       ...(type && { type }),
       ...(kantan && { reel }),
       ...(kantan && { kantan }),
-      ...(paperName && { paperName }),
       ...(gsm && { gsm }),
+      ...(paperMil && { paperMil }),
       ...(deckal && { deckal }),
     };
 
@@ -534,7 +488,6 @@ exports.updatePurchase = async (req, res) => {
       updateData.kantan = undefined;
     }
     if (type && type !== "paper") {
-      updateData.paperName = undefined;
       updateData.deckal = undefined;
       updateData.gsm = undefined;
     }
@@ -559,8 +512,7 @@ exports.updatePurchase = async (req, res) => {
     let inventoryData = {
       category: category || "factory", // 👈 default if not passed
       type: "inward",
-      inventoryType:type,
-      material: type === "paper" ? paperName : undefined,
+      inventoryType: type,
       quantity: type === "paper" ? 1 : undefined,
       kg: kg || undefined,
       reel: reel || undefined,
@@ -569,15 +521,17 @@ exports.updatePurchase = async (req, res) => {
       qpPurchase: updatedPurchase._id,
       companyName,
       kantan: type === "kantan" ? kantan : undefined,
-      paperName: type === "paper" ? paperName : undefined,
       deckal: type === "paper" ? deckal : undefined,
       gsm: type === "paper" ? gsm : undefined,
+      paperMil: type === "paper" ? paperMil : undefined,
       for: role,
       forCompany: staff,
     };
 
     // find if inventory exists for this purchase
-    let inventory = await Inventory.findOne({ qpPurchase: updatedPurchase._id });
+    let inventory = await Inventory.findOne({
+      qpPurchase: updatedPurchase._id,
+    });
 
     if (inventory) {
       // update existing inventory
@@ -594,7 +548,6 @@ exports.updatePurchase = async (req, res) => {
     const populatedPurchase = await Purchase.findById(updatedPurchase._id)
       .populate("vendorName", "name")
       .populate("kantan", "kantanName")
-      .populate("paperName", "name")
       .populate("companyName", "companyName avatar")
       .populate("for", "roleName")
       .populate("forCompany", "firstName lastName");
@@ -692,13 +645,6 @@ exports.bulkCreatePurchases = async (req, res) => {
         // Kantan (optional)
         const kantanId = await findByName(Kantan, "name", row.kantan, session);
 
-        // Paper fields
-        const paperNameId = await findByName(
-          PaperGSM,
-          "name",
-          row.paperName,
-          session
-        );
         const heightId = await findByName(
           PaperGSM,
           "name",
@@ -760,7 +706,6 @@ exports.bulkCreatePurchases = async (req, res) => {
           type: row.type || null,
           kantan: kantanId,
           kg: row.kg || null,
-          paperName: paperNameId,
           height: heightId,
           width: widthId,
           length: lengthId,

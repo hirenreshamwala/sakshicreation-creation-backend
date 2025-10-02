@@ -632,7 +632,6 @@ orderSchema.pre("save", async function (next) {
         // Update the party tag to "Customer"
         party.partyTag = "CUSTOMER";
         await party.save();
-        console.log(`Updated party ${party._id} tag from New to Customer`);
       }
     }
     next();

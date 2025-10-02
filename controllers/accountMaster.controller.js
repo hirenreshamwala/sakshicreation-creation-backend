@@ -11,7 +11,6 @@ const Market = require("../models/marketData.model");
 
 // Create a new Account Master
 exports.createAccountMaster = async (req, res) => {
-  // console.log("🚀 ~ req.body.GSTNo:", req.body.GSTNo)
   try {
     const partyRequiredFields = [
       "partyName",
@@ -750,7 +749,6 @@ const findMarketByField = async (field, value, session) => {
     [field]: { $regex: new RegExp(`^${normalized}$`, "i") }, // exact match, case-insensitive
   }).session(session);
 
-  console.log("finede martked s", market);
   return market ? market._id : null;
 };
 
@@ -1173,7 +1171,6 @@ exports.updateAccountMaster = async (req, res) => {
       ...(req.body.createdBy && { createdBy: req.body.createdBy }), // Conditionally include createdBy
     };
 
-    console.log("Updating AccountMaster with:", accountMasterUpdateData); // Debug log
 
     const updatedAccountMaster = await AccountMaster.findByIdAndUpdate(
       id,
@@ -1222,7 +1219,6 @@ exports.updateAccountMaster = async (req, res) => {
       });
     }
 
-    console.log("Updated AccountMaster:", updatedAccountMaster); // Debug log
 
     res.status(200).json({
       success: true,
@@ -1561,8 +1557,6 @@ exports.approveParty = async (req, res) => {
 exports.getAccountMasterByStaffId = async (req, res) => {
   try {
     const { id } = req.params;
-    console.log("🚀 ~ req:", req.params);
-    console.log("🚀 ~ staffId:", id);
 
     // Validate staffId
     if (!mongoose.Types.ObjectId.isValid(id)) {
@@ -1759,7 +1753,6 @@ exports.getQualityPackingParties = async (req, res) => {
         }
       }
     ]);
-    console.log("DEBUG : company:", company);
 
 
     if (!company) {
@@ -1767,12 +1760,10 @@ exports.getQualityPackingParties = async (req, res) => {
     }
 
     // Find all parties associated with the company and populate only partyName
-    console.log("DEBUG : company._id:", company[0]._id);
     const parties = await Party.find({ companyName: company[0]._id })
 
       .select("partyName") // Select only the partyName field
       .lean(); // Use lean for better performance since we don't need Mongoose documents
-    console.log("DEBUG : parties:", parties);
 
 
     return res.status(200).json({

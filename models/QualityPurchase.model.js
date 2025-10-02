@@ -29,14 +29,10 @@ const PurchaseSchema = new mongoose.Schema(
       required: false,
     },
     deckal: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "PaperGSM",
-      required: false,
+      type: String,
     },
     gsm: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "PaperGSM",
-      required: false,
+      type: String,
     },
     companyName: {
       type: mongoose.Schema.Types.ObjectId,

@@ -268,9 +268,6 @@ qpDataSchema.pre("save", async function (next) {
         // Update the party tag to "CUSTOMER"
         party.partyTag = "CUSTOMER";
         await party.save();
-        console.log(
-          `Updated party ${party._id} tag from New to Customer in QpData`
-        );
       }
     }
     next();
