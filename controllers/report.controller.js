@@ -423,20 +423,28 @@ const getSCReport = async (req, res) => {
       let customerPartyCount = 0;
 
       visitTasks.forEach(task => {
-        // Count tasks with reasonForVisit = "Get Visit"
-        if (/^get visit$/i.test(task.reasonForVisit)) getVisitCount++;
+        // Sirf ek baar check karein
+        if (/^get visit$/i.test(task.reasonForVisit)) {
+          getVisitCount++;
+          console.log("DEBUG : getSCReport : getVisitCount:", getVisitCount);
 
-        // Count partyTag NEW / CUSTOMER
-        if (task.partyName?.partyTag === 'NEW') newPartyCount++;
-        else if (task.partyName?.partyTag === 'CUSTOMER') customerPartyCount++;
-      });
+          // Count partyTag NEW / CUSTOMER only for "Get Visit" tasks
+          if (task.partyName?.partyTag === 'NEW') {
+            newPartyCount++;
+            console.log("DEBUG : getSCReport : NEW party found:", task.partyName?.partyName);
+          } else if (task.partyName?.partyTag === 'CUSTOMER') {
+            customerPartyCount++;
+            console.log("DEBUG : getSCReport : CUSTOMER party found:", task.partyName?.partyName);
+          }
+        }
+      })
 
 
       const completedLeads = await Lead.countDocuments({ assignedTo: staff._id, companyName: company._id, status: { $regex: '^completed$', $options: 'i' }, ...taskLeadDateFilter });
       const cancelledLeads = await Lead.countDocuments({ assignedTo: staff._id, companyName: company._id, status: { $regex: '^cancelled$', $options: 'i' }, ...taskLeadDateFilter });
       const rescheduledLeads = await Lead.countDocuments({ assignedTo: staff._id, companyName: company._id, status: { $regex: '^rescheduled$', $options: 'i' }, ...taskLeadDateFilter });
       const totalLeads = await Lead.countDocuments({
-        assignTo: staff._id,
+        assignedTo: staff._id,
         companyName: company._id,
         ...taskLeadDateFilter
       });
@@ -492,7 +500,7 @@ const getSCReport = async (req, res) => {
 
       const qpOrderParties = await QpData.find({ createdBy: staff._id, companyName: company._id, ...otherModelsDateFilter }).distinct('party');
       const sakshiOrderParties = await Order.find({ createdBy: staff._id, companyName: company._id, ...otherModelsDateFilter }).distinct('party');
-      
+
       const createdParties = await AccountMaster.find({ createdBy: staff._id, companyName: company._id, ...otherModelsDateFilter }).distinct('party');
       console.log("DEBUG : getSCReport : createdParties:", createdParties);
 
@@ -645,24 +653,32 @@ const getQPReport = async (req, res) => {
       let customerPartyCount = 0;
 
       visitTasks.forEach(task => {
-        // Count tasks with reasonForVisit = "Get Visit"
-        if (/^get visit$/i.test(task.reasonForVisit)) getVisitCount++;
+        // Sirf ek baar check karein
+        if (/^get visit$/i.test(task.reasonForVisit)) {
+          getVisitCount++;
+          console.log("DEBUG : getSCReport : getVisitCount:", getVisitCount);
 
-        // Count partyTag NEW / CUSTOMER
-        if (task.partyName?.partyTag === 'NEW') newPartyCount++;
-        else if (task.partyName?.partyTag === 'CUSTOMER') customerPartyCount++;
-      });
+          // Count partyTag NEW / CUSTOMER only for "Get Visit" tasks
+          if (task.partyName?.partyTag === 'NEW') {
+            newPartyCount++;
+            console.log("DEBUG : getSCReport : NEW party found:", task.partyName?.partyName);
+          } else if (task.partyName?.partyTag === 'CUSTOMER') {
+            customerPartyCount++;
+            console.log("DEBUG : getSCReport : CUSTOMER party found:", task.partyName?.partyName);
+          }
+        }
+      })
 
 
       const completedLeads = await Lead.countDocuments({ assignedTo: staff._id, companyName: company._id, status: { $regex: '^completed$', $options: 'i' }, ...taskLeadDateFilter });
       const cancelledLeads = await Lead.countDocuments({ assignedTo: staff._id, companyName: company._id, status: { $regex: '^cancelled$', $options: 'i' }, ...taskLeadDateFilter });
       const rescheduledLeads = await Lead.countDocuments({ assignedTo: staff._id, companyName: company._id, status: { $regex: '^rescheduled$', $options: 'i' }, ...taskLeadDateFilter });
-      console.log("DEBUG : getQPReport : companyName: company._id:",company._id);
+      console.log("DEBUG : getQPReport : companyName: company._id:", company._id);
 
-      console.log("DEBUG : getQPReport :  assignedTo: staff._id:",  staff._id);
+      console.log("DEBUG : getQPReport :  assignedTo: staff._id:", staff._id);
 
       const totalLeads = await Lead.countDocuments({
-        assignTo: staff._id,
+        assignedTo: staff._id,
         companyName: company._id,
         ...taskLeadDateFilter
       });

@@ -153,7 +153,11 @@ exports.createLead = async (req, res) => {
 // Get all Leads
 exports.getAllLeads = async (req, res) => {
   try {
-    const { status, partyName, companyName, startDate, endDate, assignedTo } = req.body; 
+    const { status, partyName, companyName, startDate, endDate, assignedTo,staffId } = req.body; 
+    console.log("DEBUG :  req.body:",  req.body);
+
+    console.log("DEBUG : staffId:", staffId);
+
     let filter = {};
 
     // ✅ Status filter (multiple allowed)
@@ -184,14 +188,16 @@ exports.getAllLeads = async (req, res) => {
     }
 
     // AssignedTo filter
-    if (assignedTo) {
-      if (!mongoose.Types.ObjectId.isValid(assignedTo)) {
+    if (staffId) {
+      if (!mongoose.Types.ObjectId.isValid(staffId)) {
         return res.status(400).json({
           success: false,
           message: "Invalid assignedTo ID format",
         });
       }
-      filter.assignedTo = assignedTo;
+      filter.assignedTo = staffId;
+      console.log("DEBUG : staffId:", staffId);
+
     }
 
     // ✅ Date filter
@@ -225,13 +231,11 @@ exports.getAllLeads = async (req, res) => {
       .sort({ createdAt: -1 })
       .lean();
 
-    const validLeads = leads.filter((lead) => lead.partyName && lead.companyName);
-
-    const populatedLeads = await Promise.all(
-      validLeads.map(async (lead) => {
+        const populatedLeads = await Promise.all(
+      leads.map(async (lead) => {  // ✅ Use 'leads' instead of 'validLeads'
         const accountMaster = await AccountMaster.findOne({
-          party: lead.partyName._id,
-          companyName: lead.companyName._id,
+          party: lead.partyName?._id,  // ✅ Added optional chaining
+          companyName: lead.companyName?._id,  // ✅ Added optional chaining
         })
           .populate("createdBy", "firstName lastName")
           .lean();
@@ -248,7 +252,7 @@ exports.getAllLeads = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      count: populatedLeads.length,
+      count: populatedLeads.length,  // ✅ Now shows all leads count
       data: populatedLeads,
     });
   } catch (error) {
