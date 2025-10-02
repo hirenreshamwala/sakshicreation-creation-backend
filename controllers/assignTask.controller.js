@@ -287,9 +287,15 @@ exports.getAllAssignTasks = async (req, res) => {
     if (partyName) {
       filter.partyName = partyName;
     }
+    console.log("DEBUG : reason:", reason);
+
     if (reason) {
-      filter.reasonForVisit = new RegExp(reason.trim(), "i");
+      const cleanedReason = reason.trim().replace(/\s+/g, "\\s*");
+      console.log("DEBUG : cleanedReason:", cleanedReason);
+
+      filter.reasonForVisit = new RegExp(cleanedReason, "i");
     }
+
 
 
     // ✅ Status filter (multiple status allowed)
