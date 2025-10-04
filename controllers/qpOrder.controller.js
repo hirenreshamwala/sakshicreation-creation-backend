@@ -296,6 +296,95 @@ function convertToReels(reels = 0, inches = 0) {
   return parseFloat(totalReels.toFixed(3));
 }
 
+async function handlePaperAllocations(qpOrder, updateData, session) {
+  const Inventory = mongoose.model("Inventory");
+
+  // Clear previous allocations if papers are being changed
+  if (updateData.selectedPapers && qpOrder.paperAllocations.length > 0) {
+    // Remove allocations from inventory items
+    for (const allocation of qpOrder.paperAllocations) {
+      await Inventory.findByIdAndUpdate(
+        allocation.inventoryId,
+        {
+          $pull: { allocations: { qpOrder: qpOrder._id } },
+        },
+        { session }
+      );
+    }
+
+    // Clear allocations from QP order
+    qpOrder.paperAllocations = [];
+  }
+
+  // Process new paper selections
+  if (updateData.selectedPapers) {
+    const paperRequirements = {
+      paper1: parseFloat(qpOrder.actualPaperKG?.paper1?.totalKg || 0),
+      paper2: parseFloat(qpOrder.actualPaperKG?.paper2?.totalKg || 0),
+      paper3: parseFloat(qpOrder.actualPaperKG?.paper3?.totalKg || 0),
+    };
+
+    for (const [paperType, inventoryId] of Object.entries(
+      updateData.selectedPapers
+    )) {
+      if (inventoryId && paperRequirements[paperType] > 0) {
+        const inventoryItem = await Inventory.findById(inventoryId).session(
+          session
+        );
+        if (!inventoryItem) {
+          throw new Error(`Inventory item not found for ${paperType}`);
+        }
+
+        // Check if sufficient quantity is available
+        const currentlyAllocated = inventoryItem.allocations
+          .filter(
+            (alloc) => alloc.qpOrder.toString() !== qpOrder._id.toString()
+          )
+          .reduce((sum, alloc) => sum + alloc.allocatedKg, 0);
+
+        const availableKg = (inventoryItem.kg || 0) - currentlyAllocated;
+
+        if (availableKg < paperRequirements[paperType]) {
+          throw new Error(
+            `Insufficient quantity in inventory for ${paperType}. Available: ${availableKg} KG, Required: ${paperRequirements[paperType]} KG`
+          );
+        }
+
+        // Add allocation to inventory
+        const allocation = {
+          qpOrder: qpOrder._id,
+          allocatedKg: paperRequirements[paperType],
+          paperType: paperType,
+          orderNo: qpOrder.orderNo,
+          companyName: qpOrder.companyName?.companyName || "Unknown",
+          allocatedAt: new Date(),
+        };
+
+        await Inventory.findByIdAndUpdate(
+          inventoryId,
+          {
+            $push: { allocations: allocation },
+          },
+          { session }
+        );
+
+        // Add allocation to QP order
+        qpOrder.paperAllocations.push({
+          inventoryId: inventoryId,
+          allocatedKg: paperRequirements[paperType],
+          paperType: paperType,
+          paperName: inventoryItem.paperName,
+          paperMillName: inventoryItem.paperMillName,
+          gsm: inventoryItem.gsm,
+          deckal: inventoryItem.deckal,
+        });
+      }
+    }
+  }
+
+  return qpOrder;
+}
+
 // Update QP Order with inventory outward creation on completion
 exports.updateQpOrder = async (req, res) => {
   const session = await mongoose.startSession();
@@ -332,10 +421,13 @@ exports.updateQpOrder = async (req, res) => {
       });
     }
 
-    // Handle paper allocations first
-    // if (req.body.selectedPapers) {
-    //   await handlePaperAllocations(currentOrder, req.body, session);
-    // }
+    if (
+      req.body.selectedPapers &&
+      (currentOrder?.selectedPapers?.paper1 === undefined ||
+        currentOrder?.selectedPapers?.paper1 === null)
+    ) {
+      await handlePaperAllocations(currentOrder, req.body, session);
+    }
 
     if (req.body.selectedPapers) {
       currentOrder.selectedPapers = req.body.selectedPapers;
@@ -489,10 +581,141 @@ exports.updateQpOrder = async (req, res) => {
     });
   }
 };
+async function createPaperOutwardEntries(qpOrder, session) {
+  if (!qpOrder.paperAllocations || qpOrder.paperAllocations.length === 0) {
+    console.log("No paper allocations found for outward entries");
+    return;
+  }
 
+  for (const allocation of qpOrder.paperAllocations) {
+    // Only create outward if allocatedKg is greater than 0 and we have inventoryId
+    if (allocation.allocatedKg > 0 && allocation.inventoryId) {
+      try {
+        // Get the source inventory to get paper details
+        const sourceInventory = await Inventory.findById(
+          allocation.inventoryId
+        ).session(session);
+
+        if (!sourceInventory) {
+          console.log(
+            `Source inventory not found for outward: ${allocation.inventoryId}`
+          );
+          continue;
+        }
+
+        const outwardPaper = new Inventory({
+          category: "factory",
+          type: "outward",
+          inventoryType: "Paper",
+          kg: allocation.allocatedKg,
+          paperName: sourceInventory.paperName || allocation.paperName,
+          paperMillName:
+            sourceInventory.paperMillName || allocation.paperMillName,
+          gsm: sourceInventory.gsm || allocation.gsm,
+          deckal: sourceInventory.deckal || allocation.deckal,
+          date: new Date(),
+          qpOrder: qpOrder._id,
+          qpPurchase: qpOrder._id,
+          companyName: qpOrder.companyName,
+          for: qpOrder.assignedTo,
+          forCompany: qpOrder.createdBy,
+          sourceInventory: allocation.inventoryId,
+        });
+
+        const savedOutward = await outwardPaper.save({ session });
+        console.log(
+          `Created outward entry for ${allocation.paperType}:`,
+          savedOutward._id
+        );
+      } catch (error) {
+        console.error(
+          `Error creating outward entry for ${allocation.paperType}:`,
+          error
+        );
+        // Continue with other allocations even if one fails
+        continue;
+      }
+    }
+  }
+}
 // Helper function to create outward inventory entries
 async function createOutwardInventoryEntries(qpOrder, session) {
   const Inventory = mongoose.model("Inventory");
+  console.log("function called", qpOrder, qpOrder.operatorPaperKG);
+// 🔹 Paper Outward - Use allocated papers
+if (qpOrder.operatorPaperKG) {
+  const papers = ["paper1", "paper2", "paper3"];
+
+  // First, remove old allocations
+  await Inventory.updateMany(
+    { "allocations.qpOrder": qpOrder._id },
+    { $pull: { allocations: { qpOrder: qpOrder._id } } },
+    { session }
+  );
+  console.log(`Removed old allocations for order ${qpOrder.orderNo}`);
+
+  for (const paper of papers) {
+    const paperData = qpOrder.operatorPaperKG[paper];
+    const selectedPaperId = qpOrder.selectedPapers?.[paper];
+
+    if (!paperData || !paperData.totalKg || !selectedPaperId) {
+      console.log(`Skipping ${paper} - missing data or selection`);
+      continue;
+    }
+
+    const requiredKg = parseFloat(paperData.totalKg);
+
+    // ✅ Update allocation on selected inventory item
+    const inventoryItem = await Inventory.findById(selectedPaperId).session(session);
+    if (!inventoryItem) {
+      console.log(`Inventory not found for ${paper}`);
+      continue;
+    }
+
+    const newAllocation = {
+      qpOrder: qpOrder._id,
+      allocatedKg: requiredKg,
+      paperType: paper,
+      orderNo: qpOrder.orderNo,
+      companyName: qpOrder.companyName?.companyName || qpOrder.companyName || "Unknown",
+      allocatedAt: new Date(),
+    };
+
+    await Inventory.findByIdAndUpdate(
+      inventoryItem._id,
+      {
+        $push: { allocations: newAllocation },
+        $inc: { availableKg: -requiredKg }, // reduce stock
+      },
+      { session }
+    );
+
+    console.log(`Allocated ${requiredKg}KG from ${inventoryItem.paperName} for ${paper}`);
+
+    // ✅ Create outward entry for paper usage
+    const outwardPaper = new Inventory({
+      category: "factory",
+      type: "outward",
+      inventoryType: "paper",
+      paperName: inventoryItem.paperName,
+      paperMillName: inventoryItem.paperMillName,
+      gsm: inventoryItem.gsm,
+      deckal: inventoryItem.deckal,
+      kg: requiredKg,
+      paperType: paper,
+      qpOrder: qpOrder._id,
+      qpPurchase: qpOrder._id,
+      orderNo: qpOrder.orderNo,
+      companyName: qpOrder.companyName,
+      for: qpOrder.assignedTo,
+      forCompany: qpOrder.createdBy,
+      date: new Date(),
+    });
+
+    await outwardPaper.save({ session });
+    console.log(`Created Paper Outward entry: ${paper} - ${requiredKg}KG`);
+  }
+}
 
   // 🔹 Box Inward (with actualNoOfPieces)
   if (qpOrder.actualNoOfPieces) {
@@ -545,30 +768,87 @@ async function createOutwardInventoryEntries(qpOrder, session) {
   }
 
   // 🔹 Paper Outward - Use allocated papers
-  // if (qpOrder.paperAllocations && qpOrder.paperAllocations.length > 0) {
-  //   for (const allocation of qpOrder.paperAllocations) {
-  //     const outwardPaper = new Inventory({
-  //       category: "factory",
-  //       type: "outward",
-  //       inventoryType: "Paper",
-  //       kg: allocation.allocatedKg,
-  //       paperName: allocation.paperName,
-  //       paperMillName: allocation.paperMillName,
-  //       gsm: allocation.gsm,
-  //       deckal: allocation.deckal,
-  //       date: new Date(),
-  //       qpOrder: qpOrder._id,
-  //       qpPurchase: qpOrder._id,
-  //       companyName: qpOrder.companyName,
-  //       for: qpOrder.assignedTo,
-  //       forCompany: qpOrder.createdBy,
-  //       // Reference to the source inventory
-  //       sourceInventory: allocation.inventoryId,
-  //     });
+  if (qpOrder.operatorPaperKG && qpOrder.operatorPaperKG.paper1 !== "") {
+    const papers = ["paper1", "paper2", "paper3"];
 
-  //     await outwardPaper.save({ session });
-  //   }
-  // }
+    // First, remove all existing allocations for this QP order from all inventory items
+    await Inventory.updateMany(
+      {
+        "allocations.qpOrder": qpOrder._id,
+      },
+      {
+        $pull: { allocations: { qpOrder: qpOrder._id } },
+      },
+      { session }
+    );
+    console.log(
+      `Removed all existing allocations for order ${qpOrder.orderNo}`
+    );
+
+    // Now add new allocations based on selectedPapers and operatorPaperKG
+    for (const paper of papers) {
+      // Skip if this paper type doesn't exist or has no totalKg
+      if (
+        !qpOrder.operatorPaperKG[paper] ||
+        !qpOrder.operatorPaperKG[paper].totalKg
+      ) {
+        console.log(`Skipping ${paper} - no data in operatorPaperKG`);
+        continue;
+      }
+
+      const requiredKg = parseFloat(qpOrder.operatorPaperKG[paper].totalKg);
+      const selectedPaperId = qpOrder.selectedPapers?.[paper];
+
+      if (!selectedPaperId) {
+        console.log(`No selected paper found for ${paper}`);
+        continue;
+      }
+
+      // Get the inventory item
+      const inventoryItem = await Inventory.findById(selectedPaperId).session(
+        session
+      );
+
+      if (!inventoryItem) {
+        console.log(`Inventory item not found for ${paper}:`, selectedPaperId);
+        continue;
+      }
+
+      // Create new allocation
+      const newAllocation = {
+        qpOrder: qpOrder._id,
+        allocatedKg: requiredKg,
+        paperType: paper,
+        orderNo: qpOrder.orderNo,
+        companyName:
+          qpOrder.companyName?.companyName || qpOrder.companyName || "Unknown",
+        allocatedAt: new Date(),
+      };
+
+      // Add new allocation to the inventory item
+      const updatedAllocations = [...inventoryItem.allocations, newAllocation];
+      const totalAllocated = updatedAllocations.reduce(
+        (sum, alloc) => sum + alloc.allocatedKg,
+        0
+      );
+      const availableKg = Math.max(0, (inventoryItem.kg || 0) - totalAllocated);
+
+      // Update the inventory item
+      await Inventory.findByIdAndUpdate(
+        inventoryItem._id,
+        {
+          allocations: updatedAllocations,
+          availableKg: availableKg,
+        },
+        { session }
+      );
+
+      console.log(`Added allocation for ${paper}: ${requiredKg}KG`);
+    }
+
+    // Create outward inventory entries
+    await createPaperOutwardEntries(qpOrder, session);
+  }
 
   // 🔹 Kantan Outward
   if (qpOrder.kantan && qpOrder.actualTotalKantan?.reel) {

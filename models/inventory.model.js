@@ -145,17 +145,7 @@ const InventorySchema = new mongoose.Schema(
     gsm: {
       type: String,
     },
-    p1gsm: {
-      deckal: { type: String },
-      gsm: { type: String },
-      totalKg: { type: String },
-    },
-    p2gsm: {
-      deckal: { type: String },
-      gsm: { type: String },
-      totalKg: { type: String },
-    },
-    p3gsm: {
+    paper: {
       deckal: { type: String },
       gsm: { type: String },
       totalKg: { type: String },
