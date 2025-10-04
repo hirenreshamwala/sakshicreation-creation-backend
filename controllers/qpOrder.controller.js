@@ -208,11 +208,22 @@ exports.getAllQpOrders = async (req, res) => {
         path: "companyName",
         select: "companyName avatar",
       })
+      // .populate({
+      //   path: "party",
+      //   select:
+      //     "partyName address contactPerson personMobileNo personWhatsAppNo GSTNo",
+      // })
       .populate({
         path: "party",
-        select:
-          "partyName address contactPerson personMobileNo personWhatsAppNo GSTNo",
-      })
+        select: "partyName address contactPerson personMobileNo personWhatsAppNo GSTNo",
+        // match: partyMatch,
+        populate: [
+          { path: "address.marketName", model: "Market", select: "marketName" },
+          // { path: "address.streetAddress", model: "Market", select: "streetAddress" },
+          { path: "address.landMark", model: "Market", select: "landmark" },
+          { path: "address.area", model: "Market", select: "area" },
+          { path: "address.pincode", model: "Market", select: "pincode" },
+        ]})
       .populate(
         "orderdata",
         "party ply length width height deckal paper1GSM paper2GSM paper3GSM"
@@ -1016,109 +1027,109 @@ exports.getOrdersByStaffId = async (req, res) => {
 };
 
 // Dedicated endpoint to update order status only
-exports.updateQpOrderStatus = async (req, res) => {
-  const session = await mongoose.startSession();
-  session.startTransaction();
+// exports.updateQpOrderStatus = async (req, res) => {
+//   const session = await mongoose.startSession();
+//   session.startTransaction();
 
-  try {
-    const { status } = req.body;
-    const { id } = req.params;
+//   try {
+//     const { status } = req.body;
+//     const { id } = req.params;
 
-    // Get the current order
-    const currentOrder = await QpData.findById(id).session(session);
-    if (!currentOrder) {
-      await session.abortTransaction();
-      session.endSession();
-      return res.status(404).json({
-        success: false,
-        message: "QP Order not found",
-      });
-    }
+//     // Get the current order
+//     const currentOrder = await QpData.findById(id).session(session);
+//     if (!currentOrder) {
+//       await session.abortTransaction();
+//       session.endSession();
+//       return res.status(404).json({
+//         success: false,
+//         message: "QP Order not found",
+//       });
+//     }
 
-    // Update the status
-    const updatedOrder = await QpData.findByIdAndUpdate(
-      id,
-      { status },
-      {
-        new: true,
-        runValidators: true,
-        session,
-      }
-    )
-      .populate({
-        path: "companyName",
-        select: "companyName avatar",
-      })
-      .populate({
-        path: "party",
-        select:
-          "partyName address contactPerson personMobileNo personWhatsAppNo GSTNo",
-      })
-      .populate(
-        "orderdata",
-        "party ply length width height deckal paper1GSM paper2GSM paper3GSM"
-      )
-      .populate({
-        path: "printer",
-        select: "firstName lastName", // Add printer name population
-      })
-      .populate({
-        path: "binder",
-        select: "firstName lastName", // Add binder name population
-      })
-      .populate("kantan", "kantanName");
+//     // Update the status
+//     const updatedOrder = await QpData.findByIdAndUpdate(
+//       id,
+//       { status },
+//       {
+//         new: true,
+//         runValidators: true,
+//         session,
+//       }
+//     )
+//       .populate({
+//         path: "companyName",
+//         select: "companyName avatar",
+//       })
+//       .populate({
+//         path: "party",
+//         select:
+//           "partyName address contactPerson personMobileNo personWhatsAppNo GSTNo",
+//       })
+//       .populate(
+//         "orderdata",
+//         "party ply length width height deckal paper1GSM paper2GSM paper3GSM"
+//       )
+//       .populate({
+//         path: "printer",
+//         select: "firstName lastName", // Add printer name population
+//       })
+//       .populate({
+//         path: "binder",
+//         select: "firstName lastName", // Add binder name population
+//       })
+//       .populate("kantan", "kantanName");
 
-    // Check if status changed to "completed"
-    const statusChangedToCompleted =
-      status === "Completed" && currentOrder.status !== "Completed";
+//     // Check if status changed to "completed"
+//     const statusChangedToCompleted =
+//       status === "Completed" && currentOrder.status !== "Completed";
 
-    // Create outward inventory entry if status changed to completed
-    if (statusChangedToCompleted) {
-      const outwardInventory = new Inventory({
-        category: "factory", // Adjust category as needed
-        type: "outward",
-        material: updatedOrder.paperName || undefined,
-        quantity: updatedOrder.quantity || 1,
-        kg: updatedOrder.weight || undefined,
-        reel: updatedOrder.reel || undefined,
-        vendor: updatedOrder.vendor || undefined,
-        date: new Date(),
-        qpOrder: updatedOrder._id,
-        companyName: updatedOrder.companyName,
-        kantan: updatedOrder.kantan || undefined,
-        paperName: updatedOrder.paperName || undefined,
-        deckal: updatedOrder.deckal || undefined,
-        gsm: updatedOrder.gsm || undefined,
-        for: updatedOrder.assignedTo || undefined,
-        forCompany: updatedOrder.createdBy || undefined,
-        remarks: `Outward entry for completed QP order ${
-          updatedOrder.orderNumber || updatedOrder._id
-        }`,
-      });
+//     // Create outward inventory entry if status changed to completed
+//     if (statusChangedToCompleted) {
+//       const outwardInventory = new Inventory({
+//         category: "factory", // Adjust category as needed
+//         type: "outward",
+//         material: updatedOrder.paperName || undefined,
+//         quantity: updatedOrder.quantity || 1,
+//         kg: updatedOrder.weight || undefined,
+//         reel: updatedOrder.reel || undefined,
+//         vendor: updatedOrder.vendor || undefined,
+//         date: new Date(),
+//         qpOrder: updatedOrder._id,
+//         companyName: updatedOrder.companyName,
+//         kantan: updatedOrder.kantan || undefined,
+//         paperName: updatedOrder.paperName || undefined,
+//         deckal: updatedOrder.deckal || undefined,
+//         gsm: updatedOrder.gsm || undefined,
+//         for: updatedOrder.assignedTo || undefined,
+//         forCompany: updatedOrder.createdBy || undefined,
+//         remarks: `Outward entry for completed QP order ${
+//           updatedOrder.orderNumber || updatedOrder._id
+//         }`,
+//       });
 
-      await outwardInventory.save({ session });
-    }
+//       await outwardInventory.save({ session });
+//     }
 
-    await session.commitTransaction();
-    session.endSession();
+//     await session.commitTransaction();
+//     session.endSession();
 
-    res.status(200).json({
-      success: true,
-      message: "QP Order status updated successfully",
-      data: updatedOrder,
-      outwardCreated: statusChangedToCompleted,
-    });
-  } catch (error) {
-    await session.abortTransaction();
-    session.endSession();
-    console.error("❌ Error updating QP order status:", error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to update QP order status",
-      error: error.message,
-    });
-  }
-};
+//     res.status(200).json({
+//       success: true,
+//       message: "QP Order status updated successfully",
+//       data: updatedOrder,
+//       outwardCreated: statusChangedToCompleted,
+//     });
+//   } catch (error) {
+//     await session.abortTransaction();
+//     session.endSession();
+//     console.error("❌ Error updating QP order status:", error);
+//     res.status(500).json({
+//       success: false,
+//       message: "Failed to update QP order status",
+//       error: error.message,
+//     });
+//   }
+// };
 
 exports.updateQPOrderStatus = async (req, res) => {
   const session = await mongoose.startSession();
@@ -1233,7 +1244,7 @@ exports.bulkUpdateQPOrderStatus = async (req, res) => {
   session.startTransaction();
 
   try {
-    const { orderIds, status, deliveryStatus, billPhotos } = req.body;
+    const { orderIds, status, deliveryStatus, billPhotos, dispatchPhotos, dispatchTime, deliveryTime } = req.body;
     const driverId = req.user?.id;
     const currentTime = new Date();
 
@@ -1256,22 +1267,27 @@ exports.bulkUpdateQPOrderStatus = async (req, res) => {
       switch (deliveryStatus) {
         case "loading":
           updateData.loadingStartDate = currentTime;
-          if (!deliveryStatus) updateData.deliveryStatus = "loading";
+          updateData.deliveryStatus = "loading";
           break;
         case "in_transit":
-          if (!billPhotos || !billPhotos.length)
-            throw new Error("Bill photo required for dispatch");
+          if (!dispatchPhotos || !dispatchPhotos.length)
+            throw new Error("Dispatch photos required for dispatch");
           updateData.deliveryStartTime = currentTime;
           updateData.loadingEndDate = currentTime;
           updateData.deliveryStatus = "in_transit";
-          updateData.dispatchTime = currentTime;
-          // Map string URLs to objects
-          updateData.billPhoto = billPhotos[0];
+          updateData.dispatchTime = dispatchTime || currentTime;
+          // Store dispatch photo
+          updateData.dispatchPhoto = dispatchPhotos[0];
           break;
         case "delivered":
+          if (!billPhotos || !billPhotos.length)
+            throw new Error("Bill photos required for delivery");
           updateData.deliveryEndTime = currentTime;
           updateData.deliveredAt = currentTime;
           updateData.deliveryStatus = "delivered";
+          updateData.deliveryTime = deliveryTime || currentTime;
+          // Store bill photo
+          updateData.billPhoto = billPhotos[0];
           break;
       }
     }

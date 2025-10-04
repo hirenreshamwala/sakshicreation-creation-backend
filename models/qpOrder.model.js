@@ -307,6 +307,9 @@ const qpDataSchema = new mongoose.Schema(
       },
     },
     
+    dispatchPhoto:{
+      type: String
+    }
   },
   {
     timestamps: true,
