@@ -262,10 +262,13 @@ const qpDataSchema = new mongoose.Schema(
     loadingStartDate: {
       type: String,
     },
-    loadingEndDate: {
+    // loadingEndDate: {
+    //   type: String,
+    // },
+    deliveryStartTime: {
       type: String,
     },
-    deliveryStartTime: {
+    deliveryEndTime: {
       type: String,
     },
     driver:{
