@@ -226,6 +226,10 @@ exports.getAllQpOrders = async (req, res) => {
         path: "binder",
         select: "firstName lastName", // Add binder name population
       })
+      .populate({
+        path: "driver",
+        select: "firstName lastName email", // Add binder name population
+      })
       .sort({ createdAt: -1 });
 
     res.status(200).json({
@@ -935,7 +939,7 @@ exports.updateQPOrderStatus = async (req, res) => {
             throw new Error("Bill photo required for dispatch");
           }
           updateData.deliveryStartTime = currentTime;
-          updateData.loadingEndDate = currentTime;
+          // updateData.loadingEndDate = currentTime;
           updateData.deliveryStatus = "in_transit";
           updateData.dispatchTime = currentTime; // capture dispatch time
           updateData.billPhotos = billPhotos.map((p) => ({
