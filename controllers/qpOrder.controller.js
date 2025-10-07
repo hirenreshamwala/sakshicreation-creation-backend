@@ -265,11 +265,22 @@ exports.getQpOrderById = async (req, res) => {
         path: "companyName",
         select: "companyName avatar",
       })
+      // .populate({
+      //   path: "party",
+      //   select:
+      //     "partyName address contactPerson personMobileNo personWhatsAppNo GSTNo",
+      // })
       .populate({
         path: "party",
-        select:
-          "partyName address contactPerson personMobileNo personWhatsAppNo GSTNo",
-      })
+        select: "partyName address contactPerson personMobileNo personWhatsAppNo GSTNo",
+        // match: partyMatch,
+        populate: [
+          { path: "address.marketName", model: "Market", select: "marketName" },
+          // { path: "address.streetAddress", model: "Market", select: "streetAddress" },
+          { path: "address.landMark", model: "Market", select: "landmark" },
+          { path: "address.area", model: "Market", select: "area" },
+          { path: "address.pincode", model: "Market", select: "pincode" },
+        ]})
       .populate(
         "orderdata",
         "party ply length width height deckal paper1GSM paper2GSM paper3GSM"
@@ -978,11 +989,22 @@ exports.getOrdersByStaffId = async (req, res) => {
         path: "companyName",
         select: "companyName avatar",
       })
+      // .populate({
+      //   path: "party",
+      //   select:
+      //     "partyName address contactPerson personMobileNo personWhatsAppNo GSTNo",
+      // })
       .populate({
         path: "party",
-        select:
-          "partyName address contactPerson personMobileNo personWhatsAppNo GSTNo",
-      })
+        select: "partyName address contactPerson personMobileNo personWhatsAppNo GSTNo",
+        // match: partyMatch,
+        populate: [
+          { path: "address.marketName", model: "Market", select: "marketName" },
+          // { path: "address.streetAddress", model: "Market", select: "streetAddress" },
+          { path: "address.landMark", model: "Market", select: "landmark" },
+          { path: "address.area", model: "Market", select: "area" },
+          { path: "address.pincode", model: "Market", select: "pincode" },
+        ]})
       .populate(
         "orderdata",
         "party ply length width height deckal paper1GSM paper2GSM paper3GSM"

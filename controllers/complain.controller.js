@@ -46,6 +46,17 @@ exports.getComplain = async (req, res) => {
             .populate('qporder', 'orderNo')
             .populate('assignTo', 'firstName lastName')
             .populate('createdBy', 'firstName lastName')
+            .populate({
+                path: "party",
+                select: "-__v",
+                populate: [
+                    { path: "address.marketName", model: "Market", select: "marketName" },
+                    // { path: "address.streetAddress", model: "Market", select: "streetAddress" },
+                    { path: "address.landMark", model: "Market", select: "landmark" },
+                    { path: "address.area", model: "Market", select: "area" },
+                    { path: "address.pincode", model: "Market", select: "pincode" },
+                ],
+            })
 
         if (!complain) {
             return res.status(404).json({ success: false, message: 'Complain not found' });
@@ -134,6 +145,17 @@ exports.getComplainsByStaff = async (req, res) => {
             .populate('qporder', 'orderNo')
             .populate('assignTo', 'firstName lastName')
             .populate('createdBy', 'firstName lastName')
+            .populate({
+                path: "party",
+                select: "-__v",
+                populate: [
+                    { path: "address.marketName", model: "Market", select: "marketName" },
+                    // { path: "address.streetAddress", model: "Market", select: "streetAddress" },
+                    { path: "address.landMark", model: "Market", select: "landmark" },
+                    { path: "address.area", model: "Market", select: "area" },
+                    { path: "address.pincode", model: "Market", select: "pincode" },
+                ],
+        })
             .sort({ createdAt: -1 });
 
         res.status(200).json({
