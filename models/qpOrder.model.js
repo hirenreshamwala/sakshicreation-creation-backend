@@ -187,6 +187,7 @@ const qpDataSchema = new mongoose.Schema(
     operatorNoOfPieces: {
       type: Number,
     },
+    operatorNoOfSheet: { type: Number },
     actualNoOfPieces: {
       type: Number,
     },
@@ -271,27 +272,27 @@ const qpDataSchema = new mongoose.Schema(
     deliveryEndTime: {
       type: String,
     },
-    driver:{
+    driver: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Staff",
     },
-    kantanStart: { type : Date},
-    kantanEnd: { type : Date},
+    kantanStart: { type: Date },
+    kantanEnd: { type: Date },
     printer: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Staff",
-      required:false
+      required: false
     },
     binder: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Staff",
-      required:false
+      required: false
     },
-    billPhoto:{
-      type:String
+    billPhoto: {
+      type: String
     },
-     paperAllocations: [paperAllocationSchema],
-    
+    paperAllocations: [paperAllocationSchema],
+
     selectedPapers: {
       paper1: {
         type: mongoose.Schema.Types.ObjectId,
@@ -306,10 +307,13 @@ const qpDataSchema = new mongoose.Schema(
         ref: "Inventory",
       },
     },
-    
-    dispatchPhoto:{
+    isPrinterLamination: {
+      type: Boolean,
+      default: false
+    },
+    dispatchPhoto: {
       type: String
-    }
+    },
   },
   {
     timestamps: true,
