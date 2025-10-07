@@ -9,6 +9,17 @@ exports.getAllComplains = async (req, res) => {
             .populate('company', 'companyName')
             .populate('scorder', 'orderNumber')
             .populate('qporder', 'orderNo')
+            .populate({
+                path: "party",
+                select: "-__v",
+                populate: [
+                    { path: "address.marketName", model: "Market", select: "marketName" },
+                    // { path: "address.streetAddress", model: "Market", select: "streetAddress" },
+                    { path: "address.landMark", model: "Market", select: "landmark" },
+                    { path: "address.area", model: "Market", select: "area" },
+                    { path: "address.pincode", model: "Market", select: "pincode" },
+                ],
+            })
             .populate('assignTo', 'firstName lastName')
             .populate('createdBy', 'firstName lastName')
             .sort({ createdAt: -1 });
@@ -54,7 +65,7 @@ exports.createComplain = async (req, res) => {
 
         // Populate after creation
         const populatedComplain = await Complain.findById(complain._id)
-           .populate('company', 'companyName')
+            .populate('company', 'companyName')
             .populate('scorder', 'orderNumber')
             .populate('qporder', 'orderNo')
             .populate('assignTo', 'firstName lastName')
@@ -68,32 +79,32 @@ exports.createComplain = async (req, res) => {
 
 // ====================== UPDATE COMPLAIN ======================
 exports.updateComplain = async (req, res) => {
-  try {
-    console.log("DEBUG : req.body:", req.body);
-    console.log("DEBUG : req.params.id:", req.params.id);
+    try {
+        console.log("DEBUG : req.body:", req.body);
+        console.log("DEBUG : req.params.id:", req.params.id);
 
-    // Exclude createdBy from the update payload
-    const { createdBy, ...updateData } = req.body;
+        // Exclude createdBy from the update payload
+        const { createdBy, ...updateData } = req.body;
 
-    const complain = await Complain.findByIdAndUpdate(
-      req.params.id,
-      updateData, // Use filtered data without createdBy
-      { new: true }
-    )
-      .populate("company", "companyName")
-      .populate("scorder", "orderNumber")
-      .populate("qporder", "orderNo")
-      .populate("assignTo", "firstName lastName")
-      .populate("createdBy", "firstName lastName");
+        const complain = await Complain.findByIdAndUpdate(
+            req.params.id,
+            updateData, // Use filtered data without createdBy
+            { new: true }
+        )
+            .populate("company", "companyName")
+            .populate("scorder", "orderNumber")
+            .populate("qporder", "orderNo")
+            .populate("assignTo", "firstName lastName")
+            .populate("createdBy", "firstName lastName");
 
-    if (!complain) {
-      return res.status(404).json({ success: false, message: "Complain not found" });
+        if (!complain) {
+            return res.status(404).json({ success: false, message: "Complain not found" });
+        }
+
+        res.status(200).json({ success: true, data: complain });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
     }
-
-    res.status(200).json({ success: true, data: complain });
-  } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
-  }
 };
 
 // ====================== DELETE COMPLAIN ======================
