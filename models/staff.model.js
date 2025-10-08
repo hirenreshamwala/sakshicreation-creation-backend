@@ -44,6 +44,8 @@ const staffSchema = new mongoose.Schema(
       // },
     }, // New field for Aadhar files
     addressFiles: [{ type: String }], // New field for Address files
+    isDisptach: { type: Boolean, default: false },
+    orders: [{ type: mongoose.Schema.Types.ObjectId, ref: "QpOrder" }],
   },
   { timestamps: true }
 );

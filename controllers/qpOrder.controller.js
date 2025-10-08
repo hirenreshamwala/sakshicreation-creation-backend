@@ -223,7 +223,8 @@ exports.getAllQpOrders = async (req, res) => {
           { path: "address.landMark", model: "Market", select: "landmark" },
           { path: "address.area", model: "Market", select: "area" },
           { path: "address.pincode", model: "Market", select: "pincode" },
-        ]})
+        ]
+      })
       .populate(
         "orderdata",
         "party ply length width height deckal paper1GSM paper2GSM paper3GSM"
@@ -280,7 +281,8 @@ exports.getQpOrderById = async (req, res) => {
           { path: "address.landMark", model: "Market", select: "landmark" },
           { path: "address.area", model: "Market", select: "area" },
           { path: "address.pincode", model: "Market", select: "pincode" },
-        ]})
+        ]
+      })
       .populate(
         "orderdata",
         "party ply length width height deckal paper1GSM paper2GSM paper3GSM"
@@ -668,80 +670,80 @@ async function createPaperOutwardEntries(qpOrder, session) {
 async function createOutwardInventoryEntries(qpOrder, session) {
   const Inventory = mongoose.model("Inventory");
   console.log("function called", qpOrder, qpOrder.operatorPaperKG);
-// 🔹 Paper Outward - Use allocated papers
-if (qpOrder.operatorPaperKG) {
-  const papers = ["paper1", "paper2", "paper3"];
+  // 🔹 Paper Outward - Use allocated papers
+  if (qpOrder.operatorPaperKG) {
+    const papers = ["paper1", "paper2", "paper3"];
 
-  // First, remove old allocations
-  await Inventory.updateMany(
-    { "allocations.qpOrder": qpOrder._id },
-    { $pull: { allocations: { qpOrder: qpOrder._id } } },
-    { session }
-  );
-  console.log(`Removed old allocations for order ${qpOrder.orderNo}`);
-
-  for (const paper of papers) {
-    const paperData = qpOrder.operatorPaperKG[paper];
-    const selectedPaperId = qpOrder.selectedPapers?.[paper];
-
-    if (!paperData || !paperData.totalKg || !selectedPaperId) {
-      console.log(`Skipping ${paper} - missing data or selection`);
-      continue;
-    }
-
-    const requiredKg = parseFloat(paperData.totalKg);
-
-    // ✅ Update allocation on selected inventory item
-    const inventoryItem = await Inventory.findById(selectedPaperId).session(session);
-    if (!inventoryItem) {
-      console.log(`Inventory not found for ${paper}`);
-      continue;
-    }
-
-    const newAllocation = {
-      qpOrder: qpOrder._id,
-      allocatedKg: requiredKg,
-      paperType: paper,
-      orderNo: qpOrder.orderNo,
-      companyName: qpOrder.companyName?.companyName || qpOrder.companyName || "Unknown",
-      allocatedAt: new Date(),
-    };
-
-    await Inventory.findByIdAndUpdate(
-      inventoryItem._id,
-      {
-        $push: { allocations: newAllocation },
-        $inc: { availableKg: -requiredKg }, // reduce stock
-      },
+    // First, remove old allocations
+    await Inventory.updateMany(
+      { "allocations.qpOrder": qpOrder._id },
+      { $pull: { allocations: { qpOrder: qpOrder._id } } },
       { session }
     );
+    console.log(`Removed old allocations for order ${qpOrder.orderNo}`);
 
-    console.log(`Allocated ${requiredKg}KG from ${inventoryItem.paperName} for ${paper}`);
+    for (const paper of papers) {
+      const paperData = qpOrder.operatorPaperKG[paper];
+      const selectedPaperId = qpOrder.selectedPapers?.[paper];
 
-    // ✅ Create outward entry for paper usage
-    const outwardPaper = new Inventory({
-      category: "factory",
-      type: "outward",
-      inventoryType: "paper",
-      paperName: inventoryItem.paperName,
-      paperMillName: inventoryItem.paperMillName,
-      gsm: inventoryItem.gsm,
-      deckal: inventoryItem.deckal,
-      kg: requiredKg,
-      paperType: paper,
-      qpOrder: qpOrder._id,
-      qpPurchase: qpOrder._id,
-      orderNo: qpOrder.orderNo,
-      companyName: qpOrder.companyName,
-      for: qpOrder.assignedTo,
-      forCompany: qpOrder.createdBy,
-      date: new Date(),
-    });
+      if (!paperData || !paperData.totalKg || !selectedPaperId) {
+        console.log(`Skipping ${paper} - missing data or selection`);
+        continue;
+      }
 
-    await outwardPaper.save({ session });
-    console.log(`Created Paper Outward entry: ${paper} - ${requiredKg}KG`);
+      const requiredKg = parseFloat(paperData.totalKg);
+
+      // ✅ Update allocation on selected inventory item
+      const inventoryItem = await Inventory.findById(selectedPaperId).session(session);
+      if (!inventoryItem) {
+        console.log(`Inventory not found for ${paper}`);
+        continue;
+      }
+
+      const newAllocation = {
+        qpOrder: qpOrder._id,
+        allocatedKg: requiredKg,
+        paperType: paper,
+        orderNo: qpOrder.orderNo,
+        companyName: qpOrder.companyName?.companyName || qpOrder.companyName || "Unknown",
+        allocatedAt: new Date(),
+      };
+
+      await Inventory.findByIdAndUpdate(
+        inventoryItem._id,
+        {
+          $push: { allocations: newAllocation },
+          $inc: { availableKg: -requiredKg }, // reduce stock
+        },
+        { session }
+      );
+
+      console.log(`Allocated ${requiredKg}KG from ${inventoryItem.paperName} for ${paper}`);
+
+      // ✅ Create outward entry for paper usage
+      const outwardPaper = new Inventory({
+        category: "factory",
+        type: "outward",
+        inventoryType: "paper",
+        paperName: inventoryItem.paperName,
+        paperMillName: inventoryItem.paperMillName,
+        gsm: inventoryItem.gsm,
+        deckal: inventoryItem.deckal,
+        kg: requiredKg,
+        paperType: paper,
+        qpOrder: qpOrder._id,
+        qpPurchase: qpOrder._id,
+        orderNo: qpOrder.orderNo,
+        companyName: qpOrder.companyName,
+        for: qpOrder.assignedTo,
+        forCompany: qpOrder.createdBy,
+        date: new Date(),
+      });
+
+      await outwardPaper.save({ session });
+      console.log(`Created Paper Outward entry: ${paper} - ${requiredKg}KG`);
+    }
   }
-}
 
   // 🔹 Box Inward (with actualNoOfPieces)
   if (qpOrder.actualNoOfPieces) {
@@ -1004,7 +1006,8 @@ exports.getOrdersByStaffId = async (req, res) => {
           { path: "address.landMark", model: "Market", select: "landmark" },
           { path: "address.area", model: "Market", select: "area" },
           { path: "address.pincode", model: "Market", select: "pincode" },
-        ]})
+        ]
+      })
       .populate(
         "orderdata",
         "party ply length width height deckal paper1GSM paper2GSM paper3GSM"
@@ -1266,7 +1269,7 @@ exports.bulkUpdateQPOrderStatus = async (req, res) => {
   session.startTransaction();
 
   try {
-    const { orderIds, status, deliveryStatus, billPhotos, dispatchPhotos, dispatchTime, deliveryTime } = req.body;
+    const { orderIds, deliveryStatus, billPhotos, dispatchPhotos, dispatchTime, deliveryTime } = req.body;
     const driverId = req.user?.id;
     const currentTime = new Date();
 
@@ -1279,15 +1282,31 @@ exports.bulkUpdateQPOrderStatus = async (req, res) => {
     }).session(session);
 
     if (conflictingOrders.length > 0)
-      throw new Error("Some orders assigned to another driver");
+      throw new Error("Some orders are assigned to another driver");
 
     const updateData = {};
     if (driverId) updateData.driver = driverId;
+
+
+    const driver = await Staff.findById(driverId).session(session);
+    if (!driver) throw new Error("Driver not found");
 
     // Status handling
     if (deliveryStatus) {
       switch (deliveryStatus) {
         case "loading":
+          if (driver.isDisptach) {
+            throw new Error("You already have an ongoing dispatch. Complete delivery before loading new orders.");
+          }
+          const driverData = await Staff.findById(driverId).session(session);
+          if (driverData) {
+            const updatedOrders = [...driverData.orders, ...orderIds];
+            await Staff.findByIdAndUpdate(
+              driverId,
+              { orders: updatedOrders },
+              { session }
+            );
+          }
           updateData.loadingStartDate = currentTime;
           updateData.deliveryStatus = "loading";
           break;
@@ -1300,6 +1319,7 @@ exports.bulkUpdateQPOrderStatus = async (req, res) => {
           updateData.dispatchTime = dispatchTime || currentTime;
           // Store dispatch photo
           updateData.dispatchPhoto = dispatchPhotos[0];
+          await Staff.findByIdAndUpdate(driverId, { isDisptach: true }, { session });
           break;
         case "delivered":
           if (!billPhotos || !billPhotos.length)
@@ -1310,6 +1330,17 @@ exports.bulkUpdateQPOrderStatus = async (req, res) => {
           updateData.deliveryTime = deliveryTime || currentTime;
           // Store bill photo
           updateData.billPhoto = billPhotos[0];
+          // const remainingInTransit = await QpData.countDocuments({
+          //   driver: driverId,
+          //   deliveryStatus: "in_transit",
+          //   _id: { $nin: orderIds },
+          // }).session(session);
+          // console.log("DEBUG : remainingInTransit:", remainingInTransit);
+
+
+          // if (remainingInTransit === 0) {
+          //   await Staff.findByIdAndUpdate(driverId, { isDisptach: false }, { session });
+          // }
           break;
       }
     }
@@ -1324,16 +1355,10 @@ exports.bulkUpdateQPOrderStatus = async (req, res) => {
 
     const updatedOrders = await QpData.find({ _id: { $in: orderIds } })
       .populate("companyName", "companyName avatar")
-      .populate(
-        "party",
-        "partyName address contactPerson personMobileNo personWhatsAppNo GSTNo"
-      )
-      .populate(
-        "orderdata",
-        "party ply length width height deckal paper1GSM paper2GSM paper3GSM"
-      )
+      .populate("party", "partyName address contactPerson personMobileNo personWhatsAppNo GSTNo")
+      .populate("orderdata", "party ply length width height deckal paper1GSM paper2GSM paper3GSM")
       .populate("kantan", "kantanName")
-      .populate("driver", "firstName lastName email")
+      .populate("driver", "firstName lastName email isDisptach")
       .session(session);
 
     await session.commitTransaction();
@@ -1354,6 +1379,7 @@ exports.bulkUpdateQPOrderStatus = async (req, res) => {
     });
   }
 };
+
 // Helper function to get available papers with allocations
 exports.getAvailablePapers = async (req, res) => {
   try {
