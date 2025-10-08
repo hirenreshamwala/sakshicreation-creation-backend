@@ -771,6 +771,250 @@ const getQPReport = async (req, res) => {
   }
 };
 
+const getqpInactiveParties = async (req, res) => {
+  try {
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+    // Lookup company
+    const company = await CompanyName.findOne({
+      companyName: { $regex: "quality packaging", $options: "i" },
+    });
+    if (!company) {
+      return res.status(404).json({ success: false, message: "Company not found" });
+    }
+
+    const inactiveParties = await Party.aggregate([
+      { $match: { companyName: company._id } },
+
+      // Lookup orders
+      {
+        $lookup: {
+          from: "qporders",
+          localField: "_id",
+          foreignField: "party",
+          as: "orders",
+        },
+      },
+      { $addFields: { lastOrderDate: { $max: "$orders.createdAt" } } },
+      {
+        $match: {
+          $or: [{ lastOrderDate: { $lt: thirtyDaysAgo } }, { lastOrderDate: { $eq: null } }],
+        },
+      },
+
+      // Lookup AccountMaster to get createdBy staff
+      {
+        $lookup: {
+          from: "accountmasters",
+          localField: "_id",
+          foreignField: "party",
+          as: "accountDetails",
+        },
+      },
+      { $unwind: { path: "$accountDetails", preserveNullAndEmptyArrays: true } },
+
+      // Lookup creator staff from AccountMaster
+      {
+        $lookup: {
+          from: "staffs",
+          localField: "accountDetails.createdBy",
+          foreignField: "_id",
+          as: "createdByDetails",
+        },
+      },
+      { $unwind: { path: "$createdByDetails", preserveNullAndEmptyArrays: true } },
+
+      // Lookup Market fields inside address
+      {
+        $lookup: {
+          from: "markets",
+          localField: "address.marketName",
+          foreignField: "_id",
+          as: "marketDetails",
+        },
+      },
+      {
+        $lookup: {
+          from: "markets",
+          localField: "address.landMark",
+          foreignField: "_id",
+          as: "landMarkDetails",
+        },
+      },
+      {
+        $lookup: {
+          from: "markets",
+          localField: "address.area",
+          foreignField: "_id",
+          as: "areaDetails",
+        },
+      },
+      {
+        $lookup: {
+          from: "markets",
+          localField: "address.pincode",
+          foreignField: "_id",
+          as: "pincodeDetails",
+        },
+      },
+
+      // Project fields
+      {
+        $project: {
+          _id: 1,
+          partyName: 1,
+          ownerName: 1,
+          ownerMobileNo: 1,
+          lastOrderDate: 1,
+          createdBy: {
+            _id: "$createdByDetails._id",
+            firstName: "$createdByDetails.firstName",
+            lastName: "$createdByDetails.lastName", 
+            email: "$createdByDetails.email",
+            mobileNo: "$createdByDetails.mobileNo"
+          },
+          address: {
+            unitNo: "$address.unitNo",
+            marketName: { $arrayElemAt: ["$marketDetails.marketName", 0] },
+            landMark: { $arrayElemAt: ["$landMarkDetails.landmark", 0] },
+            area: { $arrayElemAt: ["$areaDetails.area", 0] },
+            pincode: { $arrayElemAt: ["$pincodeDetails.pincode", 0] },
+          },
+        },
+      },
+    ]);
+
+    return res.status(200).json({ success: true, data: inactiveParties });
+  } catch (error) {
+    console.error("Error fetching inactive parties:", error);
+    return res.status(500).json({ success: false, message: "Server Error" });
+  }
+};
+
+const getscOrderInactiveParties = async (req, res) => {
+  try {
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+    const company = await CompanyName.findOne({
+      companyName: { $regex: "sakshi creation", $options: "i" }, 
+    });
+    if (!company) {
+      return res.status(404).json({ success: false, message: "Company not found" });
+    }
+
+    const inactiveParties = await Party.aggregate([
+      { $match: { companyName: company._id } },
+
+      // Lookup Orders (Order model)
+      {
+        $lookup: {
+          from: "orders", // Order collection का नाम
+          localField: "_id",
+          foreignField: "party",
+          as: "orders",
+        },
+      },
+      { $addFields: { lastOrderDate: { $max: "$orders.createdAt" } } },
+      {
+        $match: {
+          $or: [{ lastOrderDate: { $lt: thirtyDaysAgo } }, { lastOrderDate: { $eq: null } }],
+        },
+      },
+
+      // Lookup AccountMaster to get createdBy staff
+      {
+        $lookup: {
+          from: "accountmasters",
+          localField: "_id",
+          foreignField: "party",
+          as: "accountDetails",
+        },
+      },
+      { $unwind: { path: "$accountDetails", preserveNullAndEmptyArrays: true } },
+
+      // Lookup creator staff from AccountMaster
+      {
+        $lookup: {
+          from: "staffs",
+          localField: "accountDetails.createdBy",
+          foreignField: "_id",
+          as: "createdByDetails",
+        },
+      },
+      { $unwind: { path: "$createdByDetails", preserveNullAndEmptyArrays: true } },
+
+      // Lookup Market fields inside address
+      {
+        $lookup: {
+          from: "markets",
+          localField: "address.marketName",
+          foreignField: "_id",
+          as: "marketDetails",
+        },
+      },
+      {
+        $lookup: {
+          from: "markets",
+          localField: "address.landMark",
+          foreignField: "_id",
+          as: "landMarkDetails",
+        },
+      },
+      {
+        $lookup: {
+          from: "markets",
+          localField: "address.area",
+          foreignField: "_id",
+          as: "areaDetails",
+        },
+      },
+      {
+        $lookup: {
+          from: "markets",
+          localField: "address.pincode",
+          foreignField: "_id",
+          as: "pincodeDetails",
+        },
+      },
+
+      // Project fields
+      {
+        $project: {
+          _id: 1,
+          partyName: 1,
+          ownerName: 1,
+          ownerMobileNo: 1,
+          lastOrderDate: 1,
+          createdBy: {
+            _id: "$createdByDetails._id",
+            firstName: "$createdByDetails.firstName",
+            lastName: "$createdByDetails.lastName", 
+            email: "$createdByDetails.email",
+            mobileNo: "$createdByDetails.mobileNo"
+          },
+          address: {
+            unitNo: "$address.unitNo",
+            marketName: { $arrayElemAt: ["$marketDetails.marketName", 0] },
+            landMark: { $arrayElemAt: ["$landMarkDetails.landmark", 0] },
+            area: { $arrayElemAt: ["$areaDetails.area", 0] },
+            pincode: { $arrayElemAt: ["$pincodeDetails.pincode", 0] },
+          },
+        },
+      },
+    ]);
+
+    return res.status(200).json({ 
+      success: true, 
+      data: inactiveParties,
+      message: "Order Inactive Parties"
+    });
+  } catch (error) {
+    console.error("Error fetching Order inactive parties:", error);
+    return res.status(500).json({ success: false, message: "Server Error" });
+  }
+};
 
 
-module.exports = { getStaffReport, getSCReport, getQPReport };
+module.exports = { getStaffReport, getSCReport, getQPReport, getqpInactiveParties, getscOrderInactiveParties };

@@ -187,6 +187,7 @@ const qpDataSchema = new mongoose.Schema(
     operatorNoOfPieces: {
       type: Number,
     },
+    operatorNoOfSheet: { type: Number },
     actualNoOfPieces: {
       type: Number,
     },
@@ -280,19 +281,18 @@ const qpDataSchema = new mongoose.Schema(
     printer: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Staff",
-      required: false,
+      required: false
     },
     binder: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Staff",
-      required: false,
+      required: false
     },
     billPhoto: {
-      type: String,
+      type: String
     },
     paperAllocations: [paperAllocationSchema],
 
-    // Updated selectedPapers schema to handle multiple allocations per paper type
     selectedPapers: {
       paper1: [
         {
@@ -337,6 +337,13 @@ const qpDataSchema = new mongoose.Schema(
 
     dispatchPhoto: {
       type: String,
+    },
+    isPrinterLamination: {
+      type: Boolean,
+      default: false
+    },
+    dispatchPhoto: {
+      type: String
     },
   },
   {

@@ -28,6 +28,7 @@ const marketData = require("./marketData.routes");
 const kantan = require("./kantan.routes");
 const complain = require("./complain.routes");
 const report = require("./report.routes");
+const factoryArrival = require("./factoryReturn.routes");
 
 
 router.use("/staff", StaffRouter);
@@ -58,4 +59,5 @@ router.use("/roleDepartment", RoleDepartmentRouter);
 router.use("/roleDepartmentCompany", RoleDepartmentCompanyRouter);
 router.use("/performance-invoice", performanceInvoiceRoutes);
 router.use("/complain", complain);
+router.use("/factoryReturn", factoryArrival);
 module.exports = router;

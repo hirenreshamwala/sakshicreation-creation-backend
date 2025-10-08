@@ -313,7 +313,6 @@ exports.getAllAccountMasters = async (req, res) => {
       })
       .sort({ createdAt: -1 });
 
-    // Filter out null parties (अगर match नहीं हुआ तो null आएगा)
     const filteredAccountMasters = accountMasters.filter(
       (account) => account.party !== null
     );
