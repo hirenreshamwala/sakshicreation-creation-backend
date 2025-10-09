@@ -444,6 +444,7 @@ exports.loginStaff = async (req, res) => {
         lastName: staff.lastName,
         email: staff.email,
         role: staff.role,
+        isDispatch: staff.isDispatch,
         company:staff.CompanyName,
         requestType,
         deviceToken,
