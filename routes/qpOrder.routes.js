@@ -9,7 +9,7 @@ router.get("/getbyid/:id", QpOrderController.getQpOrderById);
 router.put("/update/:id", QpOrderController.updateQpOrder);
 router.delete("/delete/:id", QpOrderController.deleteQpOrder);
 router.get("/getbystaff/:id", QpOrderController.getOrdersByStaffId);
-
+router.post("/remove-loading", QpOrderController.removeLoadingOrder);
 router.post("/updatestatus", QpOrderController.updateQPOrderStatus);
 router.post("/bulkupdatestatus", QpOrderController.bulkUpdateQPOrderStatus);
 module.exports = router;

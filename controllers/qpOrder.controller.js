@@ -1649,7 +1649,9 @@ exports.bulkUpdateQPOrderStatus = async (req, res) => {
     // Check conflicting driver assignments
     const conflictingOrders = await QpData.find({
       _id: { $in: orderIds },
-      driver: { $exists: true, $ne: null, $ne: driverId },
+      driver: {
+        $nin: [null, driverId]  // driver should not be null AND not be current driverId
+      }
     }).session(session);
 
     if (conflictingOrders.length > 0)
@@ -1802,6 +1804,67 @@ exports.getAvailablePapers = async (req, res) => {
       success: false,
       message: "Failed to fetch available papers",
       error: error.message,
+    });
+  }
+};
+
+exports.removeLoadingOrder = async (req, res) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
+  try {
+    const { orderId } = req.body;
+    const driverId = req.user?.id;
+
+    if (!orderId) {
+      throw new Error("Order ID is required");
+    }
+    if (!driverId) {
+      throw new Error("Driver not authenticated");
+    }
+
+    // Find driver
+    const driver = await Staff.findById(driverId).session(session);
+    if (!driver) throw new Error("Driver not found");
+
+    // Remove order from driver's assigned orders
+    const updatedOrders = driver.orders.filter(
+      (id) => id.toString() !== orderId
+    );
+    await Staff.findByIdAndUpdate(
+      driverId,
+      { orders: updatedOrders },
+      { session }
+    );
+
+    // Reset order details
+    await QpData.findByIdAndUpdate(
+      orderId,
+      {
+        $set: {
+          driver: null,
+          deliveryStatus: "not_started",
+          loadingStartDate: null,
+          loadingEndDate: null,
+        },
+      },
+      { session }
+    );
+
+    await session.commitTransaction();
+    session.endSession();
+
+    res.status(200).json({
+      success: true,
+      message: "Order removed from loading successfully",
+    });
+  } catch (error) {
+    await session.abortTransaction();
+    session.endSession();
+    console.error("Remove loading error:", error);
+    res.status(400).json({
+      success: false,
+      message: error.message || "Failed to remove loading",
     });
   }
 };
