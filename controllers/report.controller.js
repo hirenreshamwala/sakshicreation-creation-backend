@@ -773,21 +773,24 @@ const getQPReport = async (req, res) => {
 
 const getqpInactiveParties = async (req, res) => {
   try {
+    const days = parseInt(req.body.days) || 30;
     const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - days);
 
-    // Lookup company
+    // 1️⃣ Find company "Quality Packaging"
     const company = await CompanyName.findOne({
       companyName: { $regex: "quality packaging", $options: "i" },
     });
+
     if (!company) {
       return res.status(404).json({ success: false, message: "Company not found" });
     }
 
+    // 2️⃣ Aggregate inactive parties and compute lastOrderId + lastOrderDate
     const inactiveParties = await Party.aggregate([
       { $match: { companyName: company._id } },
 
-      // Lookup orders
+      // Lookup qpOrders
       {
         $lookup: {
           from: "qporders",
@@ -796,10 +799,34 @@ const getqpInactiveParties = async (req, res) => {
           as: "orders",
         },
       },
-      { $addFields: { lastOrderDate: { $max: "$orders.createdAt" } } },
+
+      // Compute last order ID and date
+      {
+        $addFields: {
+          lastOrderDate: { $max: "$orders.createdAt" },
+          lastOrderId: {
+            $let: {
+              vars: {
+                sortedOrders: {
+                  $sortArray: {
+                    input: "$orders",
+                    sortBy: { createdAt: -1 },
+                  },
+                },
+              },
+              in: { $arrayElemAt: ["$$sortedOrders._id", 0] },
+            },
+          },
+        },
+      },
+
+      // Only include inactive parties
       {
         $match: {
-          $or: [{ lastOrderDate: { $lt: thirtyDaysAgo } }, { lastOrderDate: { $eq: null } }],
+          $or: [
+            { lastOrderDate: { $lt: thirtyDaysAgo } },
+            { lastOrderDate: { $eq: null } },
+          ],
         },
       },
 
@@ -859,7 +886,7 @@ const getqpInactiveParties = async (req, res) => {
         },
       },
 
-      // Project fields
+      // Final Projection
       {
         $project: {
           _id: 1,
@@ -867,12 +894,13 @@ const getqpInactiveParties = async (req, res) => {
           ownerName: 1,
           ownerMobileNo: 1,
           lastOrderDate: 1,
+          lastOrderId: 1, // ✅ include only ID
           createdBy: {
             _id: "$createdByDetails._id",
             firstName: "$createdByDetails.firstName",
-            lastName: "$createdByDetails.lastName", 
+            lastName: "$createdByDetails.lastName",
             email: "$createdByDetails.email",
-            mobileNo: "$createdByDetails.mobileNo"
+            mobileNo: "$createdByDetails.mobileNo",
           },
           address: {
             unitNo: "$address.unitNo",
@@ -885,7 +913,23 @@ const getqpInactiveParties = async (req, res) => {
       },
     ]);
 
-    return res.status(200).json({ success: true, data: inactiveParties });
+    // 3️⃣ Populate the lastOrderId field to include last order details
+    const populatedParties = await QpData.populate(inactiveParties, {
+      path: "lastOrderId",
+      select: "_id orderNo noOfPieces amount createdAt status orderdata",
+      populate: {
+        path: "orderdata", // packagingOption reference
+        model: "packagingOption",
+        select: "_id ply length width height deckal paper1GSM paper2GSM paper3GSM",
+      },
+    });
+
+    // 4️⃣ Send response
+    return res.status(200).json({
+      success: true,
+      message: "QP Order Inactive Parties with Last Order Info",
+      data: populatedParties,
+    });
   } catch (error) {
     console.error("Error fetching inactive parties:", error);
     return res.status(500).json({ success: false, message: "Server Error" });
@@ -894,11 +938,12 @@ const getqpInactiveParties = async (req, res) => {
 
 const getscOrderInactiveParties = async (req, res) => {
   try {
+    const days = parseInt(req.body.days) || 30;
     const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - days);
 
     const company = await CompanyName.findOne({
-      companyName: { $regex: "sakshi creation", $options: "i" }, 
+      companyName: { $regex: "sakshi creation", $options: "i" },
     });
     if (!company) {
       return res.status(404).json({ success: false, message: "Company not found" });
@@ -910,20 +955,40 @@ const getscOrderInactiveParties = async (req, res) => {
       // Lookup Orders (Order model)
       {
         $lookup: {
-          from: "orders", // Order collection का नाम
+          from: "orders",
           localField: "_id",
           foreignField: "party",
           as: "orders",
         },
       },
-      { $addFields: { lastOrderDate: { $max: "$orders.createdAt" } } },
+      {
+        $addFields: {
+          lastOrderDate: { $max: "$orders.createdAt" },
+          lastOrderId: {
+            $let: {
+              vars: {
+                sortedOrders: {
+                  $sortArray: {
+                    input: "$orders",
+                    sortBy: { createdAt: -1 },
+                  },
+                },
+              },
+              in: { $arrayElemAt: ["$$sortedOrders._id", 0] },
+            },
+          },
+        },
+      },
       {
         $match: {
-          $or: [{ lastOrderDate: { $lt: thirtyDaysAgo } }, { lastOrderDate: { $eq: null } }],
+          $or: [
+            { lastOrderDate: { $lt: thirtyDaysAgo } },
+            { lastOrderDate: { $eq: null } },
+          ],
         },
       },
 
-      // Lookup AccountMaster to get createdBy staff
+      // Lookup AccountMaster + Staff
       {
         $lookup: {
           from: "accountmasters",
@@ -933,8 +998,6 @@ const getscOrderInactiveParties = async (req, res) => {
         },
       },
       { $unwind: { path: "$accountDetails", preserveNullAndEmptyArrays: true } },
-
-      // Lookup creator staff from AccountMaster
       {
         $lookup: {
           from: "staffs",
@@ -945,7 +1008,7 @@ const getscOrderInactiveParties = async (req, res) => {
       },
       { $unwind: { path: "$createdByDetails", preserveNullAndEmptyArrays: true } },
 
-      // Lookup Market fields inside address
+      // Lookup Markets for address fields
       {
         $lookup: {
           from: "markets",
@@ -979,7 +1042,7 @@ const getscOrderInactiveParties = async (req, res) => {
         },
       },
 
-      // Project fields
+      // Final projection
       {
         $project: {
           _id: 1,
@@ -987,10 +1050,11 @@ const getscOrderInactiveParties = async (req, res) => {
           ownerName: 1,
           ownerMobileNo: 1,
           lastOrderDate: 1,
+          lastOrderId: 1, // ✅ only store ID
           createdBy: {
             _id: "$createdByDetails._id",
             firstName: "$createdByDetails.firstName",
-            lastName: "$createdByDetails.lastName", 
+            lastName: "$createdByDetails.lastName",
             email: "$createdByDetails.email",
             mobileNo: "$createdByDetails.mobileNo"
           },
@@ -1005,10 +1069,22 @@ const getscOrderInactiveParties = async (req, res) => {
       },
     ]);
 
-    return res.status(200).json({ 
-      success: true, 
-      data: inactiveParties,
-      message: "Order Inactive Parties"
+    // 3️⃣ Populate lastOrderId (convert ObjectId → Order doc)
+    const populatedParties = await Order.populate(inactiveParties, {
+      path: "lastOrderId",
+      select: "_id orderNumber qty createdAt productItem quotation",
+      populate: {
+        path: "productItem", // packagingOption reference
+        model: "productItem",
+        select: "_id itemName",
+      },
+    });
+
+    // 4️⃣ Send response
+    return res.status(200).json({
+      success: true,
+      message: "Order Inactive Parties with Last Order Info",
+      data: populatedParties,
     });
   } catch (error) {
     console.error("Error fetching Order inactive parties:", error);
