@@ -342,8 +342,51 @@ const qpDataSchema = new mongoose.Schema(
       type: Boolean,
       default: false
     },
-    dispatchPhoto: {
-      type: String
+    lastStatusChangeDate: {
+      type: Date,
+    },
+    statusHistory: [
+      {
+        status: { type: String, required: true },
+        changedAt: { type: Date, default: Date.now },
+        changedBy: { type: mongoose.Schema.Types.ObjectId, ref: "Staff" },
+      },
+    ],
+    paperCuttingDone: {
+      type: Boolean,
+      default: false
+    },
+    corrugationDone: {
+      type: Boolean,
+      default: false
+    },
+    pastingDone: {
+      type: Boolean,
+      default: false
+    },
+    rotaryDone: {
+      type: Boolean,
+      default: false
+    },
+    slottingDone: {
+      type: Boolean,
+      default: false
+    },
+    printingDone: {
+      type: Boolean,
+      default: false
+    },
+    manualPastingDone: {
+      type: Boolean,
+      default: false
+    },
+    pinningDone: {
+      type: Boolean,
+      default: false
+    },
+    punchingDone: {
+      type: Boolean,
+      default: false
     },
   },
   {

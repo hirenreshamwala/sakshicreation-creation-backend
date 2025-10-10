@@ -274,7 +274,8 @@ exports.getQpOrderById = async (req, res) => {
       // })
       .populate({
         path: "party",
-        select: "partyName address contactPerson personMobileNo personWhatsAppNo GSTNo",
+        select:
+          "partyName address contactPerson personMobileNo personWhatsAppNo GSTNo",
         // match: partyMatch,
         populate: [
           { path: "address.marketName", model: "Market", select: "marketName" },
@@ -282,7 +283,7 @@ exports.getQpOrderById = async (req, res) => {
           { path: "address.landMark", model: "Market", select: "landmark" },
           { path: "address.area", model: "Market", select: "area" },
           { path: "address.pincode", model: "Market", select: "pincode" },
-        ]
+        ],
       })
       .populate(
         "orderdata",
@@ -328,12 +329,6 @@ function convertToReels(reels = 0, inches = 0) {
 async function handlePaperAllocations(qpOrder, updateData, session) {
   const Inventory = mongoose.model("Inventory");
 
-  console.log("🔄 Processing paper allocations for order:", qpOrder.orderNo);
-  console.log(
-    "📦 Incoming selectedPapers:",
-    JSON.stringify(updateData.selectedPapers, null, 2)
-  );
-
   // 🩹 Normalize and clean up selectedPapers input
   if (updateData.selectedPapers) {
     for (const paperType of Object.keys(updateData.selectedPapers)) {
@@ -350,16 +345,12 @@ async function handlePaperAllocations(qpOrder, updateData, session) {
     }
   }
 
-  // 🔍 For debugging
-  console.log("✅ Normalized paper allocations:", updateData.selectedPapers);
-
   // 🧠 First, remove any existing allocations for this order to avoid duplicates
   await Inventory.updateMany(
     { "allocations.qpOrder": qpOrder._id },
     { $pull: { allocations: { qpOrder: qpOrder._id } } },
     { session }
   );
-  console.log("🧹 Cleared existing allocations for order:", qpOrder.orderNo);
 
   // 🧠 Iterate over each paper type and update inventories
   for (const paperType of Object.keys(updateData.selectedPapers || {})) {
@@ -372,10 +363,6 @@ async function handlePaperAllocations(qpOrder, updateData, session) {
       }
 
       if (allocation.allocatedKg <= 0) {
-        console.log(
-          `ℹ️ Skipping ${paperType} with zero allocation for inventory:`,
-          allocation.inventoryId
-        );
         continue;
       }
 
@@ -420,23 +407,15 @@ async function handlePaperAllocations(qpOrder, updateData, session) {
         { session }
       );
 
-      console.log(
-        `✅ Allocated ${allocation.allocatedKg}KG from ${inventoryItem.paperName} for ${paperType}`
-      );
     }
   }
-
-  console.log("✅ Paper allocations updated successfully");
 }
 
-// Also, let's update the updateQpOrder function to log the incoming request body
 exports.updateQpOrder = async (req, res) => {
   const session = await mongoose.startSession();
   session.startTransaction();
 
   try {
-    console.log("🔄 Updating QP Order with ID:", req.params.id);
-    console.log("📦 Request body:", JSON.stringify(req.body, null, 2));
 
     // Get the current order before update
     const currentOrder = await QpData.findById(req.params.id).session(session);
@@ -449,8 +428,107 @@ exports.updateQpOrder = async (req, res) => {
       });
     }
 
-    console.log("📋 Current order:", currentOrder.orderNo);
-    console.log("📊 Current selectedPapers:", currentOrder.selectedPapers);
+    // Handle status update and process completion flags
+    if (
+      req.body.status ||
+      req.body.paperCuttingDone !== undefined ||
+      req.body.corrugationDone !== undefined ||
+      req.body.pastingDone !== undefined ||
+      req.body.rotaryDone !== undefined ||
+      req.body.slottingDone !== undefined ||
+      req.body.printingDone !== undefined ||
+      req.body.manualPastingDone !== undefined ||
+      req.body.pinningDone !== undefined ||
+      req.body.punchingDone !== undefined
+    ) {
+      const now = new Date();
+
+      // Build update object
+      const updateData = {
+        ...req.body,
+        lastStatusChangeDate: now,
+      };
+
+      // Add status if provided
+      if (req.body.status) {
+        updateData.status = req.body.status;
+
+        // Add to status history
+        updateData.$push = {
+          statusHistory: {
+            status: req.body.status,
+            changedAt: now,
+            changedBy: req.user?._id || null,
+          },
+        };
+      }
+
+      // Add all process completion flags if provided
+      const processFlags = [
+        "paperCuttingDone",
+        "corrugationDone",
+        "pastingDone",
+        "rotaryDone",
+        "slottingDone",
+        "printingDone",
+        "manualPastingDone",
+        "pinningDone",
+        "punchingDone",
+      ];
+
+      processFlags.forEach((flag) => {
+        if (req.body[flag] !== undefined) {
+          updateData[flag] = req.body[flag];
+        }
+      });
+
+      console.log(updateData,'uiguiguguiguig')
+      const updatedOrder = await QpData.findByIdAndUpdate(
+        req.params.id,
+        updateData,
+        { new: true, session }
+      ).populate([
+        {
+          path: "companyName",
+          select: "companyName avatar",
+        },
+        {
+          path: "party",
+          select:
+            "partyName address contactPerson personMobileNo personWhatsAppNo GSTNo",
+        },
+        {
+          path: "orderdata",
+          select:
+            "party ply length width height deckal paper1GSM paper2GSM paper3GSM",
+        },
+        {
+          path: "printer",
+          select: "firstName lastName",
+        },
+        {
+          path: "binder",
+          select: "firstName lastName",
+        },
+        {
+          path: "kantan",
+          select: "kantanName",
+        },
+        {
+          path: "paperAllocations.inventoryId",
+          select: "paperName paperMillName gsm deckal kg",
+        },
+      ]);
+
+      await session.commitTransaction();
+      session.endSession();
+
+      return res.status(200).json({
+        success: true,
+        message: "Order updated successfully",
+        data: updatedOrder,
+      });
+    }
 
     // Validate ObjectId fields
     if (req.body.size && !mongoose.Types.ObjectId.isValid(req.body.size)) {
@@ -472,7 +550,6 @@ exports.updateQpOrder = async (req, res) => {
     }
 
     // 🟢 ALWAYS process paper allocations if selectedPapers is provided in the request
-    // Remove the condition that was preventing allocations from being processed
     if (
       req.body.selectedPapers &&
       req.body.selectedPapers.paper1.length > 0 &&
@@ -480,7 +557,6 @@ exports.updateQpOrder = async (req, res) => {
         currentOrder.selectedPapers?.paper1?.length === null ||
         currentOrder.selectedPapers?.paper1?.length === 0)
     ) {
-      console.log("📄 Processing paper allocations from request...");
       await handlePaperAllocations(currentOrder, req.body, session);
     } else {
       console.log(
@@ -561,9 +637,8 @@ exports.updateQpOrder = async (req, res) => {
     // Remove paperAllocations from updateData as it's handled separately
     delete updateData.paperAllocations;
 
-    console.log("💾 Final update data:", JSON.stringify(updateData, null, 2));
-
     // Update the order
+    console.log(updateData,'updateData')
     const qpOrder = await QpData.findByIdAndUpdate(
       req.params.id,
       { $set: updateData },
@@ -609,26 +684,17 @@ exports.updateQpOrder = async (req, res) => {
       });
     }
 
-    console.log("✅ Order updated successfully:", qpOrder.orderNo);
-
     // Check if status changed to "completed"
     const statusChangedToCompleted =
       req.body.status === "Completed" && currentOrder.status !== "Completed";
 
-    console.log(`🔄 Status changed to completed: ${statusChangedToCompleted}`);
-
     // Create outward inventory entries if status changed to completed
     if (statusChangedToCompleted) {
-      console.log(
-        "🏭 Creating outward inventory entries for completed order..."
-      );
       await createOutwardInventoryEntries(qpOrder, session);
     }
 
     await session.commitTransaction();
     session.endSession();
-
-    console.log("🎉 Transaction committed successfully");
 
     res.status(200).json({
       success: true,
@@ -686,17 +752,12 @@ function calculateActualPaperRequirements(orderData, actualNoOfPieces) {
 // 🏭 Main function: create outward inventory entries
 async function createOutwardInventoryEntries(qpOrder, session) {
   const Inventory = mongoose.model("Inventory");
-  console.log(
-    "🚀 Creating outward inventory entries for order:",
-    qpOrder.orderNo
-  );
 
   const actualNoOfPieces = qpOrder.actualNoOfPieces || qpOrder.noOfPieces;
   const actualPaperRequirements = calculateActualPaperRequirements(
     qpOrder.orderdata,
     actualNoOfPieces
   );
-  console.log("📊 Actual Paper Requirements:", actualPaperRequirements);
 
   const papers = ["paper1", "paper2", "paper3"];
   const totalActualUsage = { paper1: 0, paper2: 0, paper3: 0 };
@@ -707,7 +768,6 @@ async function createOutwardInventoryEntries(qpOrder, session) {
     { $pull: { allocations: { qpOrder: qpOrder._id } } },
     { session }
   );
-  console.log(`🧹 Removed old allocations for order ${qpOrder.orderNo}`);
 
   // 🧾 Step 2: handle paper outwards
   for (const paperType of papers) {
@@ -715,11 +775,8 @@ async function createOutwardInventoryEntries(qpOrder, session) {
     const requiredKg = actualPaperRequirements[paperType];
 
     if (!allocations.length || requiredKg <= 0) {
-      console.log(`⚠️ Skipping ${paperType} — no selection or no requirement.`);
       continue;
     }
-
-    console.log(`🔹 Processing ${paperType} (requirement: ${requiredKg} KG)`);
 
     const sorted = allocations.sort(
       (a, b) => (a.allocatedKg || 0) - (b.allocatedKg || 0)
@@ -761,10 +818,6 @@ async function createOutwardInventoryEntries(qpOrder, session) {
         allocation.allocatedKg || 0,
         availableKg,
         remaining
-      );
-
-      console.log(
-        `📦 Using ${useKg} KG from ${inventoryItem.paperName} (${availableKg} available)`
       );
 
       // Save outward entry
@@ -847,7 +900,6 @@ async function createOutwardInventoryEntries(qpOrder, session) {
     },
     { session }
   );
-  console.log("✅ Updated QpOrder with actual usage data");
 
   // 🧱 Step 4: Box inward
   if (qpOrder.actualNoOfPieces) {
@@ -866,7 +918,6 @@ async function createOutwardInventoryEntries(qpOrder, session) {
       for: qpOrder.assignedTo,
       forCompany: qpOrder.createdBy,
     }).save({ session });
-    console.log(`📥 Box Inward: ${qpOrder.actualNoOfPieces} boxes`);
   }
 
   // 📦 Step 5: Box outward
@@ -886,7 +937,6 @@ async function createOutwardInventoryEntries(qpOrder, session) {
       for: qpOrder.assignedTo,
       forCompany: qpOrder.createdBy,
     }).save({ session });
-    console.log(`📤 Box Outward: ${qpOrder.noOfPieces} boxes`);
   }
 
   // 🧪 Step 6: Kantan, Glue, Wire outward
@@ -913,400 +963,8 @@ async function createOutwardInventoryEntries(qpOrder, session) {
       forCompany: qpOrder.createdBy,
     });
     await outward.save({ session });
-    console.log(`📦 Created ${e.type} outward (${val})`);
   }
-
-  console.log("🎯 Completed outward inventory entries for:", qpOrder.orderNo);
 }
-
-// function calculateActualPaperRequirements(orderData, actualNoOfPieces) {
-//   if (!orderData) {
-//     console.warn("⚠️ No order data provided for paper calculation");
-//     return { paper1: 0, paper2: 0, paper3: 0 };
-//   }
-
-//   const length = parseFloat(orderData.length) || 0;
-//   const width = parseFloat(orderData.width) || 0;
-//   const height = parseFloat(orderData.height) || 0;
-//   const deckal = parseFloat(orderData.deckal) || 0;
-//   const paper1GSM = parseFloat(orderData.paper1GSM) || 0;
-//   const paper2GSM = parseFloat(orderData.paper2GSM) || 0;
-//   const paper3GSM = parseFloat(orderData.paper3GSM) || 0;
-
-//   if (length === 0 || width === 0 || height === 0 || deckal === 0) {
-//     console.warn("⚠️ Invalid dimensions for paper calculation");
-//     return { paper1: 0, paper2: 0, paper3: 0 };
-//   }
-
-//   // Calculate total surface area in cm²
-//   const surfaceAreaPerBox =
-//     2 * (length * width + length * height + width * height);
-//   const totalSurfaceArea = surfaceAreaPerBox * actualNoOfPieces;
-
-//   // Convert deckal to cm² (1 deckal = 1000 cm²)
-//   const deckalArea = deckal * 1000;
-
-//   // Calculate number of deckal sheets required
-//   const deckalSheets = totalSurfaceArea / deckalArea;
-
-//   // Calculate paper requirements in kg
-//   // Formula: (Area in m² × GSM) / 1000
-//   const areaInM2 = (deckalSheets * deckalArea) / 10000; // Convert cm² to m²
-
-//   const paper1Weight = (areaInM2 * paper1GSM) / 1000;
-//   const paper2Weight = (areaInM2 * paper2GSM) / 1000;
-//   const paper3Weight = (areaInM2 * paper3GSM) / 1000;
-
-//   const result = {
-//     paper1: parseFloat(paper1Weight.toFixed(2)),
-//     paper2: parseFloat(paper2Weight.toFixed(2)),
-//     paper3: parseFloat(paper3Weight.toFixed(2)),
-//   };
-
-//   console.log("📊 Calculated paper requirements:", result);
-//   return result;
-// }
-
-// // Main function to create outward inventory entries
-// async function createOutwardInventoryEntries(qpOrder, session) {
-//   const Inventory = mongoose.model("Inventory");
-
-//   console.log("Creating outward inventory entries for order:", qpOrder.orderNo);
-
-//   // Calculate actual paper requirements based on actual production
-//   const actualNoOfPieces = qpOrder.actualNoOfPieces || qpOrder.noOfPieces;
-//   const actualPaperRequirements = calculateActualPaperRequirements(
-//     qpOrder.orderdata,
-//     actualNoOfPieces
-//   );
-
-//   console.log("Actual paper requirements:", actualPaperRequirements);
-
-//   // 🔹 Paper Outward - Use allocated papers with actual usage
-//   if (
-//     qpOrder.selectedPapers &&
-//     (qpOrder.status === "Completed" || qpOrder.actualNoOfPieces)
-//   ) {
-//     const papers = ["paper1", "paper2", "paper3"];
-
-//     // First, remove old allocations for this order
-//     await Inventory.updateMany(
-//       { "allocations.qpOrder": qpOrder._id },
-//       { $pull: { allocations: { qpOrder: qpOrder._id } } },
-//       { session }
-//     );
-//     console.log(`Removed old allocations for order ${qpOrder.orderNo}`);
-
-//     // Track total actual usage per paper type
-//     const totalActualUsage = {
-//       paper1: 0,
-//       paper2: 0,
-//       paper3: 0,
-//     };
-
-//     // Process each paper type
-//     for (const paperType of papers) {
-//       const allocations = qpOrder.selectedPapers[paperType];
-//       const actualRequirement = actualPaperRequirements[paperType];
-
-//       if (!allocations || allocations.length === 0 || actualRequirement <= 0) {
-//         console.log(`Skipping ${paperType} - no allocations or no requirement`);
-//         continue;
-//       }
-
-//       console.log(
-//         `Processing ${paperType} - Requirement: ${actualRequirement}KG`
-//       );
-//       console.log(
-//         `Allocations for ${paperType}:`,
-//         JSON.stringify(allocations, null, 2)
-//       );
-
-//       // Sort allocations by allocatedKg (ascending) to use smallest allocations first
-//       const sortedAllocations = [...allocations].sort((a, b) => {
-//         return (a.allocatedKg || 0) - (b.allocatedKg || 0);
-//       });
-
-//       let remainingRequirement = actualRequirement;
-
-//       // Process each allocation
-//       for (const allocation of sortedAllocations) {
-//         console.log(`Processing allocation:`, allocation);
-
-//         const inventoryItem = await Inventory.findById(
-//           allocation.inventoryId
-//         ).session(session);
-//         if (!inventoryItem) {
-//           console.log(
-//             `Inventory not found for ${paperType}:`,
-//             allocation.inventoryId
-//           );
-//           // Create outward entry with 0 kg to track all selected papers
-//           const outwardPaper = new Inventory({
-//             category: "factory",
-//             type: "outward",
-//             inventoryType: "paper",
-//             paperName: "Unknown",
-//             paperMillName: "Unknown",
-//             gsm: 0,
-//             deckal: 0,
-//             kg: 0,
-//             paperType: paperType,
-//             qpOrder: qpOrder._id,
-//             qpPurchase: qpOrder._id,
-//             orderNo: qpOrder.orderNo,
-//             companyName: qpOrder.companyName,
-//             for: qpOrder.assignedTo,
-//             forCompany: qpOrder.createdBy,
-//             date: new Date(),
-//             note: "Inventory item not found",
-//           });
-
-//           await outwardPaper.save({ session });
-//           console.log(
-//             `Created Paper Outward entry with 0 KG for missing inventory: ${paperType} - ${allocation.inventoryId}`
-//           );
-//           continue;
-//         }
-
-//         // Calculate available quantity for this inventory item
-//         const currentlyAllocated = inventoryItem.allocations
-//           .filter(
-//             (alloc) => alloc.qpOrder.toString() !== qpOrder._id.toString()
-//           )
-//           .reduce((sum, alloc) => sum + alloc.allocatedKg, 0);
-
-//         const availableKg = (inventoryItem.kg || 0) - currentlyAllocated;
-
-//         // Use the allocatedKg from the selection, but don't exceed available quantity or remaining requirement
-//         const allocatedKg = allocation.allocatedKg || 0;
-//         const usageFromThisItem = Math.min(
-//           allocatedKg,
-//           availableKg,
-//           remainingRequirement
-//         );
-
-//         console.log(
-//           `Using ${usageFromThisItem}KG from ${inventoryItem.paperName} for ${paperType} (allocated: ${allocatedKg}, available: ${availableKg}, remaining: ${remainingRequirement})`
-//         );
-
-//         // Create outward entry for paper usage (always create an entry for each selected paper)
-//         const outwardPaper = new Inventory({
-//           category: "factory",
-//           type: "outward",
-//           inventoryType: "paper",
-//           paperName: inventoryItem.paperName,
-//           paperMillName: inventoryItem.paperMillName,
-//           gsm: inventoryItem.gsm,
-//           deckal: inventoryItem.deckal,
-//           kg: usageFromThisItem, // Use the calculated usage
-//           paperType: paperType,
-//           qpOrder: qpOrder._id,
-//           qpPurchase: qpOrder._id,
-//           orderNo: qpOrder.orderNo,
-//           companyName: qpOrder.companyName,
-//           for: qpOrder.assignedTo,
-//           forCompany: qpOrder.createdBy,
-//           date: new Date(),
-//           note:
-//             usageFromThisItem === 0
-//               ? "Selected but not used due to insufficient quantity or requirement already met"
-//               : undefined,
-//         });
-
-//         await outwardPaper.save({ session });
-//         console.log(
-//           `Created Paper Outward entry: ${paperType} - ${usageFromThisItem}KG from ${inventoryItem.paperName}`
-//         );
-
-//         // If we're actually using some paper, update the inventory and tracking
-//         if (usageFromThisItem > 0) {
-//           // Create allocation in inventory
-//           const newAllocation = {
-//             qpOrder: qpOrder._id,
-//             allocatedKg: usageFromThisItem,
-//             paperType: paperType,
-//             orderNo: qpOrder.orderNo,
-//             companyName:
-//               qpOrder.companyName?.companyName ||
-//               qpOrder.companyName ||
-//               "Unknown",
-//             allocatedAt: new Date(),
-//           };
-
-//           await Inventory.findByIdAndUpdate(
-//             allocation.inventoryId,
-//             {
-//               $push: { allocations: newAllocation },
-//               $inc: { availableKg: -usageFromThisItem }, // reduce stock
-//             },
-//             { session }
-//           );
-
-//           // Update tracking
-//           remainingRequirement -= usageFromThisItem;
-//           totalActualUsage[paperType] += usageFromThisItem;
-//         }
-//       }
-
-//       // If we couldn't fulfill the requirement, log a warning
-//       if (remainingRequirement > 0) {
-//         console.warn(
-//           `Could not fulfill entire requirement for ${paperType}. Shortage: ${remainingRequirement}KG`
-//         );
-//       }
-//     }
-
-//     // Update the QpOrder with actual usage data
-//     await QpData.findByIdAndUpdate(
-//       qpOrder._id,
-//       {
-//         $set: {
-//           actualPaperKG: {
-//             paper1: {
-//               deckal: qpOrder.orderdata.deckal,
-//               gsm: qpOrder.orderdata.paper1GSM,
-//               totalKg: totalActualUsage.paper1.toFixed(2),
-//             },
-//             paper2: {
-//               deckal: qpOrder.orderdata.deckal,
-//               gsm: qpOrder.orderdata.paper2GSM,
-//               totalKg: totalActualUsage.paper2.toFixed(2),
-//             },
-//             paper3: {
-//               deckal: qpOrder.orderdata.deckal,
-//               gsm: qpOrder.orderdata.paper3GSM,
-//               totalKg: totalActualUsage.paper3.toFixed(2),
-//             },
-//           },
-//           actualTotalKg: (
-//             totalActualUsage.paper1 +
-//             totalActualUsage.paper2 +
-//             totalActualUsage.paper3
-//           ).toFixed(2),
-//         },
-//       },
-//       { session }
-//     );
-
-//     console.log("Updated QpOrder with actual usage data");
-//   }
-
-//   // 🔹 Box Inward (with actualNoOfPieces)
-//   if (qpOrder.actualNoOfPieces) {
-//     const inwardBox = new Inventory({
-//       category: "factory",
-//       type: "inward",
-//       inventoryType: "Box",
-//       quantity: qpOrder.actualNoOfPieces,
-//       booked: qpOrder.booked || false,
-//       boxLength: qpOrder.orderdata?.length,
-//       boxWidth: qpOrder.orderdata?.width,
-//       boxHeight: qpOrder.orderdata?.height,
-//       p1gsm: qpOrder.actualPaperKG?.paper1,
-//       p2gsm: qpOrder.actualPaperKG?.paper2,
-//       p3gsm: qpOrder.actualPaperKG?.paper3,
-//       date: new Date(),
-//       qpPurchase: qpOrder._id,
-//       qpOrder: qpOrder._id,
-//       companyName: qpOrder.companyName,
-//       for: qpOrder.assignedTo,
-//       forCompany: qpOrder.createdBy,
-//     });
-
-//     await inwardBox.save({ session });
-//     console.log(`Created Box Inward entry: ${qpOrder.actualNoOfPieces} boxes`);
-//   }
-
-//   // 🔹 Box Outward (only noOfPieces)
-//   if (qpOrder.noOfPieces) {
-//     const outwardBox = new Inventory({
-//       category: "factory",
-//       type: "outward",
-//       inventoryType: "Box",
-//       quantity: qpOrder.noOfPieces,
-//       booked: qpOrder.booked || false,
-//       boxLength: qpOrder.orderdata?.length,
-//       boxWidth: qpOrder.orderdata?.width,
-//       boxHeight: qpOrder.orderdata?.height,
-//       p1gsm: qpOrder.actualPaperKG?.paper1,
-//       p2gsm: qpOrder.actualPaperKG?.paper2,
-//       p3gsm: qpOrder.actualPaperKG?.paper3,
-//       date: new Date(),
-//       qpOrder: qpOrder._id,
-//       qpPurchase: qpOrder._id,
-//       companyName: qpOrder.companyName,
-//       for: qpOrder.assignedTo,
-//       forCompany: qpOrder.createdBy,
-//     });
-
-//     await outwardBox.save({ session });
-//     console.log(`Created Box Outward entry: ${qpOrder.noOfPieces} boxes`);
-//   }
-
-//   // 🔹 Kantan Outward
-//   if (qpOrder.kantan && qpOrder.actualTotalKantan?.reel) {
-//     const outwardKantan = new Inventory({
-//       category: "factory",
-//       type: "outward",
-//       inventoryType: "Kantan",
-//       reel: convertToReels(
-//         qpOrder.actualTotalKantan.reel,
-//         qpOrder.actualTotalKantan.inch
-//       ),
-//       kantan: qpOrder.kantan,
-//       vendor: qpOrder.vendor,
-//       date: new Date(),
-//       qpOrder: qpOrder._id,
-//       qpPurchase: qpOrder._id,
-//       companyName: qpOrder.companyName,
-//       for: qpOrder.assignedTo,
-//       forCompany: qpOrder.createdBy,
-//     });
-//     await outwardKantan.save({ session });
-//     console.log("Created Kantan Outward entry");
-//   }
-
-//   // 🔹 Glue Outward
-//   if (qpOrder.glue && qpOrder.glue.trim() !== "") {
-//     const outwardGlue = new Inventory({
-//       category: "factory",
-//       type: "outward",
-//       inventoryType: "Glue",
-//       kg: parseFloat(qpOrder.glue),
-//       vendor: qpOrder.vendor,
-//       date: new Date(),
-//       qpOrder: qpOrder._id,
-//       qpPurchase: qpOrder._id,
-//       companyName: qpOrder.companyName,
-//       for: qpOrder.assignedTo,
-//       forCompany: qpOrder.createdBy,
-//     });
-//     await outwardGlue.save({ session });
-//     console.log("Created Glue Outward entry");
-//   }
-
-//   // 🔹 Wire Outward
-//   if (qpOrder.wire && qpOrder.wire.trim() !== "") {
-//     const outwardWire = new Inventory({
-//       category: "factory",
-//       type: "outward",
-//       inventoryType: "Wire",
-//       kg: parseFloat(qpOrder.wire),
-//       vendor: qpOrder.vendor,
-//       date: new Date(),
-//       qpOrder: qpOrder._id,
-//       qpPurchase: qpOrder._id,
-//       companyName: qpOrder.companyName,
-//       for: qpOrder.assignedTo,
-//       forCompany: qpOrder.createdBy,
-//     });
-//     await outwardWire.save({ session });
-//     console.log("Created Wire Outward entry");
-//   }
-
-//   console.log("Completed creating outward inventory entries");
-// }
 
 // Delete QP Order
 exports.deleteQpOrder = async (req, res) => {
@@ -1338,7 +996,6 @@ exports.deleteQpOrder = async (req, res) => {
 exports.getOrdersByStaffId = async (req, res) => {
   try {
     const { id } = req.params;
-    console.log(id, "id");
     // 1. Validate staffId format
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({
@@ -1369,7 +1026,8 @@ exports.getOrdersByStaffId = async (req, res) => {
       // })
       .populate({
         path: "party",
-        select: "partyName address contactPerson personMobileNo personWhatsAppNo GSTNo",
+        select:
+          "partyName address contactPerson personMobileNo personWhatsAppNo GSTNo",
         // match: partyMatch,
         populate: [
           { path: "address.marketName", model: "Market", select: "marketName" },
@@ -1377,7 +1035,7 @@ exports.getOrdersByStaffId = async (req, res) => {
           { path: "address.landMark", model: "Market", select: "landmark" },
           { path: "address.area", model: "Market", select: "area" },
           { path: "address.pincode", model: "Market", select: "pincode" },
-        ]
+        ],
       })
       .populate(
         "orderdata",
@@ -1393,7 +1051,6 @@ exports.getOrdersByStaffId = async (req, res) => {
       })
       .populate("kantan", "kantanName")
       .sort({ createdAt: -1 });
-    console.log("DEBUG : v:", orders);
 
     // 4. If no orders found, return an empty array with a message
     if (!orders || orders.length === 0) {
@@ -1421,111 +1078,6 @@ exports.getOrdersByStaffId = async (req, res) => {
     });
   }
 };
-
-// Dedicated endpoint to update order status only
-// exports.updateQpOrderStatus = async (req, res) => {
-//   const session = await mongoose.startSession();
-//   session.startTransaction();
-
-//   try {
-//     const { status } = req.body;
-//     const { id } = req.params;
-
-//     // Get the current order
-//     const currentOrder = await QpData.findById(id).session(session);
-//     if (!currentOrder) {
-//       await session.abortTransaction();
-//       session.endSession();
-//       return res.status(404).json({
-//         success: false,
-//         message: "QP Order not found",
-//       });
-//     }
-
-//     // Update the status
-//     const updatedOrder = await QpData.findByIdAndUpdate(
-//       id,
-//       { status },
-//       {
-//         new: true,
-//         runValidators: true,
-//         session,
-//       }
-//     )
-//       .populate({
-//         path: "companyName",
-//         select: "companyName avatar",
-//       })
-//       .populate({
-//         path: "party",
-//         select:
-//           "partyName address contactPerson personMobileNo personWhatsAppNo GSTNo",
-//       })
-//       .populate(
-//         "orderdata",
-//         "party ply length width height deckal paper1GSM paper2GSM paper3GSM"
-//       )
-//       .populate({
-//         path: "printer",
-//         select: "firstName lastName", // Add printer name population
-//       })
-//       .populate({
-//         path: "binder",
-//         select: "firstName lastName", // Add binder name population
-//       })
-//       .populate("kantan", "kantanName");
-
-//     // Check if status changed to "completed"
-//     const statusChangedToCompleted =
-//       status === "Completed" && currentOrder.status !== "Completed";
-
-//     // Create outward inventory entry if status changed to completed
-//     if (statusChangedToCompleted) {
-//       const outwardInventory = new Inventory({
-//         category: "factory", // Adjust category as needed
-//         type: "outward",
-//         material: updatedOrder.paperName || undefined,
-//         quantity: updatedOrder.quantity || 1,
-//         kg: updatedOrder.weight || undefined,
-//         reel: updatedOrder.reel || undefined,
-//         vendor: updatedOrder.vendor || undefined,
-//         date: new Date(),
-//         qpOrder: updatedOrder._id,
-//         companyName: updatedOrder.companyName,
-//         kantan: updatedOrder.kantan || undefined,
-//         paperName: updatedOrder.paperName || undefined,
-//         deckal: updatedOrder.deckal || undefined,
-//         gsm: updatedOrder.gsm || undefined,
-//         for: updatedOrder.assignedTo || undefined,
-//         forCompany: updatedOrder.createdBy || undefined,
-//         remarks: `Outward entry for completed QP order ${
-//           updatedOrder.orderNumber || updatedOrder._id
-//         }`,
-//       });
-
-//       await outwardInventory.save({ session });
-//     }
-
-//     await session.commitTransaction();
-//     session.endSession();
-
-//     res.status(200).json({
-//       success: true,
-//       message: "QP Order status updated successfully",
-//       data: updatedOrder,
-//       outwardCreated: statusChangedToCompleted,
-//     });
-//   } catch (error) {
-//     await session.abortTransaction();
-//     session.endSession();
-//     console.error("❌ Error updating QP order status:", error);
-//     res.status(500).json({
-//       success: false,
-//       message: "Failed to update QP order status",
-//       error: error.message,
-//     });
-//   }
-// };
 
 exports.updateQPOrderStatus = async (req, res) => {
   const session = await mongoose.startSession();
@@ -1640,7 +1192,14 @@ exports.bulkUpdateQPOrderStatus = async (req, res) => {
   session.startTransaction();
 
   try {
-    const { orderIds, deliveryStatus, billPhotos, dispatchPhotos, dispatchTime, deliveryTime } = req.body;
+    const {
+      orderIds,
+      deliveryStatus,
+      billPhotos,
+      dispatchPhotos,
+      dispatchTime,
+      deliveryTime,
+    } = req.body;
     const driverId = req.user?.id;
     const currentTime = new Date();
 
@@ -1650,8 +1209,8 @@ exports.bulkUpdateQPOrderStatus = async (req, res) => {
     const conflictingOrders = await QpData.find({
       _id: { $in: orderIds },
       driver: {
-        $nin: [null, driverId]  // driver should not be null AND not be current driverId
-      }
+        $nin: [null, driverId], // driver should not be null AND not be current driverId
+      },
     }).session(session);
 
     if (conflictingOrders.length > 0)
@@ -1659,7 +1218,6 @@ exports.bulkUpdateQPOrderStatus = async (req, res) => {
 
     const updateData = {};
     if (driverId) updateData.driver = driverId;
-
 
     const driver = await Staff.findById(driverId).session(session);
     if (!driver) throw new Error("Driver not found");
@@ -1669,7 +1227,9 @@ exports.bulkUpdateQPOrderStatus = async (req, res) => {
       switch (deliveryStatus) {
         case "loading":
           if (driver.isDisptach) {
-            throw new Error("You already have an ongoing dispatch. Complete delivery before loading new orders.");
+            throw new Error(
+              "You already have an ongoing dispatch. Complete delivery before loading new orders."
+            );
           }
           const driverData = await Staff.findById(driverId).session(session);
           if (driverData) {
@@ -1692,7 +1252,11 @@ exports.bulkUpdateQPOrderStatus = async (req, res) => {
           updateData.dispatchTime = dispatchTime || currentTime;
           // Store dispatch photo
           updateData.dispatchPhoto = dispatchPhotos[0];
-          await Staff.findByIdAndUpdate(driverId, { isDisptach: true }, { session });
+          await Staff.findByIdAndUpdate(
+            driverId,
+            { isDisptach: true },
+            { session }
+          );
           break;
         case "delivered":
           if (!billPhotos || !billPhotos.length)
@@ -1703,17 +1267,7 @@ exports.bulkUpdateQPOrderStatus = async (req, res) => {
           updateData.deliveryTime = deliveryTime || currentTime;
           // Store bill photo
           updateData.billPhoto = billPhotos[0];
-          // const remainingInTransit = await QpData.countDocuments({
-          //   driver: driverId,
-          //   deliveryStatus: "in_transit",
-          //   _id: { $nin: orderIds },
-          // }).session(session);
-          // console.log("DEBUG : remainingInTransit:", remainingInTransit);
 
-
-          // if (remainingInTransit === 0) {
-          //   await Staff.findByIdAndUpdate(driverId, { isDisptach: false }, { session });
-          // }
           break;
       }
     }
@@ -1728,8 +1282,14 @@ exports.bulkUpdateQPOrderStatus = async (req, res) => {
 
     const updatedOrders = await QpData.find({ _id: { $in: orderIds } })
       .populate("companyName", "companyName avatar")
-      .populate("party", "partyName address contactPerson personMobileNo personWhatsAppNo GSTNo")
-      .populate("orderdata", "party ply length width height deckal paper1GSM paper2GSM paper3GSM")
+      .populate(
+        "party",
+        "partyName address contactPerson personMobileNo personWhatsAppNo GSTNo"
+      )
+      .populate(
+        "orderdata",
+        "party ply length width height deckal paper1GSM paper2GSM paper3GSM"
+      )
       .populate("kantan", "kantanName")
       .populate("driver", "firstName lastName email isDisptach")
       .session(session);
