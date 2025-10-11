@@ -5,3 +5,4 @@ temp.js
 .dockerignore
 /public
 /uploads
+package-lock.json
