@@ -1717,13 +1717,38 @@ exports.getAccountMasterByStaffId = async (req, res) => {
 
 exports.searchParties = async (req, res) => {
   try {
-    const { q } = req.query;
-    const query = q ? { partyName: { $regex: q, $options: "i" } } : {};
-    const parties = await Party.find(query).populate('address.marketName').limit(20).sort({ partyName: 1 });
+    const { q, companyId } = req.query;
+    
+    // First find account masters for the company
+    const accountMatchQuery = {};
+    if (companyId && mongoose.Types.ObjectId.isValid(companyId)) {
+      accountMatchQuery.companyName = companyId;
+    }
+    
+    const accountMasters = await AccountMaster.find(accountMatchQuery)
+      .select('party')
+      .populate({
+        path: 'party',
+        match: q ? { partyName: { $regex: q, $options: "i" } } : {},
+        select: 'partyName address'
+      });
+    
+    // Filter out accounts where party is null (due to population match)
+    const validParties = accountMasters
+      .filter(acc => acc.party !== null)
+      .map(acc => acc.party);
+    
+    // Now populate the market details for these parties
+    const partiesWithMarket = await Party.find({
+      _id: { $in: validParties.map(p => p._id) }
+    })
+    .populate('address.marketName')
+    .limit(20)
+    .sort({ partyName: 1 });
 
     res.status(200).json({
       success: true,
-      data: parties,
+      data: partiesWithMarket,
     });
   } catch (error) {
     console.error("Error searching parties:", error);
