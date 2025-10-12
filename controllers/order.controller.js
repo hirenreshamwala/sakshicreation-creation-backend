@@ -216,10 +216,10 @@ exports.createOrder = async (req, res) => {
 exports.getAllOrders = async (req, res) => {
   try {
     const {
-      status,       // array of statuses
+      status, // array of statuses
       companyName,
       party,
-      staffId,        // createdBy staff id
+      staffId, // createdBy staff id
       startDate,
       endDate,
     } = req.body;
@@ -905,7 +905,7 @@ exports.getDesignerById = async (req, res) => {
     //     message: "No orders found for this designer",
     //   });
     // }
-
+    console.log(orders.filter((el) => el.designerStatus !== "Approved").length);
     res.status(200).json({
       success: true,
       count: orders.length,
