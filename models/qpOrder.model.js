@@ -281,18 +281,22 @@ const qpDataSchema = new mongoose.Schema(
     printer: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Staff",
-      required: false
+      required: false,
     },
     binder: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Staff",
-      required: false
+      required: false,
     },
     billPhoto: {
-      type: String
+      type: String,
     },
     paperAllocations: [paperAllocationSchema],
-
+    paperUsageSummary: {
+      paper1: [{ type: String }],
+      paper2: [{ type: String }],
+      paper3: [{ type: String }],
+    },
     selectedPapers: {
       paper1: [
         {
@@ -340,7 +344,7 @@ const qpDataSchema = new mongoose.Schema(
     },
     isPrinterLamination: {
       type: Boolean,
-      default: false
+      default: false,
     },
     lastStatusChangeDate: {
       type: Date,
@@ -354,39 +358,39 @@ const qpDataSchema = new mongoose.Schema(
     ],
     paperCuttingDone: {
       type: Boolean,
-      default: false
+      default: false,
     },
     corrugationDone: {
       type: Boolean,
-      default: false
+      default: false,
     },
     pastingDone: {
       type: Boolean,
-      default: false
+      default: false,
     },
     rotaryDone: {
       type: Boolean,
-      default: false
+      default: false,
     },
     slottingDone: {
       type: Boolean,
-      default: false
+      default: false,
     },
     printingDone: {
       type: Boolean,
-      default: false
+      default: false,
     },
     manualPastingDone: {
       type: Boolean,
-      default: false
+      default: false,
     },
     pinningDone: {
       type: Boolean,
-      default: false
+      default: false,
     },
     punchingDone: {
       type: Boolean,
-      default: false
+      default: false,
     },
   },
   {
