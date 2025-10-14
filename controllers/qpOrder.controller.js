@@ -236,6 +236,10 @@ exports.getAllQpOrders = async (req, res) => {
         select: "firstName lastName", // Add printer name population
       })
       .populate({
+        path: "designer",
+        select: "firstName lastName", // Add printer name population
+      })
+      .populate({
         path: "binder",
         select: "firstName lastName", // Add binder name population
       })
@@ -292,6 +296,10 @@ exports.getQpOrderById = async (req, res) => {
       .populate("kantan", "kantanName")
       .populate({
         path: "printer",
+        select: "firstName lastName", // Add printer name population
+      })
+      .populate({
+        path: "designer",
         select: "firstName lastName", // Add printer name population
       })
       .populate({
@@ -507,6 +515,10 @@ exports.updateQpOrder = async (req, res) => {
           select: "firstName lastName",
         },
         {
+          path: "designer",
+          select: "firstName lastName",
+        },
+        {
           path: "binder",
           select: "firstName lastName",
         },
@@ -663,6 +675,10 @@ exports.updateQpOrder = async (req, res) => {
       )
       .populate({
         path: "printer",
+        select: "firstName lastName",
+      })
+      .populate({
+        path: "designer",
         select: "firstName lastName",
       })
       .populate({
@@ -1043,6 +1059,10 @@ exports.getOrdersByStaffId = async (req, res) => {
       )
       .populate({
         path: "printer",
+        select: "firstName lastName", // Add printer name population
+      })
+      .populate({
+        path: "designer",
         select: "firstName lastName", // Add printer name population
       })
       .populate({

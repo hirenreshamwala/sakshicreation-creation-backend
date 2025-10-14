@@ -278,6 +278,11 @@ const qpDataSchema = new mongoose.Schema(
     },
     kantanStart: { type: Date },
     kantanEnd: { type: Date },
+    designer: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Staff",
+      required: false
+    },
     printer: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Staff",
@@ -352,6 +357,18 @@ const qpDataSchema = new mongoose.Schema(
         changedBy: { type: mongoose.Schema.Types.ObjectId, ref: "Staff" },
       },
     ],
+    designDone:{
+      type: Boolean,
+      default: false
+    },
+    printerDone:{
+      type: Boolean,
+      default: false
+    },
+    laminationDone:{
+      type: Boolean,
+      default: false
+    },
     paperCuttingDone: {
       type: Boolean,
       default: false
@@ -385,6 +402,10 @@ const qpDataSchema = new mongoose.Schema(
       default: false
     },
     punchingDone: {
+      type: Boolean,
+      default: false
+    },
+    isBoxFound: {
       type: Boolean,
       default: false
     },
