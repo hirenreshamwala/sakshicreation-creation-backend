@@ -1,6 +1,52 @@
 const mongoose = require('mongoose');
 const Complain = require('../models/complain.model');
+const multer = require('multer');
+const path = require('path');
+const fs = require('fs');
 
+// Multer Configuration (as defined above)
+const storage = multer.diskStorage({
+    destination: (req, file, cb) => {
+        const uploadPath = path.join(__dirname, '../uploads/complaints');
+        if (!fs.existsSync(uploadPath)) {
+            fs.mkdirSync(uploadPath, { recursive: true });
+        }
+        cb(null, uploadPath);
+    },
+    filename: (req, file, cb) => {
+        cb(null, `${Date.now()}-${file.originalname}`);
+    },
+});
+
+const fileFilter = (req, file, cb) => {
+    const allowedTypes = ['application/pdf', 'image/png', 'image/jpeg', 'image/jpg'];
+    if (allowedTypes.includes(file.mimetype)) {
+        cb(null, true);
+    } else {
+        cb(new Error('Invalid file type. Only PDF, PNG, JPG, JPEG allowed.'), false);
+    }
+};
+
+const upload = multer({
+    storage,
+    limits: { fileSize: 25 * 1024 * 1024 },
+    fileFilter,
+});
+
+// Serve uploaded files statically (add to your main app.js or server.js)
+const express = require('express');
+const app = express();
+app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+
+// Helper function to delete files from the filesystem
+const deleteFiles = (filePaths) => {
+    filePaths.forEach(filePath => {
+        const fullPath = path.join(__dirname, '../', filePath);
+        if (fs.existsSync(fullPath)) {
+            fs.unlinkSync(fullPath);
+        }
+    });
+};
 
 // ====================== GET ALL COMPLAINS ======================
 exports.getAllComplains = async (req, res) => {
@@ -24,10 +70,16 @@ exports.getAllComplains = async (req, res) => {
             .populate('createdBy', 'firstName lastName')
             .sort({ createdAt: -1 });
 
+        // Transform file paths to URLs
+        const transformedComplains = complains.map(complain => ({
+            ...complain._doc,
+            files: complain.files.map(file => `${req.protocol}://${req.get('host')}/uploads/complaints/${path.basename(file)}`),
+        }));
+
         res.status(200).json({
             success: true,
-            count: complains.length,
-            data: complains,
+            count: transformedComplains.length,
+            data: transformedComplains,
         });
     } catch (error) {
         res.status(500).json({
@@ -62,7 +114,13 @@ exports.getComplain = async (req, res) => {
             return res.status(404).json({ success: false, message: 'Complain not found' });
         }
 
-        res.status(200).json({ success: true, data: complain });
+        // Transform file paths to URLs
+        const transformedComplain = {
+            ...complain._doc,
+            files: complain.files.map(file => `${req.protocol}://${req.get('host')}/uploads/complaints/${path.basename(file)}`),
+        };
+
+        res.status(200).json({ success: true, data: transformedComplain });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
@@ -71,18 +129,65 @@ exports.getComplain = async (req, res) => {
 // ====================== CREATE COMPLAIN WITH POPULATE ======================
 exports.createComplain = async (req, res) => {
     try {
-        const complain = new Complain(req.body);
-        await complain.save();
+        // Apply Multer middleware for file uploads
+        upload.array('files', 25)(req, res, async (err) => {
+            if (err) {
+                return res.status(400).json({ success: false, message: err.message });
+            }
 
-        // Populate after creation
-        const populatedComplain = await Complain.findById(complain._id)
-            .populate('company', 'companyName')
-            .populate('scorder', 'orderNumber')
-            .populate('qporder', 'orderNo')
-            .populate('assignTo', 'firstName lastName')
-            .populate('createdBy', 'firstName lastName')
+            try {
+                const { subject, details, company, scorder, qporder, party, createdBy, assignTo, status, response } = req.body;
 
-        res.status(201).json({ success: true, data: populatedComplain });
+                // Parse assignTo if sent as a string or array
+                let assignToArray = [];
+                if (typeof assignTo === 'string') {
+                    try {
+                        assignToArray = JSON.parse(assignTo);
+                    } catch (e) {
+                        assignToArray = [assignTo];
+                    }
+                } else if (Array.isArray(assignTo)) {
+                    assignToArray = assignTo;
+                }
+
+                // Get uploaded file paths
+                const files = req.files ? req.files.map(file => file.path) : [];
+
+                const complain = new Complain({
+                    subject,
+                    details,
+                    company,
+                    scorder: scorder || null,
+                    qporder: qporder || null,
+                    party,
+                    status: status || 'Pending',
+                    response: response || '',
+                    createdBy,
+                    assignTo: assignToArray,
+                    files,
+                });
+
+                await complain.save();
+
+                // Populate after creation
+                const populatedComplain = await Complain.findById(complain._id)
+                    .populate('company', 'companyName')
+                    .populate('scorder', 'orderNumber')
+                    .populate('qporder', 'orderNo')
+                    .populate('assignTo', 'firstName lastName')
+                    .populate('createdBy', 'firstName lastName');
+
+                // Transform file paths to URLs
+                const transformedComplain = {
+                    ...populatedComplain._doc,
+                    files: populatedComplain.files.map(file => `${req.protocol}://${req.get('host')}/uploads/complaints/${path.basename(file)}`),
+                };
+
+                res.status(201).json({ success: true, data: transformedComplain });
+            } catch (error) {
+                res.status(500).json({ success: false, message: error.message });
+            }
+        });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
@@ -91,28 +196,69 @@ exports.createComplain = async (req, res) => {
 // ====================== UPDATE COMPLAIN ======================
 exports.updateComplain = async (req, res) => {
     try {
-        console.log("DEBUG : req.body:", req.body);
-        console.log("DEBUG : req.params.id:", req.params.id);
+        // Apply Multer middleware for file uploads
+        upload.array('files', 25)(req, res, async (err) => {
+            if (err) {
+                return res.status(400).json({ success: false, message: err.message });
+            }
 
-        // Exclude createdBy from the update payload
-        const { createdBy, ...updateData } = req.body;
+            try {
+                const { subject, details, company, scorder, qporder, party, createdBy, assignTo, status, response } = req.body;
 
-        const complain = await Complain.findByIdAndUpdate(
-            req.params.id,
-            updateData, // Use filtered data without createdBy
-            { new: true }
-        )
-            .populate("company", "companyName")
-            .populate("scorder", "orderNumber")
-            .populate("qporder", "orderNo")
-            .populate("assignTo", "firstName lastName")
-            .populate("createdBy", "firstName lastName");
+                // Parse assignTo if sent as a string or array
+                let assignToArray = [];
+                if (typeof assignTo === 'string') {
+                    try {
+                        assignToArray = JSON.parse(assignTo);
+                    } catch (e) {
+                        assignToArray = [assignTo];
+                    }
+                } else if (Array.isArray(assignTo)) {
+                    assignToArray = assignTo;
+                }
 
-        if (!complain) {
-            return res.status(404).json({ success: false, message: "Complain not found" });
-        }
+                // Get new uploaded file paths
+                const newFiles = req.files ? req.files.map(file => file.path) : [];
 
-        res.status(200).json({ success: true, data: complain });
+                // Find existing complaint
+                const complain = await Complain.findById(req.params.id);
+                if (!complain) {
+                    return res.status(404).json({ success: false, message: 'Complain not found' });
+                }
+
+                // Update fields
+                complain.subject = subject || complain.subject;
+                complain.details = details || complain.details;
+                complain.company = company || complain.company;
+                complain.scorder = scorder || complain.scorder;
+                complain.qporder = qporder || complain.qporder;
+                complain.party = party || complain.party;
+                complain.status = status || complain.status;
+                complain.response = response || complain.response;
+                complain.assignTo = assignToArray.length ? assignToArray : complain.assignTo;
+                complain.files = [...complain.files, ...newFiles]; // Append new files
+
+                await complain.save();
+
+                // Populate after update
+                const populatedComplain = await Complain.findById(complain._id)
+                    .populate('company', 'companyName')
+                    .populate('scorder', 'orderNumber')
+                    .populate('qporder', 'orderNo')
+                    .populate('assignTo', 'firstName lastName')
+                    .populate('createdBy', 'firstName lastName');
+
+                // Transform file paths to URLs
+                const transformedComplain = {
+                    ...populatedComplain._doc,
+                    files: populatedComplain.files.map(file => `${req.protocol}://${req.get('host')}/uploads/complaints/${path.basename(file)}`),
+                };
+
+                res.status(200).json({ success: true, data: transformedComplain });
+            } catch (error) {
+                res.status(500).json({ success: false, message: error.message });
+            }
+        });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
@@ -121,10 +267,17 @@ exports.updateComplain = async (req, res) => {
 // ====================== DELETE COMPLAIN ======================
 exports.deleteComplain = async (req, res) => {
     try {
-        const complain = await Complain.findByIdAndDelete(req.params.id);
+        const complain = await Complain.findById(req.params.id);
         if (!complain) {
             return res.status(404).json({ success: false, message: 'Complain not found' });
         }
+
+        // Delete associated files from filesystem
+        if (complain.files && complain.files.length) {
+            deleteFiles(complain.files);
+        }
+
+        await Complain.findByIdAndDelete(req.params.id);
         res.status(200).json({ success: true, message: 'Complain deleted successfully' });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
@@ -143,8 +296,6 @@ exports.getComplainsByStaff = async (req, res) => {
             .populate('company', 'companyName')
             .populate('scorder', 'orderNumber')
             .populate('qporder', 'orderNo')
-            .populate('assignTo', 'firstName lastName')
-            .populate('createdBy', 'firstName lastName')
             .populate({
                 path: "party",
                 select: "-__v",
@@ -155,13 +306,21 @@ exports.getComplainsByStaff = async (req, res) => {
                     { path: "address.area", model: "Market", select: "area" },
                     { path: "address.pincode", model: "Market", select: "pincode" },
                 ],
-        })
+            })
+            .populate('assignTo', 'firstName lastName')
+            .populate('createdBy', 'firstName lastName')
             .sort({ createdAt: -1 });
+
+        // Transform file paths to URLs
+        const transformedComplains = complains.map(complain => ({
+            ...complain._doc,
+            files: complain.files.map(file => `${req.protocol}://${req.get('host')}/uploads/complaints/${path.basename(file)}`),
+        }));
 
         res.status(200).json({
             success: true,
-            count: complains.length,
-            data: complains,
+            count: transformedComplains.length,
+            data: transformedComplains,
         });
     } catch (error) {
         console.error('Error fetching complains by staff:', error);
