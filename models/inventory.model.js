@@ -7,7 +7,7 @@ const allocationSchema = new mongoose.Schema(
       ref: "QpOrder",
       required: true,
     },
-    orderNo: { type: Number },
+    // orderNo: { type: Number },
     allocatedKg: {
       type: Number,
       required: true,

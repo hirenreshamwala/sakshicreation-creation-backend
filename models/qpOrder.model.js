@@ -404,6 +404,61 @@ qpDataSchema.plugin(AutoIncrement, {
   start_seq: 1000,
 });
 
+// ✅ FIX: Status change detection middleware
+qpDataSchema.pre("save", function (next) {
+  // Only proceed if status is being modified
+  if (this.isModified("status")) {
+    const previousStatus = this._originalStatus || this.status;
+    const newStatus = this.status;
+    
+    console.log(`🔍 Status Change Check: ${previousStatus} -> ${newStatus}`);
+    
+    // ✅ Update lastStatusChangeDate only if status actually changed
+    if (previousStatus !== newStatus) {
+      this.lastStatusChangeDate = new Date();
+      console.log(`✅ Status changed: ${previousStatus} -> ${newStatus}, updating lastStatusChangeDate`);
+    } else {
+      console.log(`ℹ️ Status same (${newStatus}), not updating lastStatusChangeDate`);
+    }
+  }
+  next();
+});
+
+// ✅ Store original status before update for proper comparison
+qpDataSchema.pre("save", function (next) {
+  if (this.isModified("status") && !this.isNew) {
+    // Store the original status before modification for comparison
+    if (!this._originalStatus) {
+      this._originalStatus = this._originalStatus || this.status;
+    }
+  }
+  next();
+});
+
+// ✅ Alternative approach using pre('findOneAndUpdate') for update operations
+qpDataSchema.pre("findOneAndUpdate", function (next) {
+  const update = this.getUpdate();
+  
+  // Check if status is being updated
+  if (update && update.$set && update.$set.status) {
+    const newStatus = update.$set.status;
+    
+    // Get the current document to compare status
+    this.model.findOne(this.getQuery()).then((doc) => {
+      if (doc && doc.status !== newStatus) {
+        // Status is actually changing, update lastStatusChangeDate
+        update.$set.lastStatusChangeDate = new Date();
+        console.log(`✅ Status changing from ${doc.status} to ${newStatus}, updating lastStatusChangeDate`);
+      } else {
+        console.log(`ℹ️ Status same (${newStatus}), not updating lastStatusChangeDate`);
+      }
+      next();
+    }).catch(next);
+  } else {
+    next();
+  }
+});
+
 qpDataSchema.pre("save", async function (next) {
   try {
     // Only proceed if this is a new QpData (not an update)
