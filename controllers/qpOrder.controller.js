@@ -50,6 +50,7 @@ exports.createQpOrder = async (req, res) => {
     // Validate packagingOption fields
     const {
       ply,
+      uom,
       length,
       width,
       height,
@@ -60,6 +61,7 @@ exports.createQpOrder = async (req, res) => {
     } = packagingOption || {};
     if (
       !ply ||
+      !uom ||
       !length ||
       !width ||
       !height ||
@@ -76,10 +78,21 @@ exports.createQpOrder = async (req, res) => {
       });
     }
 
+    // Validate UOM field
+    if (!["inch", "cm", "mm"].includes(uom)) {
+      await session.abortTransaction();
+      session.endSession();
+      return res.status(400).json({
+        success: false,
+        message: "Invalid UOM value. Must be inch, cm, or mm",
+      });
+    }
+
     // Check if a PackagingOption exists for the provided data
     let packaging = await PackagingOption.findOne({
       party: party, // Use the party ID from req.body
       ply,
+      uom,
       length,
       width,
       height,
@@ -94,6 +107,7 @@ exports.createQpOrder = async (req, res) => {
       packaging = new PackagingOption({
         party: party, // Explicitly set the party ID
         ply,
+        uom,
         length,
         width,
         height,
@@ -129,7 +143,7 @@ exports.createQpOrder = async (req, res) => {
       })
       .populate(
         "orderdata",
-        "party ply length width height deckal paper1GSM paper2GSM paper3GSM"
+        "party ply uom length width height deckal paper1GSM paper2GSM paper3GSM"
       )
       .populate("kantan", "kantanName")
       .session(session);
@@ -228,7 +242,7 @@ exports.getAllQpOrders = async (req, res) => {
       })
       .populate(
         "orderdata",
-        "party ply length width height deckal paper1GSM paper2GSM paper3GSM"
+        "party ply uom length width height deckal paper1GSM paper2GSM paper3GSM"
       )
       .populate("kantan", "kantanName")
       .populate({
@@ -291,7 +305,7 @@ exports.getQpOrderById = async (req, res) => {
       })
       .populate(
         "orderdata",
-        "party ply length width height deckal paper1GSM paper2GSM paper3GSM"
+        "party ply uom length width height deckal paper1GSM paper2GSM paper3GSM"
       )
       .populate("kantan", "kantanName")
       .populate({
@@ -582,6 +596,7 @@ exports.updateQpOrder = async (req, res) => {
       const {
         party,
         ply,
+        uom,
         length,
         width,
         height,
@@ -594,6 +609,7 @@ exports.updateQpOrder = async (req, res) => {
       if (
         !party ||
         !ply ||
+        !uom ||
         !length ||
         !width ||
         !height ||
@@ -610,9 +626,20 @@ exports.updateQpOrder = async (req, res) => {
         });
       }
 
+      // Validate UOM field
+      if (!["inch", "cm", "mm"].includes(uom)) {
+        await session.abortTransaction();
+        session.endSession();
+        return res.status(400).json({
+          success: false,
+          message: "Invalid UOM value. Must be inch, cm, or mm",
+        });
+      }
+
       let packaging = await PackagingOption.findOne({
         party,
         ply,
+        uom,
         length,
         width,
         height,
@@ -626,6 +653,7 @@ exports.updateQpOrder = async (req, res) => {
         packaging = new PackagingOption({
           party,
           ply,
+          uom,
           length,
           width,
           height,
@@ -671,7 +699,7 @@ exports.updateQpOrder = async (req, res) => {
       })
       .populate(
         "orderdata",
-        "party ply length width height deckal paper1GSM paper2GSM paper3GSM"
+        "party ply uom length width height deckal paper1GSM paper2GSM paper3GSM"
       )
       .populate({
         path: "printer",
@@ -1055,7 +1083,7 @@ exports.getOrdersByStaffId = async (req, res) => {
       })
       .populate(
         "orderdata",
-        "party ply length width height deckal paper1GSM paper2GSM paper3GSM"
+        "party ply uom length width height deckal paper1GSM paper2GSM paper3GSM"
       )
       .populate({
         path: "printer",
@@ -1184,7 +1212,7 @@ exports.updateQPOrderStatus = async (req, res) => {
       )
       .populate(
         "orderdata",
-        "party ply length width height deckal paper1GSM paper2GSM paper3GSM"
+        "party ply uom length width height deckal paper1GSM paper2GSM paper3GSM"
       )
       .populate("kantan", "kantanName")
       .populate("driver", "firstName lastName email");
@@ -1308,7 +1336,7 @@ exports.bulkUpdateQPOrderStatus = async (req, res) => {
       )
       .populate(
         "orderdata",
-        "party ply length width height deckal paper1GSM paper2GSM paper3GSM"
+        "party ply uom length width height deckal paper1GSM paper2GSM paper3GSM"
       )
       .populate("kantan", "kantanName")
       .populate("driver", "firstName lastName email isDisptach")

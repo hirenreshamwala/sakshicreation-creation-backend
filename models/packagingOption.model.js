@@ -11,6 +11,13 @@ const packagingOptionSchema = new mongoose.Schema(
       required: true,
       trim: true,
     },
+    uom: {
+      type: String,
+      enum: ["inch", "cm", "mm"],
+      required: true,
+      default: "inch",
+      trim: true,
+    },
     length: {
       type: String,
       required: true,
