@@ -299,7 +299,6 @@ const orderSchema = new mongoose.Schema(
         numberOfSheetsUsed: {
           type: String,
           trim: true,
-          // required: true,
         },
         sheetSize: {
           type: mongoose.Schema.Types.ObjectId,
@@ -319,7 +318,6 @@ const orderSchema = new mongoose.Schema(
         ratePerUnit: {
           type: String,
           trim: true,
-          // required: true,
         },
         wastage: {
           type: String,
@@ -333,7 +331,6 @@ const orderSchema = new mongoose.Schema(
           type: String,
           required: true,
           trim: true,
-          required: true,
         },
         numberOfSheetsUsed: {
           type: String,
@@ -492,14 +489,6 @@ const orderSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
-    // isPaper1: {
-    //   type: Boolean,
-    //   default: false,
-    // },
-    // isPaper2: {
-    //   type: Boolean,
-    //   default: false,
-    // },
     validproof: [
       {
         path: {
@@ -604,6 +593,30 @@ const orderSchema = new mongoose.Schema(
       required: true,
     },
     quotation: [quotationHistory],
+    
+    // ✅ LAST STATUS CHANGE DATE FIELD
+    lastStatusChangeDate: {
+      type: Date,
+      default: Date.now // ✅ DEFAULT VALUE FOR NEW ORDERS
+    },
+    
+    // ✅ STATUS HISTORY TRACKING
+    statusHistory: [
+      {
+        status: { 
+          type: String, 
+          required: true 
+        },
+        changedAt: { 
+          type: Date, 
+          default: Date.now 
+        },
+        changedBy: { 
+          type: mongoose.Schema.Types.ObjectId, 
+          ref: "Staff" 
+        },
+      },
+    ],
   },
   {
     timestamps: true,
@@ -618,7 +631,122 @@ orderSchema.index({ printer: 1 });
 orderSchema.index({ binder: 1 });
 orderSchema.index({ bookletBinder: 1 });
 orderSchema.index({ createdAt: -1 });
+orderSchema.index({ lastStatusChangeDate: -1 });
 
+// ✅ COMPREHENSIVE STATUS CHANGE DETECTION MIDDLEWARE
+orderSchema.pre("save", function (next) {
+  console.log(`🔍 Order Save Middleware - Status modified: ${this.isModified("status")}, Is New: ${this.isNew}`);
+  
+  // Always ensure lastStatusChangeDate has a value for new orders
+  if (this.isNew && !this.lastStatusChangeDate) {
+    this.lastStatusChangeDate = new Date();
+    console.log(`✅ New order created, setting lastStatusChangeDate to current date`);
+  }
+  
+  // Handle status changes for existing orders
+  if (!this.isNew && this.isModified("status")) {
+    const previousStatus = this._originalStatus;
+    const newStatus = this.status;
+    
+    console.log(`🔄 Status Change Detected: ${previousStatus} -> ${newStatus}`);
+    
+    // Case 1: If status is being changed to "Delivery", set lastStatusChangeDate to null
+    if (this.status === "Delivery") {
+      this.lastStatusChangeDate = null;
+      console.log(`✅ Status changed to "Delivery", setting lastStatusChangeDate to null`);
+    }
+    // Case 2: Regular status change (when status is not "Delivery")
+    else if (this.status !== "Delivery") {
+      if (previousStatus !== newStatus) {
+        this.lastStatusChangeDate = new Date();
+        console.log(`✅ Regular status change: ${previousStatus} -> ${newStatus}, updating lastStatusChangeDate`);
+      } else {
+        console.log(`ℹ️ Status same (${newStatus}), not updating lastStatusChangeDate`);
+      }
+    }
+  }
+  
+  next();
+});
+
+// ✅ STORE ORIGINAL STATUS BEFORE UPDATE FOR PROPER COMPARISON
+orderSchema.pre("save", function (next) {
+  if (this.isModified("status") && !this.isNew) {
+    // Store the original status before modification for comparison
+    if (!this._originalStatus) {
+      this._originalStatus = this.status;
+    }
+  }
+  next();
+});
+
+// ✅ ENHANCED MIDDLEWARE FOR FINDONEANDUPDATE OPERATIONS
+orderSchema.pre("findOneAndUpdate", function (next) {
+  const update = this.getUpdate();
+  const setUpdate = update.$set || {};
+  
+  console.log(`🔍 Order FindOneAndUpdate - Status Update: ${setUpdate.status}`);
+  
+  // Get the current document to check current values
+  this.model.findOne(this.getQuery()).then((doc) => {
+    if (!doc) {
+      return next();
+    }
+
+    const currentStatus = doc.status;
+    const newStatus = setUpdate.status;
+
+    let updateSet = {};
+
+    // Case 1: If status is being changed to "Delivery", set lastStatusChangeDate to null
+    if (newStatus === "Delivery") {
+      updateSet.lastStatusChangeDate = null;
+      console.log(`✅ Status changing to "Delivery", setting lastStatusChangeDate to null`);
+    }
+    // Case 2: Regular status change (when status is not "Delivery")
+    else if (newStatus && newStatus !== "Delivery" && currentStatus !== newStatus) {
+      updateSet.lastStatusChangeDate = new Date();
+      console.log(`✅ Regular status change: ${currentStatus} -> ${newStatus}, updating lastStatusChangeDate`);
+    }
+    // Case 3: For new documents being created via findOneAndUpdate (though rare)
+    else if (!doc.lastStatusChangeDate && newStatus && newStatus !== "Delivery") {
+      updateSet.lastStatusChangeDate = new Date();
+      console.log(`✅ Setting initial lastStatusChangeDate for order`);
+    }
+
+    // Update the $set object with our changes only if there are updates
+    if (Object.keys(updateSet).length > 0) {
+      if (update.$set) {
+        update.$set = { ...update.$set, ...updateSet };
+      } else {
+        update.$set = updateSet;
+      }
+      console.log(`🔄 Final Update Object:`, update);
+    }
+
+    next();
+  }).catch(next);
+});
+
+// ✅ ADD STATUS HISTORY TRACKING
+orderSchema.pre("save", function (next) {
+  if (this.isModified("status")) {
+    const statusChange = {
+      status: this.status,
+      changedAt: new Date()
+    };
+    
+    if (!this.statusHistory) {
+      this.statusHistory = [];
+    }
+    
+    this.statusHistory.push(statusChange);
+    console.log(`📝 Added to statusHistory: ${JSON.stringify(statusChange)}`);
+  }
+  next();
+});
+
+// ✅ EXISTING PARTY TAG UPDATE MIDDLEWARE
 orderSchema.pre("save", async function (next) {
   try {
     // Only proceed if this is a new order (not an update)
@@ -632,6 +760,7 @@ orderSchema.pre("save", async function (next) {
         // Update the party tag to "Customer"
         party.partyTag = "CUSTOMER";
         await party.save();
+        console.log(`✅ Updated party tag from NEW to CUSTOMER`);
       }
     }
     next();

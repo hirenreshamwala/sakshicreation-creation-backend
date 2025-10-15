@@ -95,7 +95,6 @@ const qpDataSchema = new mongoose.Schema(
       type: String,
     },
     kantan: {
-      // type: String,
       type: mongoose.Schema.Types.ObjectId,
       ref: "Kantan",
     },
@@ -151,7 +150,6 @@ const qpDataSchema = new mongoose.Schema(
     delivery: {
       type: String,
     },
-    // extra data add by manager
     unitNo: {
       type: String,
     },
@@ -161,12 +159,6 @@ const qpDataSchema = new mongoose.Schema(
     deliveryDate: {
       type: String,
     },
-    // kantan: {
-    //   type: String,
-    // },
-    // kantanDeckal: {
-    //   type: String,
-    // },
     rsFor: {
       type: String,
     },
@@ -180,7 +172,6 @@ const qpDataSchema = new mongoose.Schema(
       type: String,
     },
     createdBy: {
-      // type: String,
       type: mongoose.Schema.Types.ObjectId,
       ref: "Staff",
     },
@@ -263,9 +254,6 @@ const qpDataSchema = new mongoose.Schema(
     loadingStartDate: {
       type: String,
     },
-    // loadingEndDate: {
-    //   type: String,
-    // },
     deliveryStartTime: {
       type: String,
     },
@@ -343,7 +331,6 @@ const qpDataSchema = new mongoose.Schema(
         },
       ],
     },
-
     dispatchPhoto: {
       type: String,
     },
@@ -425,59 +412,125 @@ qpDataSchema.plugin(AutoIncrement, {
   start_seq: 1000,
 });
 
-// ✅ FIX: Status change detection middleware
+// ✅ UPDATED: Enhanced status change detection middleware
 qpDataSchema.pre("save", function (next) {
-  // Only proceed if status is being modified
-  if (this.isModified("status")) {
+  console.log(`🔍 Save Middleware - Status modified: ${this.isModified("status")}, DeliveryStatus modified: ${this.isModified("deliveryStatus")}`);
+  
+  // Case 1: If deliveryStatus is being changed to "Delivered", set lastStatusChangeDate to null
+  if (this.isModified("deliveryStatus") && this.deliveryStatus === "Delivered") {
+    this.lastStatusChangeDate = null;
+    console.log(`✅ DeliveryStatus changed to "Delivered", setting lastStatusChangeDate to null`);
+  }
+  // Case 2: If status is being changed to "Completed" AND deliveryStatus exists but is not "Delivered"
+  else if (this.isModified("status") && this.status === "Completed" && this.deliveryStatus && this.deliveryStatus !== "Delivered") {
+    this.lastStatusChangeDate = new Date();
+    console.log(`✅ Status changed to "Completed" and deliveryStatus is not "Delivered", updating lastStatusChangeDate`);
+  }
+  // Case 3: If deliveryStatus is being changed (and it's not "Delivered") after status is "Completed"
+  else if (this.isModified("deliveryStatus") && this.status === "Completed" && this.deliveryStatus !== "Delivered") {
+    this.lastStatusChangeDate = new Date();
+    console.log(`✅ DeliveryStatus changed while status is "Completed", updating lastStatusChangeDate`);
+  }
+  // Case 4: Regular status change (when status is not "Completed")
+  else if (this.isModified("status") && this.status !== "Completed") {
     const previousStatus = this._originalStatus || this.status;
     const newStatus = this.status;
     
-    console.log(`🔍 Status Change Check: ${previousStatus} -> ${newStatus}`);
-    
-    // ✅ Update lastStatusChangeDate only if status actually changed
     if (previousStatus !== newStatus) {
       this.lastStatusChangeDate = new Date();
-      console.log(`✅ Status changed: ${previousStatus} -> ${newStatus}, updating lastStatusChangeDate`);
+      console.log(`✅ Regular status change: ${previousStatus} -> ${newStatus}, updating lastStatusChangeDate`);
     } else {
       console.log(`ℹ️ Status same (${newStatus}), not updating lastStatusChangeDate`);
     }
   }
+  
   next();
 });
 
 // ✅ Store original status before update for proper comparison
 qpDataSchema.pre("save", function (next) {
-  if (this.isModified("status") && !this.isNew) {
-    // Store the original status before modification for comparison
+  if ((this.isModified("status") || this.isModified("deliveryStatus")) && !this.isNew) {
+    // Store the original values before modification for comparison
     if (!this._originalStatus) {
-      this._originalStatus = this._originalStatus || this.status;
+      this._originalStatus = this.status;
+    }
+    if (!this._originalDeliveryStatus) {
+      this._originalDeliveryStatus = this.deliveryStatus;
     }
   }
   next();
 });
 
-// ✅ Alternative approach using pre('findOneAndUpdate') for update operations
+// ✅ UPDATED: Enhanced middleware for findOneAndUpdate operations
 qpDataSchema.pre("findOneAndUpdate", function (next) {
   const update = this.getUpdate();
+  const setUpdate = update.$set || {};
   
-  // Check if status is being updated
-  if (update && update.$set && update.$set.status) {
-    const newStatus = update.$set.status;
-    
-    // Get the current document to compare status
-    this.model.findOne(this.getQuery()).then((doc) => {
-      if (doc && doc.status !== newStatus) {
-        // Status is actually changing, update lastStatusChangeDate
-        update.$set.lastStatusChangeDate = new Date();
-        console.log(`✅ Status changing from ${doc.status} to ${newStatus}, updating lastStatusChangeDate`);
-      } else {
-        console.log(`ℹ️ Status same (${newStatus}), not updating lastStatusChangeDate`);
-      }
-      next();
-    }).catch(next);
-  } else {
+  console.log(`🔍 FindOneAndUpdate - Update:`, setUpdate);
+  
+  // Get the current document to check current values
+  this.model.findOne(this.getQuery()).then((doc) => {
+    if (!doc) {
+      return next();
+    }
+
+    const currentStatus = doc.status;
+    const currentDeliveryStatus = doc.deliveryStatus;
+    const newStatus = setUpdate.status;
+    const newDeliveryStatus = setUpdate.deliveryStatus;
+
+    let shouldUpdateLastStatusChangeDate = false;
+    let updateSet = setUpdate;
+
+    // Case 1: If deliveryStatus is being changed to "Delivered", set lastStatusChangeDate to null
+    if (newDeliveryStatus === "Delivered") {
+      updateSet.lastStatusChangeDate = null;
+      console.log(`✅ DeliveryStatus changing to "Delivered", setting lastStatusChangeDate to null`);
+    }
+    // Case 2: If status is being changed to "Completed" AND deliveryStatus exists but is not "Delivered"
+    else if (newStatus === "Completed" && (newDeliveryStatus || currentDeliveryStatus) && newDeliveryStatus !== "Delivered") {
+      updateSet.lastStatusChangeDate = new Date();
+      console.log(`✅ Status changing to "Completed" and deliveryStatus is not "Delivered", updating lastStatusChangeDate`);
+    }
+    // Case 3: If deliveryStatus is being changed (and it's not "Delivered") after status is "Completed"
+    else if (newDeliveryStatus && currentStatus === "Completed" && newDeliveryStatus !== "Delivered") {
+      updateSet.lastStatusChangeDate = new Date();
+      console.log(`✅ DeliveryStatus changing while status is "Completed", updating lastStatusChangeDate`);
+    }
+    // Case 4: Regular status change (when status is not "Completed")
+    else if (newStatus && newStatus !== "Completed" && currentStatus !== newStatus) {
+      updateSet.lastStatusChangeDate = new Date();
+      console.log(`✅ Regular status change: ${currentStatus} -> ${newStatus}, updating lastStatusChangeDate`);
+    }
+
+    // Update the $set object with our changes
+    if (update.$set) {
+      update.$set = { ...update.$set, ...updateSet };
+    } else {
+      update.$set = updateSet;
+    }
+
     next();
+  }).catch(next);
+});
+
+// Add status history tracking
+qpDataSchema.pre("save", function (next) {
+  if (this.isModified("status") || this.isModified("deliveryStatus")) {
+    const statusChange = {
+      status: this.status,
+      deliveryStatus: this.deliveryStatus,
+      changedAt: new Date()
+    };
+    
+    if (!this.statusHistory) {
+      this.statusHistory = [];
+    }
+    
+    this.statusHistory.push(statusChange);
+    console.log(`📝 Added to statusHistory: ${JSON.stringify(statusChange)}`);
   }
+  next();
 });
 
 qpDataSchema.pre("save", async function (next) {
