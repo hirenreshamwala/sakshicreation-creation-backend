@@ -37,6 +37,7 @@ const complainSchema = new mongoose.Schema({
         type: mongoose.Schema.Types.ObjectId,
         ref: "Staff",
     },
+    filePaths: [String]
 }, {
     timestamps: true
 });

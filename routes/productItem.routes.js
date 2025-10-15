@@ -3,7 +3,8 @@ const productItemController = require("../controllers/productItem.controller");
 const multer = require('multer');
 
 const router = express.Router();
-const upload = multer({ dest: 'uploads/' });
+const storage = multer.memoryStorage();
+const upload = multer({ storage });
 
 router.post("/create", productItemController.createProductItem);
 
