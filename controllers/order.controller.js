@@ -130,10 +130,10 @@ exports.createOrder = async (req, res) => {
           const parsed = JSON.parse(filePaths);
           processedFilePaths = Array.isArray(parsed)
             ? parsed.map((item) => ({
-                path: typeof item === "string" ? item : item.path,
-                remark: typeof item === "object" ? item.remark || "" : "",
-                uploadedAt: new Date(),
-              }))
+              path: typeof item === "string" ? item : item.path,
+              remark: typeof item === "object" ? item.remark || "" : "",
+              uploadedAt: new Date(),
+            }))
             : [];
         } else if (Array.isArray(filePaths)) {
           processedFilePaths = filePaths.map((item) => ({
@@ -270,6 +270,10 @@ exports.getAllOrders = async (req, res) => {
           {
             path: "address.area",
             select: "area", // adjust field name as per your schema
+          },
+          {
+            path: "address.pincode",
+            select: "pincode", // adjust field name as per your schema
           },
         ],
       })
@@ -623,10 +627,10 @@ exports.updateOrder = async (req, res) => {
           const parsed = JSON.parse(updateData.filePaths);
           updateData.filePaths = Array.isArray(parsed)
             ? parsed.map((item) => ({
-                path: typeof item === "string" ? item : item.path,
-                remark: typeof item === "object" ? item.remark || "" : "",
-                uploadedAt: new Date(),
-              }))
+              path: typeof item === "string" ? item : item.path,
+              remark: typeof item === "object" ? item.remark || "" : "",
+              uploadedAt: new Date(),
+            }))
             : [];
         } else if (Array.isArray(updateData.filePaths)) {
           updateData.filePaths = updateData.filePaths.map((item) => ({
@@ -647,10 +651,10 @@ exports.updateOrder = async (req, res) => {
           const parsed = JSON.parse(updateData.designFiles);
           updateData.designFiles = Array.isArray(parsed)
             ? parsed.map((item) => ({
-                path: typeof item === "string" ? item : item.path,
-                remark: typeof item === "object" ? item.remark || "" : "",
-                uploadedAt: new Date(),
-              }))
+              path: typeof item === "string" ? item : item.path,
+              remark: typeof item === "object" ? item.remark || "" : "",
+              uploadedAt: new Date(),
+            }))
             : [];
         } else if (Array.isArray(updateData.designFiles)) {
           updateData.designFiles = updateData.designFiles.map((item) => ({
