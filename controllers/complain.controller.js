@@ -180,7 +180,7 @@ exports.createComplain = async (req, res) => {
                 // Transform file paths to URLs
                 const transformedComplain = {
                     ...populatedComplain._doc,
-                    files: populatedComplain.files.map(file => `${req.protocol}://${req.get('host')}/uploads/complaints/${path.basename(file)}`),
+                    files: populatedComplain.files.map(file => `${process.env.BACK_URL}/uploads/complaints/${path.basename(file)}`),
                 };
 
                 res.status(201).json({ success: true, data: transformedComplain });
