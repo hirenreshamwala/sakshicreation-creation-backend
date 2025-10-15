@@ -7,6 +7,7 @@ const allocationSchema = new mongoose.Schema(
       ref: "QpOrder",
       required: true,
     },
+    // orderNo: { type: Number },
     allocatedKg: {
       type: Number,
       required: true,
@@ -159,9 +160,9 @@ const InventorySchema = new mongoose.Schema(
     // Calculated available quantity
     availableKg: {
       type: Number,
-      default: function() {
+      default: function () {
         return this.kg || 0;
-      }
+      },
     },
   },
   { timestamps: true }
