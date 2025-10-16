@@ -88,10 +88,22 @@ exports.uploadMultipleFiles = async (req, res) => {
     }
 
     const folderName = req.body.folder || "";
+    const billNumber = req.body.billNumber || ""; // Retrieve billNumber from request body
     const baseUrl = process.env.BACK_URL || "";
 
     console.log(`📁 Folder specified: ${folderName}`);
     console.log(`📄 Files count: ${req.files.length}`);
+    console.log(`📝 Bill Number: ${billNumber || "Not provided"}`);
+
+    // Validate billNumber if required
+    if (!billNumber) {
+      console.warn("⚠️ No bill number provided in the request");
+      // Optionally, you can return an error if billNumber is mandatory
+      // return res.status(400).json({
+      //   success: false,
+      //   message: "Bill number is required",
+      // });
+    }
 
     const uploadedFiles = req.files.map((file, index) => {
       const uploadedAbsolutePath = file.path;
@@ -111,6 +123,7 @@ exports.uploadMultipleFiles = async (req, res) => {
         size: file.size,
         mimetype: file.mimetype,
         folder: folderName,
+        billNumber: billNumber, // Include billNumber in the response
         url: publicPaths.url,
         path: publicPaths.path,
         storedPath: publicPaths.storedPath,
