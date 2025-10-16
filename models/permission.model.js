@@ -32,6 +32,13 @@ const permissionSchema = new mongoose.Schema(
       delete: { type: Boolean },
       status: { type: Boolean ,default: false}
     },
+    sell_orders: {
+      view_global: { type: Boolean ,default: false},
+      view_own: { type: Boolean ,default: false},
+      create: { type: Boolean ,default: false},
+      edit: { type: Boolean ,default: false},
+      delete: { type: Boolean ,default: false},
+    },
     driver: {
       view_global: { type: Boolean, default: false },
     },
