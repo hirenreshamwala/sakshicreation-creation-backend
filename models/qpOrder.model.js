@@ -407,11 +407,11 @@ const qpDataSchema = new mongoose.Schema(
     laminationType: {
       type: String,
     }, // "glossy" or "mate"
-    yv: {
+    uv: {
       type: Boolean,
       default: false,
     },
-    yvType: {
+    uvType: {
       type: String,
     },
     varnish: {
