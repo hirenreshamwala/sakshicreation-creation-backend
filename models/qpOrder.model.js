@@ -269,7 +269,7 @@ const qpDataSchema = new mongoose.Schema(
     designer: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Staff",
-      required: false
+      required: false,
     },
     printer: {
       type: mongoose.Schema.Types.ObjectId,
@@ -348,17 +348,17 @@ const qpDataSchema = new mongoose.Schema(
         changedBy: { type: mongoose.Schema.Types.ObjectId, ref: "Staff" },
       },
     ],
-    designDone:{
+    designDone: {
       type: Boolean,
-      default: false
+      default: false,
     },
-    printerDone:{
+    printerDone: {
       type: Boolean,
-      default: false
+      default: false,
     },
-    laminationDone:{
+    laminationDone: {
       type: Boolean,
-      default: false
+      default: false,
     },
     paperCuttingDone: {
       type: Boolean,
@@ -398,7 +398,33 @@ const qpDataSchema = new mongoose.Schema(
     },
     isBoxFound: {
       type: Boolean,
-      default: false
+      default: false,
+    },
+    lamination: {
+      type: Boolean,
+      default: false,
+    }, // "yes" or "no"
+    laminationType: {
+      type: String,
+    }, // "glossy" or "mate"
+    yv: {
+      type: Boolean,
+      default: false,
+    },
+    yvType: {
+      type: String,
+    },
+    varnish: {
+      type: Boolean,
+      default: false,
+    },
+    isPinning: {
+      type: Boolean,
+      default: false,
+    },
+    isPasting: {
+      type: Boolean,
+      default: false,
     },
   },
   {
@@ -414,42 +440,71 @@ qpDataSchema.plugin(AutoIncrement, {
 
 // ✅ UPDATED: Enhanced status change detection middleware
 qpDataSchema.pre("save", function (next) {
-  console.log(`🔍 Save Middleware - Status modified: ${this.isModified("status")}, DeliveryStatus modified: ${this.isModified("deliveryStatus")}`);
-  
+  console.log(
+    `🔍 Save Middleware - Status modified: ${this.isModified(
+      "status"
+    )}, DeliveryStatus modified: ${this.isModified("deliveryStatus")}`
+  );
+
   // Case 1: If deliveryStatus is being changed to "Delivered", set lastStatusChangeDate to null
-  if (this.isModified("deliveryStatus") && this.deliveryStatus === "Delivered") {
+  if (
+    this.isModified("deliveryStatus") &&
+    this.deliveryStatus === "Delivered"
+  ) {
     this.lastStatusChangeDate = null;
-    console.log(`✅ DeliveryStatus changed to "Delivered", setting lastStatusChangeDate to null`);
+    console.log(
+      `✅ DeliveryStatus changed to "Delivered", setting lastStatusChangeDate to null`
+    );
   }
   // Case 2: If status is being changed to "Completed" AND deliveryStatus exists but is not "Delivered"
-  else if (this.isModified("status") && this.status === "Completed" && this.deliveryStatus && this.deliveryStatus !== "Delivered") {
+  else if (
+    this.isModified("status") &&
+    this.status === "Completed" &&
+    this.deliveryStatus &&
+    this.deliveryStatus !== "Delivered"
+  ) {
     this.lastStatusChangeDate = new Date();
-    console.log(`✅ Status changed to "Completed" and deliveryStatus is not "Delivered", updating lastStatusChangeDate`);
+    console.log(
+      `✅ Status changed to "Completed" and deliveryStatus is not "Delivered", updating lastStatusChangeDate`
+    );
   }
   // Case 3: If deliveryStatus is being changed (and it's not "Delivered") after status is "Completed"
-  else if (this.isModified("deliveryStatus") && this.status === "Completed" && this.deliveryStatus !== "Delivered") {
+  else if (
+    this.isModified("deliveryStatus") &&
+    this.status === "Completed" &&
+    this.deliveryStatus !== "Delivered"
+  ) {
     this.lastStatusChangeDate = new Date();
-    console.log(`✅ DeliveryStatus changed while status is "Completed", updating lastStatusChangeDate`);
+    console.log(
+      `✅ DeliveryStatus changed while status is "Completed", updating lastStatusChangeDate`
+    );
   }
   // Case 4: Regular status change (when status is not "Completed")
   else if (this.isModified("status") && this.status !== "Completed") {
     const previousStatus = this._originalStatus || this.status;
     const newStatus = this.status;
-    
+
     if (previousStatus !== newStatus) {
       this.lastStatusChangeDate = new Date();
-      console.log(`✅ Regular status change: ${previousStatus} -> ${newStatus}, updating lastStatusChangeDate`);
+      console.log(
+        `✅ Regular status change: ${previousStatus} -> ${newStatus}, updating lastStatusChangeDate`
+      );
     } else {
-      console.log(`ℹ️ Status same (${newStatus}), not updating lastStatusChangeDate`);
+      console.log(
+        `ℹ️ Status same (${newStatus}), not updating lastStatusChangeDate`
+      );
     }
   }
-  
+
   next();
 });
 
 // ✅ Store original status before update for proper comparison
 qpDataSchema.pre("save", function (next) {
-  if ((this.isModified("status") || this.isModified("deliveryStatus")) && !this.isNew) {
+  if (
+    (this.isModified("status") || this.isModified("deliveryStatus")) &&
+    !this.isNew
+  ) {
     // Store the original values before modification for comparison
     if (!this._originalStatus) {
       this._originalStatus = this.status;
@@ -465,53 +520,76 @@ qpDataSchema.pre("save", function (next) {
 qpDataSchema.pre("findOneAndUpdate", function (next) {
   const update = this.getUpdate();
   const setUpdate = update.$set || {};
-  
+
   console.log(`🔍 FindOneAndUpdate - Update:`, setUpdate);
-  
+
   // Get the current document to check current values
-  this.model.findOne(this.getQuery()).then((doc) => {
-    if (!doc) {
-      return next();
-    }
+  this.model
+    .findOne(this.getQuery())
+    .then((doc) => {
+      if (!doc) {
+        return next();
+      }
 
-    const currentStatus = doc.status;
-    const currentDeliveryStatus = doc.deliveryStatus;
-    const newStatus = setUpdate.status;
-    const newDeliveryStatus = setUpdate.deliveryStatus;
+      const currentStatus = doc.status;
+      const currentDeliveryStatus = doc.deliveryStatus;
+      const newStatus = setUpdate.status;
+      const newDeliveryStatus = setUpdate.deliveryStatus;
 
-    let shouldUpdateLastStatusChangeDate = false;
-    let updateSet = setUpdate;
+      let shouldUpdateLastStatusChangeDate = false;
+      let updateSet = setUpdate;
 
-    // Case 1: If deliveryStatus is being changed to "Delivered", set lastStatusChangeDate to null
-    if (newDeliveryStatus === "Delivered") {
-      updateSet.lastStatusChangeDate = null;
-      console.log(`✅ DeliveryStatus changing to "Delivered", setting lastStatusChangeDate to null`);
-    }
-    // Case 2: If status is being changed to "Completed" AND deliveryStatus exists but is not "Delivered"
-    else if (newStatus === "Completed" && (newDeliveryStatus || currentDeliveryStatus) && newDeliveryStatus !== "Delivered") {
-      updateSet.lastStatusChangeDate = new Date();
-      console.log(`✅ Status changing to "Completed" and deliveryStatus is not "Delivered", updating lastStatusChangeDate`);
-    }
-    // Case 3: If deliveryStatus is being changed (and it's not "Delivered") after status is "Completed"
-    else if (newDeliveryStatus && currentStatus === "Completed" && newDeliveryStatus !== "Delivered") {
-      updateSet.lastStatusChangeDate = new Date();
-      console.log(`✅ DeliveryStatus changing while status is "Completed", updating lastStatusChangeDate`);
-    }
-    // Case 4: Regular status change (when status is not "Completed")
-    else if (newStatus && newStatus !== "Completed" && currentStatus !== newStatus) {
-      updateSet.lastStatusChangeDate = new Date();
-      console.log(`✅ Regular status change: ${currentStatus} -> ${newStatus}, updating lastStatusChangeDate`);
-    }
+      // Case 1: If deliveryStatus is being changed to "Delivered", set lastStatusChangeDate to null
+      if (newDeliveryStatus === "Delivered") {
+        updateSet.lastStatusChangeDate = null;
+        console.log(
+          `✅ DeliveryStatus changing to "Delivered", setting lastStatusChangeDate to null`
+        );
+      }
+      // Case 2: If status is being changed to "Completed" AND deliveryStatus exists but is not "Delivered"
+      else if (
+        newStatus === "Completed" &&
+        (newDeliveryStatus || currentDeliveryStatus) &&
+        newDeliveryStatus !== "Delivered"
+      ) {
+        updateSet.lastStatusChangeDate = new Date();
+        console.log(
+          `✅ Status changing to "Completed" and deliveryStatus is not "Delivered", updating lastStatusChangeDate`
+        );
+      }
+      // Case 3: If deliveryStatus is being changed (and it's not "Delivered") after status is "Completed"
+      else if (
+        newDeliveryStatus &&
+        currentStatus === "Completed" &&
+        newDeliveryStatus !== "Delivered"
+      ) {
+        updateSet.lastStatusChangeDate = new Date();
+        console.log(
+          `✅ DeliveryStatus changing while status is "Completed", updating lastStatusChangeDate`
+        );
+      }
+      // Case 4: Regular status change (when status is not "Completed")
+      else if (
+        newStatus &&
+        newStatus !== "Completed" &&
+        currentStatus !== newStatus
+      ) {
+        updateSet.lastStatusChangeDate = new Date();
+        console.log(
+          `✅ Regular status change: ${currentStatus} -> ${newStatus}, updating lastStatusChangeDate`
+        );
+      }
 
-    // Update the $set object with our changes
-    if (update.$set) {
-      update.$set = { ...update.$set, ...updateSet };
-    } else {
-      update.$set = updateSet;
-    }
+      // Update the $set object with our changes
+      if (update.$set) {
+        update.$set = { ...update.$set, ...updateSet };
+      } else {
+        update.$set = updateSet;
+      }
 
-    next();
-  }).catch(next);
+      next();
+    })
+    .catch(next);
 });
 
 // Add status history tracking
@@ -520,13 +598,13 @@ qpDataSchema.pre("save", function (next) {
     const statusChange = {
       status: this.status,
       deliveryStatus: this.deliveryStatus,
-      changedAt: new Date()
+      changedAt: new Date(),
     };
-    
+
     if (!this.statusHistory) {
       this.statusHistory = [];
     }
-    
+
     this.statusHistory.push(statusChange);
     console.log(`📝 Added to statusHistory: ${JSON.stringify(statusChange)}`);
   }
