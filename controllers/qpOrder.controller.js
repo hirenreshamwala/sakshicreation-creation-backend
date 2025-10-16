@@ -1,8 +1,6 @@
 const { default: mongoose } = require("mongoose");
 const QpData = require("../models/qpOrder.model"); // Adjust path to your model
 const Staff = require("../models/staff.model");
-const Inventory = require("../models/inventory.model"); // Import Inventory model
-const PackagingOption = require("../models/packagingOption.model");
 const _ = require("lodash");
 
 // Add a new QP Order
@@ -14,24 +12,23 @@ exports.createQpOrder = async (req, res) => {
     const { companyName, party, packagingOption, ...orderFields } = req.body;
     const { id } = req.user;
 
-    if (!companyName || !party) {
+    if (!companyName) {
       await session.abortTransaction();
       session.endSession();
       return res.status(400).json({
         success: false,
-        message: "Missing required fields: companyName and party",
+        message: "Missing required fields: companyName",
       });
     }
 
     if (
-      !mongoose.Types.ObjectId.isValid(companyName) ||
-      !mongoose.Types.ObjectId.isValid(party)
+      !mongoose.Types.ObjectId.isValid(companyName)
     ) {
       await session.abortTransaction();
       session.endSession();
       return res.status(400).json({
         success: false,
-        message: "Invalid ID format for companyName or party",
+        message: "Invalid ID format for companyName",
       });
     }
 
@@ -88,41 +85,9 @@ exports.createQpOrder = async (req, res) => {
       });
     }
 
-    // Check if a PackagingOption exists for the provided data
-    let packaging = await PackagingOption.findOne({
-      party: party, // Use the party ID from req.body
-      ply,
-      uom,
-      length,
-      width,
-      height,
-      deckal,
-      paper1GSM,
-      paper2GSM,
-      paper3GSM,
-    }).session(session);
-
-    if (!packaging) {
-      // Create new PackagingOption if none exists
-      packaging = new PackagingOption({
-        party: party, // Explicitly set the party ID
-        ply,
-        uom,
-        length,
-        width,
-        height,
-        deckal,
-        paper1GSM,
-        paper2GSM,
-        paper3GSM,
-      });
-      await packaging.save({ session });
-    }
-
     // Create QP Order with orderdata reference
     const qpOrderData = {
       companyName,
-      party,
       orderdata: packaging._id,
       createdBy: id,
       ...orderFields,
@@ -135,11 +100,6 @@ exports.createQpOrder = async (req, res) => {
       .populate({
         path: "companyName",
         select: "companyName avatar",
-      })
-      .populate({
-        path: "party",
-        select:
-          "partyName address contactPerson personMobileNo personWhatsAppNo GSTNo",
       })
       .populate(
         "orderdata",
@@ -205,10 +165,6 @@ exports.getAllQpOrders = async (req, res) => {
       filter.companyName = companyName;
     }
 
-    if (party && mongoose.Types.ObjectId.isValid(party)) {
-      filter.party = party;
-    }
-
     if (staffId && mongoose.Types.ObjectId.isValid(staffId)) {
       filter.createdBy = staffId;
     }
@@ -221,24 +177,6 @@ exports.getAllQpOrders = async (req, res) => {
       .populate({
         path: "companyName",
         select: "companyName avatar",
-      })
-      // .populate({
-      //   path: "party",
-      //   select:
-      //     "partyName address contactPerson personMobileNo personWhatsAppNo GSTNo",
-      // })
-      .populate({
-        path: "party",
-        select:
-          "partyName address contactPerson personMobileNo personWhatsAppNo GSTNo",
-        // match: partyMatch,
-        populate: [
-          { path: "address.marketName", model: "Market", select: "marketName" },
-          // { path: "address.streetAddress", model: "Market", select: "streetAddress" },
-          { path: "address.landMark", model: "Market", select: "landmark" },
-          { path: "address.area", model: "Market", select: "area" },
-          { path: "address.pincode", model: "Market", select: "pincode" },
-        ],
       })
       .populate(
         "orderdata",
@@ -285,24 +223,6 @@ exports.getQpOrderById = async (req, res) => {
         path: "companyName",
         select: "companyName avatar",
       })
-      // .populate({
-      //   path: "party",
-      //   select:
-      //     "partyName address contactPerson personMobileNo personWhatsAppNo GSTNo",
-      // })
-      .populate({
-        path: "party",
-        select:
-          "partyName address contactPerson personMobileNo personWhatsAppNo GSTNo",
-        // match: partyMatch,
-        populate: [
-          { path: "address.marketName", model: "Market", select: "marketName" },
-          // { path: "address.streetAddress", model: "Market", select: "streetAddress" },
-          { path: "address.landMark", model: "Market", select: "landmark" },
-          { path: "address.area", model: "Market", select: "area" },
-          { path: "address.pincode", model: "Market", select: "pincode" },
-        ],
-      })
       .populate(
         "orderdata",
         "party ply uom length width height deckal paper1GSM paper2GSM paper3GSM"
@@ -341,12 +261,6 @@ exports.getQpOrderById = async (req, res) => {
     });
   }
 };
-
-function convertToReels(reels = 0, inches = 0) {
-  const totalInches = Number(reels) * 7200 + Number(inches);
-  const totalReels = totalInches / 7200;
-  return parseFloat(totalReels.toFixed(3));
-}
 
 async function handlePaperAllocations(qpOrder, updateData, session) {
   const Inventory = mongoose.model("Inventory");
@@ -492,81 +406,6 @@ exports.updateQpOrder = async (req, res) => {
 
     // 4) If packagingOption is provided, find or create PackagingOption (in same session)
     let packagingOptionId = currentOrder.orderdata;
-    if (req.body.packagingOption) {
-      const {
-        party,
-        ply,
-        uom,
-        length,
-        width,
-        height,
-        deckal,
-        paper1GSM,
-        paper2GSM,
-        paper3GSM,
-      } = req.body.packagingOption;
-
-      if (
-        !party ||
-        !ply ||
-        !uom ||
-        !length ||
-        !width ||
-        !height ||
-        !deckal ||
-        !paper1GSM ||
-        !paper2GSM ||
-        !paper3GSM
-      ) {
-        await session.abortTransaction();
-        session.endSession();
-        return res.status(400).json({
-          success: false,
-          message: "Missing required packaging option fields",
-        });
-      }
-
-      // Validate UOM field
-      if (!["inch", "cm", "mm"].includes(uom)) {
-        await session.abortTransaction();
-        session.endSession();
-        return res.status(400).json({
-          success: false,
-          message: "Invalid UOM value. Must be inch, cm, or mm",
-        });
-      }
-
-      let packaging = await PackagingOption.findOne({
-        party,
-        ply,
-        uom,
-        length,
-        width,
-        height,
-        deckal,
-        paper1GSM,
-        paper2GSM,
-        paper3GSM,
-      }).session(session);
-
-      if (!packaging) {
-        packaging = new PackagingOption({
-          party,
-          ply,
-          uom,
-          length,
-          width,
-          height,
-          deckal,
-          paper1GSM,
-          paper2GSM,
-          paper3GSM,
-        });
-        await packaging.save({ session });
-      }
-
-      packagingOptionId = packaging._id;
-    }
 
     // 5) Build the update document — gather flags and status changes
     const now = new Date();
@@ -631,11 +470,6 @@ exports.updateQpOrder = async (req, res) => {
       .populate({
         path: "companyName",
         select: "companyName avatar",
-      })
-      .populate({
-        path: "party",
-        select:
-          "partyName address contactPerson personMobileNo personWhatsAppNo GSTNo",
       })
       .populate({
         path: "orderdata",
@@ -1192,24 +1026,6 @@ exports.getOrdersByStaffId = async (req, res) => {
         path: "companyName",
         select: "companyName avatar",
       })
-      // .populate({
-      //   path: "party",
-      //   select:
-      //     "partyName address contactPerson personMobileNo personWhatsAppNo GSTNo",
-      // })
-      .populate({
-        path: "party",
-        select:
-          "partyName address contactPerson personMobileNo personWhatsAppNo GSTNo",
-        // match: partyMatch,
-        populate: [
-          { path: "address.marketName", model: "Market", select: "marketName" },
-          // { path: "address.streetAddress", model: "Market", select: "streetAddress" },
-          { path: "address.landMark", model: "Market", select: "landmark" },
-          { path: "address.area", model: "Market", select: "area" },
-          { path: "address.pincode", model: "Market", select: "pincode" },
-        ],
-      })
       .populate(
         "orderdata",
         "party ply uom length width height deckal paper1GSM paper2GSM paper3GSM"
@@ -1336,10 +1152,6 @@ exports.updateQPOrderStatus = async (req, res) => {
     })
       .populate("companyName", "companyName avatar")
       .populate(
-        "party",
-        "partyName address contactPerson personMobileNo personWhatsAppNo GSTNo"
-      )
-      .populate(
         "orderdata",
         "party ply uom length width height deckal paper1GSM paper2GSM paper3GSM"
       )
@@ -1459,10 +1271,6 @@ exports.bulkUpdateQPOrderStatus = async (req, res) => {
 
     const updatedOrders = await QpData.find({ _id: { $in: orderIds } })
       .populate("companyName", "companyName avatar")
-      .populate(
-        "party",
-        "partyName address contactPerson personMobileNo personWhatsAppNo GSTNo"
-      )
       .populate(
         "orderdata",
         "party ply uom length width height deckal paper1GSM paper2GSM paper3GSM"
