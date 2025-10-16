@@ -46,6 +46,29 @@ const paperAllocationSchema = new mongoose.Schema(
   { _id: false }
 );
 
+// ✅ UPDATED: Enhanced status history schema
+const statusHistorySchema = new mongoose.Schema(
+  {
+    previousStatus: {
+      type: String,
+      required: true
+    },
+    newStatus: {
+      type: String,
+      required: true
+    },
+    changedAt: {
+      type: Date,
+      default: Date.now
+    },
+    changedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Staff"
+    }
+  },
+  { _id: false }
+);
+
 // Quality packaging data
 const qpDataSchema = new mongoose.Schema(
   {
@@ -341,13 +364,8 @@ const qpDataSchema = new mongoose.Schema(
     lastStatusChangeDate: {
       type: Date,
     },
-    statusHistory: [
-      {
-        status: { type: String, required: true },
-        changedAt: { type: Date, default: Date.now },
-        changedBy: { type: mongoose.Schema.Types.ObjectId, ref: "Staff" },
-      },
-    ],
+    // ✅ UPDATED: Enhanced status history with previous status tracking
+    statusHistory: [statusHistorySchema],
     designDone: {
       type: Boolean,
       default: false,
@@ -403,10 +421,10 @@ const qpDataSchema = new mongoose.Schema(
     lamination: {
       type: Boolean,
       default: false,
-    }, // "yes" or "no"
+    },
     laminationType: {
       type: String,
-    }, // "glossy" or "mate"
+    },
     yv: {
       type: Boolean,
       default: false,
@@ -438,7 +456,17 @@ qpDataSchema.plugin(AutoIncrement, {
   start_seq: 1000,
 });
 
-// ✅ UPDATED: Enhanced status change detection middleware
+// ✅ UPDATED: Store original status before any modification
+qpDataSchema.pre("save", function (next) {
+  if (this.isModified("status") && !this.isNew) {
+    if (!this._originalStatus) {
+      this._originalStatus = this.status;
+    }
+  }
+  next();
+});
+
+// ✅ UPDATED: Enhanced status change detection middleware with proper history tracking
 qpDataSchema.pre("save", function (next) {
   console.log(
     `🔍 Save Middleware - Status modified: ${this.isModified(
@@ -499,31 +527,48 @@ qpDataSchema.pre("save", function (next) {
   next();
 });
 
-// ✅ Store original status before update for proper comparison
+// ✅ UPDATED: Enhanced status history tracking with previous status
 qpDataSchema.pre("save", function (next) {
-  if (
-    (this.isModified("status") || this.isModified("deliveryStatus")) &&
-    !this.isNew
-  ) {
-    // Store the original values before modification for comparison
-    if (!this._originalStatus) {
-      this._originalStatus = this.status;
+  if (this.isModified("status") && !this.isNew) {
+    const previousStatus = this._originalStatus;
+    const newStatus = this.status;
+    
+    // Only add to history if status actually changed
+    if (previousStatus && previousStatus !== newStatus) {
+      const statusChange = {
+        previousStatus: previousStatus,
+        newStatus: newStatus,
+        changedAt: new Date(),
+        changedBy: this.updatedBy || this.createdBy // Use updatedBy if available, else createdBy
+      };
+
+      if (!this.statusHistory) {
+        this.statusHistory = [];
+      }
+
+      this.statusHistory.push(statusChange);
+      console.log(`📝 Status History: ${previousStatus} -> ${newStatus} at ${statusChange.changedAt}`);
     }
-    if (!this._originalDeliveryStatus) {
-      this._originalDeliveryStatus = this.deliveryStatus;
-    }
+    
+    // Reset the original status
+    delete this._originalStatus;
   }
   next();
 });
 
-// ✅ UPDATED: Enhanced middleware for findOneAndUpdate operations
+// ✅ UPDATED: Enhanced middleware for findOneAndUpdate operations with status history
 qpDataSchema.pre("findOneAndUpdate", function (next) {
   const update = this.getUpdate();
   const setUpdate = update.$set || {};
 
   console.log(`🔍 FindOneAndUpdate - Update:`, setUpdate);
 
-  // Get the current document to check current values
+  // Only proceed if status is being modified
+  if (!setUpdate.status) {
+    return next();
+  }
+
+  // Get the current document to know the previous status
   this.model
     .findOne(this.getQuery())
     .then((doc) => {
@@ -536,7 +581,6 @@ qpDataSchema.pre("findOneAndUpdate", function (next) {
       const newStatus = setUpdate.status;
       const newDeliveryStatus = setUpdate.deliveryStatus;
 
-      let shouldUpdateLastStatusChangeDate = false;
       let updateSet = setUpdate;
 
       // Case 1: If deliveryStatus is being changed to "Delivered", set lastStatusChangeDate to null
@@ -580,6 +624,24 @@ qpDataSchema.pre("findOneAndUpdate", function (next) {
         );
       }
 
+      // ✅ ADD STATUS HISTORY FOR findOneAndUpdate
+      if (currentStatus !== newStatus) {
+        const statusChange = {
+          previousStatus: currentStatus,
+          newStatus: newStatus,
+          changedAt: new Date(),
+          changedBy: setUpdate.updatedBy || doc.createdBy
+        };
+
+        // Initialize $push if it doesn't exist
+        if (!update.$push) {
+          update.$push = {};
+        }
+
+        update.$push.statusHistory = statusChange;
+        console.log(`📝 Update Status History: ${currentStatus} -> ${newStatus} at ${statusChange.changedAt}`);
+      }
+
       // Update the $set object with our changes
       if (update.$set) {
         update.$set = { ...update.$set, ...updateSet };
@@ -592,25 +654,24 @@ qpDataSchema.pre("findOneAndUpdate", function (next) {
     .catch(next);
 });
 
-// Add status history tracking
+// ✅ UPDATED: Store original values for proper comparison
 qpDataSchema.pre("save", function (next) {
-  if (this.isModified("status") || this.isModified("deliveryStatus")) {
-    const statusChange = {
-      status: this.status,
-      deliveryStatus: this.deliveryStatus,
-      changedAt: new Date(),
-    };
-
-    if (!this.statusHistory) {
-      this.statusHistory = [];
+  if (
+    (this.isModified("status") || this.isModified("deliveryStatus")) &&
+    !this.isNew
+  ) {
+    // Store the original values before modification for comparison
+    if (!this._originalStatus) {
+      this._originalStatus = this.status;
     }
-
-    this.statusHistory.push(statusChange);
-    console.log(`📝 Added to statusHistory: ${JSON.stringify(statusChange)}`);
+    if (!this._originalDeliveryStatus) {
+      this._originalDeliveryStatus = this.deliveryStatus;
+    }
   }
   next();
 });
 
+// ✅ UPDATED: Party tag update middleware (unchanged)
 qpDataSchema.pre("save", async function (next) {
   try {
     // Only proceed if this is a new QpData (not an update)
