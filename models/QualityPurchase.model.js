@@ -58,6 +58,9 @@ const PurchaseSchema = new mongoose.Schema(
     category: {
       type: String,
     },
+      bf: {
+    type: String,
+  }
   },
   { timestamps: true }
 );

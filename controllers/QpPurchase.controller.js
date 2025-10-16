@@ -105,6 +105,7 @@ exports.createPurchase = async (req, res) => {
       gsm,
       reel,
       category, // 👈 pass either "factory" or "godown" from frontend
+      bf
     } = req.body;
     console.log('req body',req.body)
 
@@ -115,7 +116,8 @@ exports.createPurchase = async (req, res) => {
       !companyName ||
       !role ||
       !staff ||
-      !type
+      !type ||
+      !bf
     ) {
       return res.status(400).json({
         success: false,
@@ -225,6 +227,7 @@ exports.createPurchase = async (req, res) => {
       deckal: type === "paper" ? deckal : undefined,
       gsm: type === "paper" ? gsm : undefined,
       category: category,
+      bf
     });
 
     const savedPurchase = await newPurchase.save();
