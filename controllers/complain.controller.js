@@ -68,15 +68,34 @@ exports.getComplain = async (req, res) => {
 // ====================== CREATE COMPLAIN ======================
 exports.createComplain = async (req, res) => {
     try {
-        const { subject, details, company, scorder, qporder, party, createdBy, assignTo, status, response } = req.body;
+        const { 
+            subject, 
+            details, 
+            company, 
+            scorder, 
+            qporder, 
+            party, 
+            createdBy, 
+            assignTo, 
+            status, 
+            response,
+            filePaths 
+        } = req.body;
 
+        // Parse assignTo if sent as a string or array
         let assignToArray = [];
         if (typeof assignTo === 'string') {
-            try { assignToArray = JSON.parse(assignTo); }
-            catch { assignToArray = [assignTo]; }
+            try {
+                assignToArray = JSON.parse(assignTo);
+            } catch (e) {
+                assignToArray = [assignTo];
+            }
         } else if (Array.isArray(assignTo)) {
             assignToArray = assignTo;
         }
+
+        // Handle filePaths - ensure it's an array
+        const filePathsArray = Array.isArray(filePaths) ? filePaths : [];
 
         const complain = new Complain({
             subject,
@@ -89,10 +108,12 @@ exports.createComplain = async (req, res) => {
             response: response || '',
             createdBy,
             assignTo: assignToArray,
+            filePaths: filePathsArray,
         });
 
         await complain.save();
 
+        // Populate after creation
         const populatedComplain = await Complain.findById(complain._id)
             .populate('company', 'companyName')
             .populate('scorder', 'orderNumber')
@@ -109,21 +130,44 @@ exports.createComplain = async (req, res) => {
 // ====================== UPDATE COMPLAIN ======================
 exports.updateComplain = async (req, res) => {
     try {
-        const { subject, details, company, scorder, qporder, party, assignTo, status, response } = req.body;
+        const { 
+            subject, 
+            details, 
+            company, 
+            scorder, 
+            qporder, 
+            party, 
+            createdBy, 
+            assignTo, 
+            status, 
+            response,
+            filePaths 
+        } = req.body;
 
+        // Parse assignTo if sent as a string or array
         let assignToArray = [];
         if (typeof assignTo === 'string') {
-            try { assignToArray = JSON.parse(assignTo); }
-            catch { assignToArray = [assignTo]; }
+            try {
+                assignToArray = JSON.parse(assignTo);
+            } catch (e) {
+                assignToArray = [assignTo];
+            }
         } else if (Array.isArray(assignTo)) {
             assignToArray = assignTo;
         }
 
+        // Find existing complaint
         const complain = await Complain.findById(req.params.id);
         if (!complain) {
             return res.status(404).json({ success: false, message: 'Complain not found' });
         }
 
+        // Handle filePaths - append new filePaths to existing ones
+        const existingFilePaths = Array.isArray(complain.filePaths) ? complain.filePaths : [];
+        const newFilePaths = Array.isArray(filePaths) ? filePaths : [];
+        const allFilePaths = [...existingFilePaths, ...newFilePaths];
+
+        // Update fields
         complain.subject = subject || complain.subject;
         complain.details = details || complain.details;
         complain.company = company || complain.company;
@@ -133,9 +177,11 @@ exports.updateComplain = async (req, res) => {
         complain.status = status || complain.status;
         complain.response = response || complain.response;
         complain.assignTo = assignToArray.length ? assignToArray : complain.assignTo;
+        complain.filePaths = allFilePaths;
 
         await complain.save();
 
+        // Populate after update
         const populatedComplain = await Complain.findById(complain._id)
             .populate('company', 'companyName')
             .populate('scorder', 'orderNumber')
@@ -164,7 +210,7 @@ exports.deleteComplain = async (req, res) => {
     }
 };
 
-// =================== GET COMPLAINS BY STAFF ===================
+// ====================== GET COMPLAINS BY STAFF ======================
 exports.getComplainsByStaff = async (req, res) => {
     try {
         const staffId = req.params.staffId;
@@ -197,6 +243,7 @@ exports.getComplainsByStaff = async (req, res) => {
             data: complains,
         });
     } catch (error) {
+        console.error('Error fetching complains by staff:', error);
         res.status(500).json({
             success: false,
             message: 'Error fetching complains by staff: ' + error.message,
