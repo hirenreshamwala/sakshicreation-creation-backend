@@ -37,9 +37,7 @@ const complainSchema = new mongoose.Schema({
         type: mongoose.Schema.Types.ObjectId,
         ref: "Staff",
     },
-    files: [{
-        type: String, // Store file paths or URLs
-    }],
+    filePaths: [String]
 }, {
     timestamps: true
 });
