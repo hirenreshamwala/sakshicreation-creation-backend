@@ -1,6 +1,8 @@
 const { default: mongoose } = require("mongoose");
 const QpData = require("../models/qpOrder.model"); // Adjust path to your model
 const Staff = require("../models/staff.model");
+const Inventory = require("../models/inventory.model"); // Import Inventory model
+const PackagingOption = require("../models/packagingOption.model");
 const _ = require("lodash");
 
 // Add a new QP Order
@@ -85,9 +87,41 @@ exports.createQpOrder = async (req, res) => {
       });
     }
 
+    // Check if a PackagingOption exists for the provided data
+    let packaging = await PackagingOption.findOne({
+      party: party, // Use the party ID from req.body
+      ply,
+      uom,
+      length,
+      width,
+      height,
+      deckal,
+      paper1GSM,
+      paper2GSM,
+      paper3GSM,
+    }).session(session);
+
+    if (!packaging) {
+      // Create new PackagingOption if none exists
+      packaging = new PackagingOption({
+        party: party, // Explicitly set the party ID
+        ply,
+        uom,
+        length,
+        width,
+        height,
+        deckal,
+        paper1GSM,
+        paper2GSM,
+        paper3GSM,
+      });
+      await packaging.save({ session });
+    }
+
     // Create QP Order with orderdata reference
     const qpOrderData = {
       companyName,
+      party,
       orderdata: packaging._id,
       createdBy: id,
       ...orderFields,
@@ -163,6 +197,10 @@ exports.getAllQpOrders = async (req, res) => {
 
     if (companyName && mongoose.Types.ObjectId.isValid(companyName)) {
       filter.companyName = companyName;
+    }
+
+    if (party && mongoose.Types.ObjectId.isValid(party)) {
+      filter.party = party;
     }
 
     if (staffId && mongoose.Types.ObjectId.isValid(staffId)) {
@@ -261,6 +299,12 @@ exports.getQpOrderById = async (req, res) => {
     });
   }
 };
+
+function convertToReels(reels = 0, inches = 0) {
+  const totalInches = Number(reels) * 7200 + Number(inches);
+  const totalReels = totalInches / 7200;
+  return parseFloat(totalReels.toFixed(3));
+}
 
 async function handlePaperAllocations(qpOrder, updateData, session) {
   const Inventory = mongoose.model("Inventory");
@@ -406,6 +450,81 @@ exports.updateQpOrder = async (req, res) => {
 
     // 4) If packagingOption is provided, find or create PackagingOption (in same session)
     let packagingOptionId = currentOrder.orderdata;
+    if (req.body.packagingOption) {
+      const {
+        party,
+        ply,
+        uom,
+        length,
+        width,
+        height,
+        deckal,
+        paper1GSM,
+        paper2GSM,
+        paper3GSM,
+      } = req.body.packagingOption;
+
+      if (
+        !party ||
+        !ply ||
+        !uom ||
+        !length ||
+        !width ||
+        !height ||
+        !deckal ||
+        !paper1GSM ||
+        !paper2GSM ||
+        !paper3GSM
+      ) {
+        await session.abortTransaction();
+        session.endSession();
+        return res.status(400).json({
+          success: false,
+          message: "Missing required packaging option fields",
+        });
+      }
+
+      // Validate UOM field
+      if (!["inch", "cm", "mm"].includes(uom)) {
+        await session.abortTransaction();
+        session.endSession();
+        return res.status(400).json({
+          success: false,
+          message: "Invalid UOM value. Must be inch, cm, or mm",
+        });
+      }
+
+      let packaging = await PackagingOption.findOne({
+        party,
+        ply,
+        uom,
+        length,
+        width,
+        height,
+        deckal,
+        paper1GSM,
+        paper2GSM,
+        paper3GSM,
+      }).session(session);
+
+      if (!packaging) {
+        packaging = new PackagingOption({
+          party,
+          ply,
+          uom,
+          length,
+          width,
+          height,
+          deckal,
+          paper1GSM,
+          paper2GSM,
+          paper3GSM,
+        });
+        await packaging.save({ session });
+      }
+
+      packagingOptionId = packaging._id;
+    }
 
     // 5) Build the update document — gather flags and status changes
     const now = new Date();
@@ -1152,6 +1271,10 @@ exports.updateQPOrderStatus = async (req, res) => {
     })
       .populate("companyName", "companyName avatar")
       .populate(
+        "party",
+        "partyName address contactPerson personMobileNo personWhatsAppNo GSTNo"
+      )
+      .populate(
         "orderdata",
         "party ply uom length width height deckal paper1GSM paper2GSM paper3GSM"
       )
@@ -1187,7 +1310,6 @@ exports.bulkUpdateQPOrderStatus = async (req, res) => {
       billPhotos,
       dispatchPhotos,
       dispatchTime,
-      billNumber, // <-- bill number handled here now
       deliveryTime,
     } = req.body;
     const driverId = req.user?.id;
@@ -1198,7 +1320,9 @@ exports.bulkUpdateQPOrderStatus = async (req, res) => {
     // Check conflicting driver assignments
     const conflictingOrders = await QpData.find({
       _id: { $in: orderIds },
-      driver: { $nin: [null, driverId] },
+      driver: {
+        $nin: [null, driverId], // driver should not be null AND not be current driverId
+      },
     }).session(session);
 
     if (conflictingOrders.length > 0)
@@ -1210,7 +1334,7 @@ exports.bulkUpdateQPOrderStatus = async (req, res) => {
     const driver = await Staff.findById(driverId).session(session);
     if (!driver) throw new Error("Driver not found");
 
-    // Handle delivery status logic
+    // Status handling
     if (deliveryStatus) {
       switch (deliveryStatus) {
         case "loading":
@@ -1219,7 +1343,6 @@ exports.bulkUpdateQPOrderStatus = async (req, res) => {
               "You already have an ongoing dispatch. Complete delivery before loading new orders."
             );
           }
-
           const driverData = await Staff.findById(driverId).session(session);
           if (driverData) {
             const updatedOrders = [...driverData.orders, ...orderIds];
@@ -1229,11 +1352,9 @@ exports.bulkUpdateQPOrderStatus = async (req, res) => {
               { session }
             );
           }
-
           updateData.loadingStartDate = currentTime;
           updateData.deliveryStatus = "loading";
           break;
-
         case "in_transit":
           if (!dispatchPhotos || !dispatchPhotos.length)
             throw new Error("Dispatch photos required for dispatch");
@@ -1241,6 +1362,7 @@ exports.bulkUpdateQPOrderStatus = async (req, res) => {
           updateData.loadingEndDate = currentTime;
           updateData.deliveryStatus = "in_transit";
           updateData.dispatchTime = dispatchTime || currentTime;
+          // Store dispatch photo
           updateData.dispatchPhoto = dispatchPhotos[0];
           await Staff.findByIdAndUpdate(
             driverId,
@@ -1248,35 +1370,34 @@ exports.bulkUpdateQPOrderStatus = async (req, res) => {
             { session }
           );
           break;
-
         case "delivered":
           if (!billPhotos || !billPhotos.length)
             throw new Error("Bill photos required for delivery");
-
           updateData.deliveryEndTime = currentTime;
           updateData.deliveredAt = currentTime;
           updateData.deliveryStatus = "delivered";
           updateData.deliveryTime = deliveryTime || currentTime;
+          // Store bill photo
           updateData.billPhoto = billPhotos[0];
-
-          // ✅ Now handle billNumber here
-          if (billNumber) {
-            updateData.billNumber = billNumber;
-          } else {
-            console.warn("⚠️ No bill number provided for delivery update");
-          }
 
           break;
       }
     }
 
+    // DeliveryStatus override
     if (deliveryStatus) updateData.deliveryStatus = deliveryStatus;
 
     // Bulk update
-    await QpData.updateMany({ _id: { $in: orderIds } }, updateData, { session });
+    await QpData.updateMany({ _id: { $in: orderIds } }, updateData, {
+      session,
+    });
 
     const updatedOrders = await QpData.find({ _id: { $in: orderIds } })
       .populate("companyName", "companyName avatar")
+      .populate(
+        "party",
+        "partyName address contactPerson personMobileNo personWhatsAppNo GSTNo"
+      )
       .populate(
         "orderdata",
         "party ply uom length width height deckal paper1GSM paper2GSM paper3GSM"
@@ -1303,7 +1424,6 @@ exports.bulkUpdateQPOrderStatus = async (req, res) => {
     });
   }
 };
-
 
 // Helper function to get available papers with allocations
 exports.getAvailablePapers = async (req, res) => {

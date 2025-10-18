@@ -439,6 +439,10 @@ const qpDataSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    isPunching: {
+      type: Boolean,
+      default: false,
+    },
   },
   {
     timestamps: true,

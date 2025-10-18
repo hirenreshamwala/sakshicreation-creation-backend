@@ -963,7 +963,7 @@ exports.getAccountMasterById = async (req, res) => {
           },
         ],
       })
-      .populate("createdBy", "_id firstName lastName email"); // Include _id for createdBy selection
+      .populate("createdBy", "_id firstName lastName email").lean(); // Include _id for createdBy selection
 
     if (!accountMaster) {
       return res.status(404).json({
@@ -974,6 +974,7 @@ exports.getAccountMasterById = async (req, res) => {
 
     // Transform the data to match frontend structure
     const responseData = {
+      ...accountMaster,
       companyName: accountMaster.companyName._id.toString(), // Just the ID for the company select
       partyName: accountMaster.party.partyName, // Direct party name for the party input
       partyId: accountMaster.party._id,

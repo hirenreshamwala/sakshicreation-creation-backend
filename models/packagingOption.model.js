@@ -5,6 +5,7 @@ const packagingOptionSchema = new mongoose.Schema(
     party: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Party",
+      required:false
     },
     ply: {
       type: String,
