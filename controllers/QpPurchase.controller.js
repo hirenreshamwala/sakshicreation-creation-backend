@@ -107,7 +107,7 @@ exports.createPurchase = async (req, res) => {
       category, // 👈 pass either "factory" or "godown" from frontend
       bf
     } = req.body;
-    console.log('req body',req.body)
+    console.log('req body', req.body)
 
     // Required validations
     if (
@@ -116,8 +116,8 @@ exports.createPurchase = async (req, res) => {
       !companyName ||
       !role ||
       !staff ||
-      !type ||
-      !bf
+      !type
+      // !bf
     ) {
       return res.status(400).json({
         success: false,
@@ -131,6 +131,13 @@ exports.createPurchase = async (req, res) => {
       return res.status(400).json({
         success: false,
         message: "Category must be either factory or godown",
+      });
+    }
+
+    if (type === "kantan" && (!kantan || !reel || !deckal)) {
+      return res.status(400).json({
+        success: false,
+        message: "Kantan, reel and deckal are required for kantan type",
       });
     }
 
@@ -250,6 +257,7 @@ exports.createPurchase = async (req, res) => {
       gsm: type === "paper" ? gsm : undefined,
       for: role,
       forCompany: staff,
+      bf: type === "paper" ? bf : undefined,
     });
 
     await newInventory.save();
@@ -257,7 +265,7 @@ exports.createPurchase = async (req, res) => {
     // ✅ Populate for response
     const populatedPurchase = await Purchase.findById(savedPurchase._id)
       .populate("vendorName", "name")
-      .populate("kantan", "kantanName")
+      .populate("kantan", "kantanName deckal")
       .populate("companyName", "companyName avatar")
       .populate("for", "roleName")
       .populate("forCompany", "firstName lastName");
@@ -279,7 +287,7 @@ exports.getAllPurchases = async (req, res) => {
   try {
     const purchases = await Purchase.find()
       .populate("vendorName", "name")
-      .populate("kantan", "kantanName")
+      .populate("kantan", "kantanName deckal")
       .populate("companyName", "companyName avatar")
       .populate("for", "roleName")
       .populate("forCompany", "firstName lastName")
@@ -303,7 +311,7 @@ exports.getPurchaseById = async (req, res) => {
   try {
     const purchase = await Purchase.findById(req.params.id)
       .populate("vendorName", "name")
-      .populate("kantan", "kantanName")
+      .populate("kantan", "kantanName deckal")
       .populate("companyName", "companyName avatar")
       .populate("for", "roleName")
       .populate("forCompany", "firstName lastName");
@@ -453,10 +461,10 @@ exports.updatePurchase = async (req, res) => {
     }
 
     // Validate required fields for specific types
-    if (type === "kantan" && (!kantan || !reel)) {
+    if (type === "kantan" && (!kantan || !reel || !deckal)) {
       return res.status(400).json({
         success: false,
-        message: "Kantan and KG are required for kantan type",
+        message: "Kantan, reel and deckal are required for kantan type",
       });
     }
     if ((type === "glue" || type === "wire") && !kg) {
@@ -553,7 +561,7 @@ exports.updatePurchase = async (req, res) => {
     // Populate all references
     const populatedPurchase = await Purchase.findById(updatedPurchase._id)
       .populate("vendorName", "name")
-      .populate("kantan", "kantanName")
+      .populate("kantan", "kantanName deckal")
       .populate("companyName", "companyName avatar")
       .populate("for", "roleName")
       .populate("forCompany", "firstName lastName");
