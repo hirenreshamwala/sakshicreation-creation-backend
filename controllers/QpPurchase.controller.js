@@ -104,10 +104,11 @@ exports.createPurchase = async (req, res) => {
       deckal,
       gsm,
       reel,
+      reelBatchNo, // Added reelBatchNo
       category, // 👈 pass either "factory" or "godown" from frontend
-      bf
+      bf,
     } = req.body;
-    console.log('req body', req.body)
+    console.log("req body", req.body);
 
     // Required validations
     if (
@@ -145,16 +146,23 @@ exports.createPurchase = async (req, res) => {
     if ((type === "glue" || type === "wire") && !kg) {
       return res.status(400).json({
         success: false,
-        message: "KG is required for kantan, glue, and wire types",
+        message: "KG is required for glue and wire types",
       });
     }
 
     // Paper fields required
-    if (type === "paper" && (!gsm || !deckal)) {
+    if (type === "paper" && (!gsm || !deckal || !bf)) {
       return res.status(400).json({
         success: false,
-        message:
-          "Paper name, height, width, and length are required for paper type",
+        message: "GSM, Deckal, and BF are required for paper type",
+      });
+    }
+
+    // Kantan fields required
+    if (type === "kantan" && (!reel || !reelBatchNo)) {
+      return res.status(400).json({
+        success: false,
+        message: "Reel and Reel/Batch No are required for kantan type",
       });
     }
 
@@ -230,11 +238,12 @@ exports.createPurchase = async (req, res) => {
       paperMil: type === "paper" ? paperMil : undefined,
       type,
       reel: type === "kantan" ? reel : undefined,
+      reelBatchNo: type === "kantan" ? reelBatchNo : undefined, // Added reelBatchNo
       kantan: type === "kantan" ? kantan : undefined,
       deckal: type === "paper" ? deckal : undefined,
       gsm: type === "paper" ? gsm : undefined,
       category: category,
-      bf
+      bf: type === "paper" ? bf : undefined,
     });
 
     const savedPurchase = await newPurchase.save();
@@ -248,6 +257,7 @@ exports.createPurchase = async (req, res) => {
       kg: kg || undefined,
       gsm: type === "paper" ? gsm : undefined,
       reel: reel || undefined,
+      reelBatchNo: type === "kantan" ? reelBatchNo : undefined, // Added reelBatchNo to inventory
       vendor: vendorName,
       date: new Date(),
       qpPurchase: savedPurchase._id,
@@ -350,8 +360,10 @@ exports.updatePurchase = async (req, res) => {
       deckal,
       gsm,
       reel,
+      reelBatchNo, // Added reelBatchNo
       paperMil,
       category,
+      bf, // Added bf
     } = req.body;
 
     // Validate ObjectIds if provided
@@ -461,10 +473,10 @@ exports.updatePurchase = async (req, res) => {
     }
 
     // Validate required fields for specific types
-    if (type === "kantan" && (!kantan || !reel || !deckal)) {
+    if (type === "kantan" && (!kantan || !reel || !reelBatchNo)) {
       return res.status(400).json({
         success: false,
-        message: "Kantan, reel and deckal are required for kantan type",
+        message: "Kantan, Reel, and Reel/Batch No are required for kantan type",
       });
     }
     if ((type === "glue" || type === "wire") && !kg) {
@@ -473,10 +485,10 @@ exports.updatePurchase = async (req, res) => {
         message: "KG is required for glue and wire types",
       });
     }
-    if (type === "paper" && (!deckal || !gsm)) {
+    if (type === "paper" && (!deckal || !gsm || !bf)) {
       return res.status(400).json({
         success: false,
-        message: "height, width, and length are required for paper type",
+        message: "Deckal, GSM, and BF are required for paper type",
       });
     }
 
@@ -489,22 +501,36 @@ exports.updatePurchase = async (req, res) => {
       ...(role && { for: role }),
       ...(staff && { forCompany: staff }),
       ...(type && { type }),
-      ...(kantan && { reel }),
       ...(kantan && { kantan }),
+      ...(reel !== undefined && { reel }),
+      ...(reelBatchNo && { reelBatchNo }), // Added reelBatchNo
       ...(gsm && { gsm }),
       ...(paperMil && { paperMil }),
       ...(deckal && { deckal }),
+      ...(bf && { bf }), // Added bf
     };
 
     // Clear fields not relevant to the type
     if (type && type !== "kantan") {
       updateData.kantan = undefined;
+      updateData.reel = undefined;
+      updateData.reelBatchNo = undefined; // Clear reelBatchNo for non-kantan types
     }
     if (type && type !== "paper") {
       updateData.deckal = undefined;
       updateData.gsm = undefined;
+      updateData.paperMil = undefined;
+      updateData.bf = undefined;
     }
-    if (type && !(type === "kantan" || type === "glue" || type === "wire" || type === "paper")) {
+    if (
+      type &&
+      !(
+        type === "kantan" ||
+        type === "glue" ||
+        type === "wire" ||
+        type === "paper"
+      )
+    ) {
       updateData.kg = 0;
     }
 
@@ -530,6 +556,7 @@ exports.updatePurchase = async (req, res) => {
       gsm: type === "paper" ? gsm : undefined,
       kg: kg || undefined,
       reel: reel || undefined,
+      reelBatchNo: type === "kantan" ? reelBatchNo : undefined, // Added reelBatchNo to inventory
       vendor: vendorName,
       date: new Date(),
       qpPurchase: updatedPurchase._id,
@@ -538,6 +565,7 @@ exports.updatePurchase = async (req, res) => {
       deckal: type === "paper" ? deckal : undefined,
       gsm: type === "paper" ? gsm : undefined,
       paperMil: type === "paper" ? paperMil : undefined,
+      bf: type === "paper" ? bf : undefined, // Added bf to inventory
       for: role,
       forCompany: staff,
     };

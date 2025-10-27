@@ -156,7 +156,7 @@ const InventorySchema = new mongoose.Schema(
       default: false,
     },
     allocations: [allocationSchema],
-    bf:{
+    bf: {
       type: String,
     },
     // Calculated available quantity

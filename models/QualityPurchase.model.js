@@ -58,9 +58,15 @@ const PurchaseSchema = new mongoose.Schema(
     category: {
       type: String,
     },
-      bf: {
-    type: String,
-  }
+    bf: {
+      type: String,
+    },
+    reelBatchNo: {
+      type: String,
+    },
+    color:{
+      type: String,
+    }
   },
   { timestamps: true }
 );

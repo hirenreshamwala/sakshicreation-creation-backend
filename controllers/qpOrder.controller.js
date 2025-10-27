@@ -14,24 +14,23 @@ exports.createQpOrder = async (req, res) => {
     const { companyName, party, packagingOption, ...orderFields } = req.body;
     const { id } = req.user;
 
-    if (!companyName || !party) {
+    if (!companyName) {
       await session.abortTransaction();
       session.endSession();
       return res.status(400).json({
         success: false,
-        message: "Missing required fields: companyName and party",
+        message: "Missing required fields: companyName",
       });
     }
 
     if (
-      !mongoose.Types.ObjectId.isValid(companyName) ||
-      !mongoose.Types.ObjectId.isValid(party)
+      !mongoose.Types.ObjectId.isValid(companyName)
     ) {
       await session.abortTransaction();
       session.endSession();
       return res.status(400).json({
         success: false,
-        message: "Invalid ID format for companyName or party",
+        message: "Invalid ID format for companyName",
       });
     }
 
@@ -136,11 +135,6 @@ exports.createQpOrder = async (req, res) => {
         path: "companyName",
         select: "companyName avatar",
       })
-      .populate({
-        path: "party",
-        select:
-          "partyName address contactPerson personMobileNo personWhatsAppNo GSTNo",
-      })
       .populate(
         "orderdata",
         "party ply uom length width height deckal paper1GSM paper2GSM paper3GSM"
@@ -222,24 +216,6 @@ exports.getAllQpOrders = async (req, res) => {
         path: "companyName",
         select: "companyName avatar",
       })
-      // .populate({
-      //   path: "party",
-      //   select:
-      //     "partyName address contactPerson personMobileNo personWhatsAppNo GSTNo",
-      // })
-      .populate({
-        path: "party",
-        select:
-          "partyName address contactPerson personMobileNo personWhatsAppNo GSTNo",
-        // match: partyMatch,
-        populate: [
-          { path: "address.marketName", model: "Market", select: "marketName" },
-          // { path: "address.streetAddress", model: "Market", select: "streetAddress" },
-          { path: "address.landMark", model: "Market", select: "landmark" },
-          { path: "address.area", model: "Market", select: "area" },
-          { path: "address.pincode", model: "Market", select: "pincode" },
-        ],
-      })
       .populate(
         "orderdata",
         "party ply uom length width height deckal paper1GSM paper2GSM paper3GSM"
@@ -284,24 +260,6 @@ exports.getQpOrderById = async (req, res) => {
       .populate({
         path: "companyName",
         select: "companyName avatar",
-      })
-      // .populate({
-      //   path: "party",
-      //   select:
-      //     "partyName address contactPerson personMobileNo personWhatsAppNo GSTNo",
-      // })
-      .populate({
-        path: "party",
-        select:
-          "partyName address contactPerson personMobileNo personWhatsAppNo GSTNo",
-        // match: partyMatch,
-        populate: [
-          { path: "address.marketName", model: "Market", select: "marketName" },
-          // { path: "address.streetAddress", model: "Market", select: "streetAddress" },
-          { path: "address.landMark", model: "Market", select: "landmark" },
-          { path: "address.area", model: "Market", select: "area" },
-          { path: "address.pincode", model: "Market", select: "pincode" },
-        ],
       })
       .populate(
         "orderdata",
@@ -631,11 +589,6 @@ exports.updateQpOrder = async (req, res) => {
       .populate({
         path: "companyName",
         select: "companyName avatar",
-      })
-      .populate({
-        path: "party",
-        select:
-          "partyName address contactPerson personMobileNo personWhatsAppNo GSTNo",
       })
       .populate({
         path: "orderdata",
@@ -1191,24 +1144,6 @@ exports.getOrdersByStaffId = async (req, res) => {
         path: "companyName",
         select: "companyName avatar",
       })
-      // .populate({
-      //   path: "party",
-      //   select:
-      //     "partyName address contactPerson personMobileNo personWhatsAppNo GSTNo",
-      // })
-      .populate({
-        path: "party",
-        select:
-          "partyName address contactPerson personMobileNo personWhatsAppNo GSTNo",
-        // match: partyMatch,
-        populate: [
-          { path: "address.marketName", model: "Market", select: "marketName" },
-          // { path: "address.streetAddress", model: "Market", select: "streetAddress" },
-          { path: "address.landMark", model: "Market", select: "landmark" },
-          { path: "address.area", model: "Market", select: "area" },
-          { path: "address.pincode", model: "Market", select: "pincode" },
-        ],
-      })
       .populate(
         "orderdata",
         "party ply uom length width height deckal paper1GSM paper2GSM paper3GSM"
@@ -1374,7 +1309,6 @@ exports.bulkUpdateQPOrderStatus = async (req, res) => {
       billPhotos,
       dispatchPhotos,
       dispatchTime,
-      billNumber, // <-- bill number handled here now
       deliveryTime,
     } = req.body;
     const driverId = req.user?.id;
@@ -1385,7 +1319,9 @@ exports.bulkUpdateQPOrderStatus = async (req, res) => {
     // Check conflicting driver assignments
     const conflictingOrders = await QpData.find({
       _id: { $in: orderIds },
-      driver: { $nin: [null, driverId] },
+      driver: {
+        $nin: [null, driverId], // driver should not be null AND not be current driverId
+      },
     }).session(session);
 
     if (conflictingOrders.length > 0)
@@ -1396,6 +1332,8 @@ exports.bulkUpdateQPOrderStatus = async (req, res) => {
 
     const driver = await Staff.findById(driverId).session(session);
     if (!driver) throw new Error("Driver not found");
+
+    // Status handling
     if (billNumber) {
       updateData.billNumber = billNumber;
     } else {
@@ -1410,7 +1348,6 @@ exports.bulkUpdateQPOrderStatus = async (req, res) => {
               "You already have an ongoing dispatch. Complete delivery before loading new orders."
             );
           }
-
           const driverData = await Staff.findById(driverId).session(session);
           if (driverData) {
             const updatedOrders = [...driverData.orders, ...orderIds];
@@ -1420,11 +1357,9 @@ exports.bulkUpdateQPOrderStatus = async (req, res) => {
               { session }
             );
           }
-
           updateData.loadingStartDate = currentTime;
           updateData.deliveryStatus = "loading";
           break;
-
         case "in_transit":
           if (!dispatchPhotos || !dispatchPhotos.length)
             throw new Error("Dispatch photos required for dispatch");
@@ -1432,6 +1367,7 @@ exports.bulkUpdateQPOrderStatus = async (req, res) => {
           updateData.loadingEndDate = currentTime;
           updateData.deliveryStatus = "in_transit";
           updateData.dispatchTime = dispatchTime || currentTime;
+          // Store dispatch photo
           updateData.dispatchPhoto = dispatchPhotos[0];
           await Staff.findByIdAndUpdate(
             driverId,
@@ -1439,31 +1375,28 @@ exports.bulkUpdateQPOrderStatus = async (req, res) => {
             { session }
           );
           break;
-
         case "delivered":
           if (!billPhotos || !billPhotos.length)
             throw new Error("Bill photos required for delivery");
-
           updateData.deliveryEndTime = currentTime;
           updateData.deliveredAt = currentTime;
           updateData.deliveryStatus = "delivered";
           updateData.deliveryTime = deliveryTime || currentTime;
+          // Store bill photo
           updateData.billPhoto = billPhotos[0];
-
-          // ✅ Now handle billNumber here
-          console.log(billNumber, "billNumbersdgsdg");
-          // return
-
 
           break;
       }
     }
 
+    // DeliveryStatus override
     if (deliveryStatus) updateData.deliveryStatus = deliveryStatus;
     console.log(updateData);
 
     // Bulk update
-    await QpData.updateMany({ _id: { $in: orderIds } }, updateData, { session });
+    await QpData.updateMany({ _id: { $in: orderIds } }, updateData, {
+      session,
+    });
 
     const updatedOrders = await QpData.find({ _id: { $in: orderIds } })
       .populate("companyName", "companyName avatar")
@@ -1497,7 +1430,6 @@ exports.bulkUpdateQPOrderStatus = async (req, res) => {
     });
   }
 };
-
 
 // Helper function to get available papers with allocations
 exports.getAvailablePapers = async (req, res) => {

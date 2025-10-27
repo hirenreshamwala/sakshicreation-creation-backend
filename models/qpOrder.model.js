@@ -81,11 +81,6 @@ const qpDataSchema = new mongoose.Schema(
       ref: "CompanyName",
       required: true,
     },
-    party: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Party",
-      required: true,
-    },
     date: {
       type: String,
     },
@@ -448,6 +443,10 @@ const qpDataSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    isPunching: {
+      type: Boolean,
+      default: false,
+    },
   },
   {
     timestamps: true,
@@ -673,29 +672,6 @@ qpDataSchema.pre("save", function (next) {
     }
   }
   next();
-});
-
-// ✅ UPDATED: Party tag update middleware (unchanged)
-qpDataSchema.pre("save", async function (next) {
-  try {
-    // Only proceed if this is a new QpData (not an update)
-    if (this.isNew) {
-      const Party = mongoose.model("Party");
-
-      // Find the party associated with this QpData
-      const party = await Party.findById(this.party);
-
-      if (party && party.partyTag === "NEW") {
-        // Update the party tag to "CUSTOMER"
-        party.partyTag = "CUSTOMER";
-        await party.save();
-      }
-    }
-    next();
-  } catch (error) {
-    console.error("Error updating party tag in QpData:", error);
-    next(error);
-  }
 });
 
 const QpData = mongoose.model("QpOrder", qpDataSchema);
