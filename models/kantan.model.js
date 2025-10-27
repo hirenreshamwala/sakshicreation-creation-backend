@@ -6,10 +6,6 @@ const kantanSchema = new mongoose.Schema(
       type: String,
       required: true,
     },
-    deckal: {  // 👈 Naya field add karein
-      type: String,
-      required: true,
-    },
   },
   { timestamps: true }
 );

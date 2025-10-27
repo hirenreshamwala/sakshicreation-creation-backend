@@ -4,15 +4,14 @@ const Papa = require("papaparse");
 // ✅ Create a new Kantan
 exports.createKantan = async (req, res) => {
   try {
-    const { kantanName, deckal } = req.body; // 👈 deckal add karein
+    const { kantanName } = req.body; // 👈 deckal add karein
 
-    if (!kantanName || !deckal) {
-      return res.status(400).json({ message: "Kantan Name and Deckal are required" });
+    if (!kantanName) {
+      return res.status(400).json({ message: "Kantan Name are required" });
     }
 
     const newKantan = new Kantan({
       kantanName,
-      deckal, // 👈 deckal save karein
     });
 
     await newKantan.save();
@@ -32,7 +31,7 @@ exports.createKantan = async (req, res) => {
 // ✅ Get all Kantans
 exports.getAllKantans = async (req, res) => {
   try {
-    const kantans = await Kantan.find().select("kantanName deckal").sort({ createdAt: -1 }); // 👈 deckal include karein
+    const kantans = await Kantan.find().select("kantanName").sort({ createdAt: -1 });
     return res.status(200).json({ data: kantans });
   } catch (error) {
     return res.status(500).json({
@@ -46,11 +45,11 @@ exports.getAllKantans = async (req, res) => {
 exports.updateKantan = async (req, res) => {
   try {
     const { id } = req.params;
-    const { kantanName, deckal } = req.body; // 👈 deckal add karein
+    const { kantanName } = req.body;
 
     const updatedKantan = await Kantan.findByIdAndUpdate(
       id,
-      { kantanName, deckal }, // 👈 deckal update karein
+      { kantanName },
       { new: true, runValidators: true }
     );
 
@@ -112,13 +111,13 @@ exports.bulkUploadKantans = async (req, res) => {
 
     const validRecords = [];
     for (const row of records) {
-      const { kantanName, deckal } = row; // 👈 deckal add karein
-      if (!kantanName || !deckal) {
+      const { kantanName } = row; // 👈 deckal add karein
+      if (!kantanName) {
         return res
           .status(400)
-          .json({ message: "Kantan Name and Deckal are required in every row" });
+          .json({ message: "Kantan Name are required in every row" });
       }
-      validRecords.push({ kantanName, deckal }); // 👈 deckal save karein
+      validRecords.push({ kantanName }); // 👈 deckal save karein
     }
 
     const insertedKantans = await Kantan.insertMany(validRecords);

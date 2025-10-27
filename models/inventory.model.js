@@ -159,6 +159,12 @@ const InventorySchema = new mongoose.Schema(
     bf: {
       type: String,
     },
+    color: {
+      type: String,
+    },
+    reelBatchNo: {
+      type: String,
+    },
     // Calculated available quantity
     availableKg: {
       type: Number,
