@@ -14,23 +14,24 @@ exports.createQpOrder = async (req, res) => {
     const { companyName, party, packagingOption, ...orderFields } = req.body;
     const { id } = req.user;
 
-    if (!companyName) {
+    if (!companyName || !party) {
       await session.abortTransaction();
       session.endSession();
       return res.status(400).json({
         success: false,
-        message: "Missing required fields: companyName",
+        message: "Missing required fields: companyName and party",
       });
     }
 
     if (
-      !mongoose.Types.ObjectId.isValid(companyName)
+      !mongoose.Types.ObjectId.isValid(companyName) ||
+      !mongoose.Types.ObjectId.isValid(party)
     ) {
       await session.abortTransaction();
       session.endSession();
       return res.status(400).json({
         success: false,
-        message: "Invalid ID format for companyName",
+        message: "Invalid ID format for companyName or party",
       });
     }
 
@@ -134,6 +135,11 @@ exports.createQpOrder = async (req, res) => {
       .populate({
         path: "companyName",
         select: "companyName avatar",
+      })
+      .populate({
+        path: "party",
+        select:
+          "partyName address contactPerson personMobileNo personWhatsAppNo GSTNo",
       })
       .populate(
         "orderdata",
@@ -260,6 +266,11 @@ exports.getQpOrderById = async (req, res) => {
       .populate({
         path: "companyName",
         select: "companyName avatar",
+      })
+      .populate({
+        path: "party",
+        select:
+          "partyName address contactPerson personMobileNo personWhatsAppNo GSTNo",
       })
       .populate(
         "orderdata",
@@ -533,7 +544,7 @@ exports.updateQpOrder = async (req, res) => {
     const setFields = {
       ...req.body,
       orderdata: packagingOptionId,
-      lastStatusChangeDate
+      lastStatusChangeDate,
     };
 
     // Remove fields we don't want to blindly set
@@ -589,6 +600,11 @@ exports.updateQpOrder = async (req, res) => {
       .populate({
         path: "companyName",
         select: "companyName avatar",
+      })
+      .populate({
+        path: "party",
+        select:
+          "partyName address contactPerson personMobileNo personWhatsAppNo GSTNo",
       })
       .populate({
         path: "orderdata",
@@ -775,18 +791,23 @@ async function createOutwardInventoryEntries(qpOrder, session) {
       console.log(`🔍 Checking selected papers for ${paper}...`);
 
       // Check if selectedPapers exists and has data for this paper
-      if (!qpOrder.selectedPapers || !qpOrder.selectedPapers[paper] || !qpOrder.selectedPapers[paper].length) {
+      if (
+        !qpOrder.selectedPapers ||
+        !qpOrder.selectedPapers[paper] ||
+        !qpOrder.selectedPapers[paper].length
+      ) {
         console.warn(`⚠️ No selected papers data found for ${paper}`);
         continue;
       }
 
       // Get the last selected paper object
-      const lastSelectedPaper = qpOrder.selectedPapers[paper][qpOrder.selectedPapers[paper].length - 1];
+      const lastSelectedPaper =
+        qpOrder.selectedPapers[paper][qpOrder.selectedPapers[paper].length - 1];
       console.log(`📄 Last selected paper for ${paper}:`, lastSelectedPaper);
 
       // ✅ Get the inventoryId from selectedPapers
       const inventoryId = lastSelectedPaper.inventoryId;
-      
+
       if (!inventoryId) {
         console.warn(`❌ No inventoryId found in selected papers for ${paper}`);
         continue;
@@ -796,10 +817,14 @@ async function createOutwardInventoryEntries(qpOrder, session) {
 
       try {
         // ✅ Find inventory item directly by inventoryId WITH session
-        const inventoryItem = await Inventory.findById(inventoryId).session(session);
+        const inventoryItem = await Inventory.findById(inventoryId).session(
+          session
+        );
 
         if (!inventoryItem) {
-          console.warn(`❌ Inventory not found for ID: ${inventoryId} of ${paper}`);
+          console.warn(
+            `❌ Inventory not found for ID: ${inventoryId} of ${paper}`
+          );
           continue;
         }
 
@@ -844,8 +869,9 @@ async function createOutwardInventoryEntries(qpOrder, session) {
           orderNo: qpOrder.orderNo,
           companyName: qpOrder.companyName || "Unknown",
           allocatedAt: new Date(),
-          note: `Difference Adjustment ${differenceKg > 0 ? "+" : ""
-            }${differenceKg} KG${extraKg > 0 ? ` + Extras ${extraKg} KG` : ""}`,
+          note: `Difference Adjustment ${
+            differenceKg > 0 ? "+" : ""
+          }${differenceKg} KG${extraKg > 0 ? ` + Extras ${extraKg} KG` : ""}`,
         };
 
         console.log(`📝 New allocation object:`, newAlloc);
@@ -880,7 +906,6 @@ async function createOutwardInventoryEntries(qpOrder, session) {
           remainingAllocations: res.allocations.length,
           newAvailableKg: res.availableKg,
         });
-
       } catch (error) {
         console.error(`❌ Error processing ${paper}:`, error);
         console.error(`🔍 Error details:`, {
@@ -1143,6 +1168,24 @@ exports.getOrdersByStaffId = async (req, res) => {
       .populate({
         path: "companyName",
         select: "companyName avatar",
+      })
+      .populate({
+        path: "party",
+        select:
+          "partyName address contactPerson personMobileNo personWhatsAppNo GSTNo",
+      })
+      .populate({
+        path: "party",
+        select:
+          "partyName address contactPerson personMobileNo personWhatsAppNo GSTNo",
+        // match: partyMatch,
+        populate: [
+          { path: "address.marketName", model: "Market", select: "marketName" },
+          // { path: "address.streetAddress", model: "Market", select: "streetAddress" },
+          { path: "address.landMark", model: "Market", select: "landmark" },
+          { path: "address.area", model: "Market", select: "area" },
+          { path: "address.pincode", model: "Market", select: "pincode" },
+        ],
       })
       .populate(
         "orderdata",

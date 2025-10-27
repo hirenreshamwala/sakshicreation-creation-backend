@@ -81,6 +81,11 @@ const qpDataSchema = new mongoose.Schema(
       ref: "CompanyName",
       required: true,
     },
+    party: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Party",
+      required: true,
+    },
     date: {
       type: String,
     },
