@@ -844,9 +844,8 @@ async function createOutwardInventoryEntries(qpOrder, session) {
           orderNo: qpOrder.orderNo,
           companyName: qpOrder.companyName || "Unknown",
           allocatedAt: new Date(),
-          note: `Difference Adjustment ${
-            differenceKg > 0 ? "+" : ""
-          }${differenceKg} KG${extraKg > 0 ? ` + Extras ${extraKg} KG` : ""}`,
+          note: `Difference Adjustment ${differenceKg > 0 ? "+" : ""
+            }${differenceKg} KG${extraKg > 0 ? ` + Extras ${extraKg} KG` : ""}`,
         };
 
         console.log(`📝 New allocation object:`, newAlloc);
@@ -1302,8 +1301,8 @@ exports.updateQPOrderStatus = async (req, res) => {
 exports.bulkUpdateQPOrderStatus = async (req, res) => {
   const session = await mongoose.startSession();
   session.startTransaction();
-
   try {
+    console.log("Bulk update request body:", req);
     const {
       orderIds,
       deliveryStatus,
@@ -1314,7 +1313,7 @@ exports.bulkUpdateQPOrderStatus = async (req, res) => {
     } = req.body;
     const driverId = req.user?.id;
     const currentTime = new Date();
-
+    console.log(req.body, "reqqqqqq");
     if (!orderIds || !orderIds.length) throw new Error("Order IDs required");
 
     // Check conflicting driver assignments
@@ -1335,6 +1334,12 @@ exports.bulkUpdateQPOrderStatus = async (req, res) => {
     if (!driver) throw new Error("Driver not found");
 
     // Status handling
+    if (billNumber) {
+      updateData.billNumber = billNumber;
+    } else {
+      console.warn("⚠️ No bill number provided for delivery update");
+    }
+    // Handle delivery status logic
     if (deliveryStatus) {
       switch (deliveryStatus) {
         case "loading":
@@ -1386,6 +1391,7 @@ exports.bulkUpdateQPOrderStatus = async (req, res) => {
 
     // DeliveryStatus override
     if (deliveryStatus) updateData.deliveryStatus = deliveryStatus;
+    console.log(updateData);
 
     // Bulk update
     await QpData.updateMany({ _id: { $in: orderIds } }, updateData, {

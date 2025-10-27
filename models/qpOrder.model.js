@@ -302,6 +302,10 @@ const qpDataSchema = new mongoose.Schema(
     billPhoto: {
       type: String,
     },
+    billNumber: {
+      type: String,
+    },
+
     paperAllocations: [paperAllocationSchema],
     paperUsageSummary: {
       paper1: [{ type: String }],
@@ -531,7 +535,7 @@ qpDataSchema.pre("save", function (next) {
   if (this.isModified("status") && !this.isNew) {
     const previousStatus = this._originalStatus;
     const newStatus = this.status;
-    
+
     // Only add to history if status actually changed
     if (previousStatus && previousStatus !== newStatus) {
       const statusChange = {
@@ -548,7 +552,7 @@ qpDataSchema.pre("save", function (next) {
       this.statusHistory.push(statusChange);
       console.log(`📝 Status History: ${previousStatus} -> ${newStatus} at ${statusChange.changedAt}`);
     }
-    
+
     // Reset the original status
     delete this._originalStatus;
   }

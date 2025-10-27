@@ -64,6 +64,9 @@ const PurchaseSchema = new mongoose.Schema(
     reelBatchNo: {
       type: String,
     },
+    color:{
+      type: String,
+    }
   },
   { timestamps: true }
 );
