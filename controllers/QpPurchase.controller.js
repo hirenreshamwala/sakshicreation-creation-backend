@@ -116,8 +116,8 @@ exports.createPurchase = async (req, res) => {
       !companyName ||
       !role ||
       !staff ||
-      !type ||
-      !bf
+      !type 
+      // !bf
     ) {
       return res.status(400).json({
         success: false,
