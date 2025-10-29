@@ -152,10 +152,10 @@ exports.createPurchase = async (req, res) => {
     }
 
     // Paper fields required
-    if (type === "paper" && (!gsm || !deckal || !bf || !reelBatchNo || !color)) {
+    if (type === "paper" && (!gsm || !deckal || !bf || !color)) {
       return res.status(400).json({
         success: false,
-        message: "GSM, Deckal, BF, Reel/Batch No, and Color are required for paper type",
+        message: "GSM, Deckal, BF, and Color are required for paper type",
       });
     }
 
@@ -482,7 +482,7 @@ exports.updatePurchase = async (req, res) => {
         message: "KG is required for glue and wire types",
       });
     }
-    if (type === "paper" && (!deckal || !gsm || !bf || !reelBatchNo || !color)) {
+    if (type === "paper" && (!deckal || !gsm || !bf || !color)) {
       return res.status(400).json({
         success: false,
         message: "Deckal, GSM, BF, Reel/Batch No, and Color are required for paper type",

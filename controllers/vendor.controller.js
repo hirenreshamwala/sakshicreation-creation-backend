@@ -3,6 +3,7 @@ const Vendor = require('../models/vendor.model');
 const CompanyName = require('../models/companyName.model');
 const csv = require('csv-parser');
 const fs = require('fs');
+const { Readable } = require('stream');
 const path = require('path');
 // Get all vendors
 exports.getVendors = async (req, res) => {
@@ -194,7 +195,7 @@ exports.bulkCreateVendors = async (req, res) => {
     const file = req.file;
     const { companyName } = req.body;
 
-    if (!file) {
+    if (!file || !file.buffer) {
       return res.status(400).json({
         success: false,
         message: 'No file uploaded',
@@ -217,16 +218,16 @@ exports.bulkCreateVendors = async (req, res) => {
 
     const companyExists = await CompanyName.findById(companyName);
     if (!companyExists) {
-      return res.status(400).json({
+      return res.status(404).json({
         success: false,
-        message: 'Invalid company ID',
+        message: 'Company not found',
       });
     }
 
     const results = [];
-    const filePath = path.join(__dirname, '../Uploads', file.filename);
+    const stream = Readable.from(file.buffer);
 
-    fs.createReadStream(filePath)
+    stream
       .pipe(csv())
       .on('data', (data) => results.push(data))
       .on('end', async () => {
@@ -244,14 +245,14 @@ exports.bulkCreateVendors = async (req, res) => {
               });
             }
 
-            if (contactNumber.length !== 10 || !/^[0-9]{10}$/.test(contactNumber)) {
+            if (!/^[0-9]{10}$/.test(contactNumber)) {
               return res.status(400).json({
                 success: false,
                 message: `Invalid contact number in row: ${JSON.stringify(row)}`,
               });
             }
 
-            if (whatsappNumber.length !== 10 || !/^[0-9]{10}$/.test(whatsappNumber)) {
+            if (!/^[0-9]{10}$/.test(whatsappNumber)) {
               return res.status(400).json({
                 success: false,
                 message: `Invalid WhatsApp number in row: ${JSON.stringify(row)}`,
@@ -276,21 +277,21 @@ exports.bulkCreateVendors = async (req, res) => {
           }
 
           const savedVendors = await Vendor.insertMany(vendors);
-          fs.unlinkSync(filePath);
 
-          const populatedVendors = await Vendor.find({ _id: { $in: savedVendors.map((v) => v._id) } })
-            .populate('companyName', 'companyName');
+          const populatedVendors = await Vendor.find({
+            _id: { $in: savedVendors.map((v) => v._id) }
+          }).populate('companyName', 'companyName');
 
-          res.status(200).json({
+          return res.status(200).json({
             success: true,
             message: 'Bulk vendor upload completed successfully',
             count: savedVendors.length,
             data: populatedVendors,
           });
+
         } catch (error) {
           console.error('Error processing bulk upload:', error);
-          fs.unlinkSync(filePath);
-          res.status(500).json({
+          return res.status(500).json({
             success: false,
             message: `Failed to process bulk upload: ${error.message}`,
           });
@@ -298,7 +299,7 @@ exports.bulkCreateVendors = async (req, res) => {
       });
   } catch (error) {
     console.error('Error in bulk upload:', error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: `Server error during bulk upload: ${error.message}`,
     });

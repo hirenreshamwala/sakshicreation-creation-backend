@@ -226,6 +226,11 @@ exports.getAllQpOrders = async (req, res) => {
         "orderdata",
         "party ply uom length width height deckal paper1GSM paper2GSM paper3GSM"
       )
+      .populate({
+        path: "party",
+        select:
+          "partyName address contactPerson personMobileNo personWhatsAppNo GSTNo",
+      })
       .populate("kantan", "kantanName")
       .populate({
         path: "printer",

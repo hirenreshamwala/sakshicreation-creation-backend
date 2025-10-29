@@ -3,6 +3,9 @@ const mongoose = require("mongoose");
 const csv = require('csv-parser');
 const fs = require('fs');
 const path = require('path');
+const { Readable } = require('stream');
+// const csv = require('csv-parser');
+// const ProductItem = require('../models/productItem.model');
 // Create a new product item
 exports.createProductItem = async (req, res) => {
   try {
@@ -207,8 +210,8 @@ exports.deleteProductItem = async (req, res) => {
 exports.bulkCreateProductItems = async (req, res) => {
   try {
     const file = req.file;
-    if (!file) {
-   
+
+    if (!file || !file.buffer) {
       return res.status(400).json({
         success: false,
         message: 'No file uploaded',
@@ -216,9 +219,10 @@ exports.bulkCreateProductItems = async (req, res) => {
     }
 
     const results = [];
-    const filePath = path.join(__dirname, '../Uploads', file.filename);
 
-    fs.createReadStream(filePath)
+    const stream = Readable.from(file.buffer);
+
+    stream
       .pipe(csv())
       .on('data', (data) => results.push(data))
       .on('end', async () => {
@@ -235,30 +239,31 @@ exports.bulkCreateProductItems = async (req, res) => {
               });
             }
 
-            const existingItem = await ProductItem.findOne({ itemName: { $regex: `^${itemName}$`, $options: 'i' } });
+            const existingItem = await ProductItem.findOne({
+              itemName: { $regex: `^${itemName}$`, $options: 'i' },
+            });
+
             if (existingItem) {
               return res.status(400).json({
                 success: false,
-                message: `Item with name "${itemName}" already exists in row: ${JSON.stringify(row)}`,
+                message: `Item "${itemName}" already exists`,
               });
             }
 
             productItems.push({ itemName });
           }
 
-          const savedProductItems = await ProductItem.insertMany(productItems);
-          fs.unlinkSync(filePath);
+          const savedItems = await ProductItem.insertMany(productItems);
 
-          res.status(200).json({
+          return res.status(200).json({
             success: true,
             message: 'Bulk product upload completed successfully',
-            count: savedProductItems.length,
-            data: savedProductItems,
+            count: savedItems.length,
+            data: savedItems,
           });
         } catch (error) {
           console.error('Error processing bulk upload:', error);
-          fs.unlinkSync(filePath);
-          res.status(500).json({
+          return res.status(500).json({
             success: false,
             message: `Failed to process bulk upload: ${error.message}`,
           });
@@ -266,7 +271,7 @@ exports.bulkCreateProductItems = async (req, res) => {
       });
   } catch (error) {
     console.error('Error in bulk upload:', error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: `Server error during bulk upload: ${error.message}`,
     });
