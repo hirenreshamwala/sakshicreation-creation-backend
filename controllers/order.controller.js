@@ -260,20 +260,32 @@ exports.getAllOrders = async (req, res) => {
       .populate("companyName", "companyName avatar")
       .populate({
         path: "party",
-        select:
-          "partyName address contactPerson personMobileNo personWhatsAppNo GSTNo marketName area",
+        select: "-__v",
         populate: [
           {
             path: "address.marketName",
-            select: "marketName", // adjust field name as per your schema
+            model: "Market",
+            select: "marketName", // only marketName
+          },
+          // {
+          //   path: "address.streetAddress",
+          //   model: "Market",
+          //   select: "streetAddress", // only streetAddress
+          // },
+          {
+            path: "address.landMark",
+            model: "Market",
+            select: "landmark", // only landMark
           },
           {
             path: "address.area",
-            select: "area", // adjust field name as per your schema
+            model: "Market",
+            select: "area", // only area
           },
           {
             path: "address.pincode",
-            select: "pincode", // adjust field name as per your schema
+            model: "Market",
+            select: "pincode", // only pincode
           },
         ],
       })
@@ -1090,16 +1102,32 @@ exports.getOrdersByStaffId = async (req, res) => {
       })
       .populate({
         path: "party",
-        select:
-          "partyName address contactPerson personMobileNo personWhatsAppNo GSTNo marketName area",
+        select: "-__v",
         populate: [
           {
             path: "address.marketName",
-            select: "marketName", // adjust field name as per your schema
+            model: "Market",
+            select: "marketName", // only marketName
+          },
+          // {
+          //   path: "address.streetAddress",
+          //   model: "Market",
+          //   select: "streetAddress", // only streetAddress
+          // },
+          {
+            path: "address.landMark",
+            model: "Market",
+            select: "landmark", // only landMark
           },
           {
             path: "address.area",
-            select: "area", // adjust field name as per your schema
+            model: "Market",
+            select: "area", // only area
+          },
+          {
+            path: "address.pincode",
+            model: "Market",
+            select: "pincode", // only pincode
           },
         ],
       })
