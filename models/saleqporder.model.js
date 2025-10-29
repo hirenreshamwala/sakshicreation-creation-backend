@@ -74,7 +74,6 @@ const qpDataSchema = new mongoose.Schema(
   {
     orderNo: {
       type: Number,
-      unique: true,
     },
     companyName: {
       type: mongoose.Schema.Types.ObjectId,

@@ -51,20 +51,20 @@ const statusHistorySchema = new mongoose.Schema(
   {
     previousStatus: {
       type: String,
-      required: true
+      required: true,
     },
     newStatus: {
       type: String,
-      required: true
+      required: true,
     },
     changedAt: {
       type: Date,
-      default: Date.now
+      default: Date.now,
     },
     changedBy: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "Staff"
-    }
+      ref: "Staff",
+    },
   },
   { _id: false }
 );
@@ -452,6 +452,19 @@ const qpDataSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    step: {
+      type: Number,
+      default: 0,
+    },
+    unitType: {
+      type: String,
+    },
+    isKantan: {
+      type: Boolean,
+    },
+    printType: {
+      type: String,
+    },
   },
   {
     timestamps: true,
@@ -547,7 +560,7 @@ qpDataSchema.pre("save", function (next) {
         previousStatus: previousStatus,
         newStatus: newStatus,
         changedAt: new Date(),
-        changedBy: this.updatedBy || this.createdBy // Use updatedBy if available, else createdBy
+        changedBy: this.updatedBy || this.createdBy, // Use updatedBy if available, else createdBy
       };
 
       if (!this.statusHistory) {
@@ -555,7 +568,9 @@ qpDataSchema.pre("save", function (next) {
       }
 
       this.statusHistory.push(statusChange);
-      console.log(`📝 Status History: ${previousStatus} -> ${newStatus} at ${statusChange.changedAt}`);
+      console.log(
+        `📝 Status History: ${previousStatus} -> ${newStatus} at ${statusChange.changedAt}`
+      );
     }
 
     // Reset the original status
@@ -638,7 +653,7 @@ qpDataSchema.pre("findOneAndUpdate", function (next) {
           previousStatus: currentStatus,
           newStatus: newStatus,
           changedAt: new Date(),
-          changedBy: setUpdate.updatedBy || doc.createdBy
+          changedBy: setUpdate.updatedBy || doc.createdBy,
         };
 
         // Initialize $push if it doesn't exist
@@ -647,7 +662,9 @@ qpDataSchema.pre("findOneAndUpdate", function (next) {
         }
 
         update.$push.statusHistory = statusChange;
-        console.log(`📝 Update Status History: ${currentStatus} -> ${newStatus} at ${statusChange.changedAt}`);
+        console.log(
+          `📝 Update Status History: ${currentStatus} -> ${newStatus} at ${statusChange.changedAt}`
+        );
       }
 
       // Update the $set object with our changes

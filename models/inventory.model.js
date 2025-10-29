@@ -172,6 +172,24 @@ const InventorySchema = new mongoose.Schema(
         return this.kg || 0;
       },
     },
+    lamination: {
+      type: Boolean,
+      default: false,
+    },
+    laminationType: {
+      type: String,
+    }, // "glossy" or "mate"
+    uv: {
+      type: Boolean,
+      default: false,
+    },
+    uvType: {
+      type: String,
+    },
+    varnish: {
+      type: Boolean,
+      default: false,
+    },
   },
   { timestamps: true }
 );

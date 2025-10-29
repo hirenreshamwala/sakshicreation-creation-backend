@@ -222,11 +222,11 @@ exports.getAllQpOrders = async (req, res) => {
         path: "companyName",
         select: "companyName avatar",
       })
-      // .populate({
-      //   path: "party",
-      //   select:
-      //     "partyName address contactPerson personMobileNo personWhatsAppNo GSTNo",
-      // })
+      .populate({
+        path: "party",
+        select:
+          "partyName address contactPerson personMobileNo personWhatsAppNo GSTNo",
+      })
       .populate({
         path: "party",
         select:
@@ -285,23 +285,10 @@ exports.getQpOrderById = async (req, res) => {
         path: "companyName",
         select: "companyName avatar",
       })
-      // .populate({
-      //   path: "party",
-      //   select:
-      //     "partyName address contactPerson personMobileNo personWhatsAppNo GSTNo",
-      // })
       .populate({
         path: "party",
         select:
           "partyName address contactPerson personMobileNo personWhatsAppNo GSTNo",
-        // match: partyMatch,
-        populate: [
-          { path: "address.marketName", model: "Market", select: "marketName" },
-          // { path: "address.streetAddress", model: "Market", select: "streetAddress" },
-          { path: "address.landMark", model: "Market", select: "landmark" },
-          { path: "address.area", model: "Market", select: "area" },
-          { path: "address.pincode", model: "Market", select: "pincode" },
-        ],
       })
       .populate(
         "orderdata",
@@ -575,7 +562,7 @@ exports.updateQpOrder = async (req, res) => {
     const setFields = {
       ...req.body,
       orderdata: packagingOptionId,
-      lastStatusChangeDate
+      lastStatusChangeDate,
     };
 
     // Remove fields we don't want to blindly set
@@ -822,18 +809,23 @@ async function createOutwardInventoryEntries(qpOrder, session) {
       console.log(`🔍 Checking selected papers for ${paper}...`);
 
       // Check if selectedPapers exists and has data for this paper
-      if (!qpOrder.selectedPapers || !qpOrder.selectedPapers[paper] || !qpOrder.selectedPapers[paper].length) {
+      if (
+        !qpOrder.selectedPapers ||
+        !qpOrder.selectedPapers[paper] ||
+        !qpOrder.selectedPapers[paper].length
+      ) {
         console.warn(`⚠️ No selected papers data found for ${paper}`);
         continue;
       }
 
       // Get the last selected paper object
-      const lastSelectedPaper = qpOrder.selectedPapers[paper][qpOrder.selectedPapers[paper].length - 1];
+      const lastSelectedPaper =
+        qpOrder.selectedPapers[paper][qpOrder.selectedPapers[paper].length - 1];
       console.log(`📄 Last selected paper for ${paper}:`, lastSelectedPaper);
 
       // ✅ Get the inventoryId from selectedPapers
       const inventoryId = lastSelectedPaper.inventoryId;
-      
+
       if (!inventoryId) {
         console.warn(`❌ No inventoryId found in selected papers for ${paper}`);
         continue;
@@ -843,10 +835,14 @@ async function createOutwardInventoryEntries(qpOrder, session) {
 
       try {
         // ✅ Find inventory item directly by inventoryId WITH session
-        const inventoryItem = await Inventory.findById(inventoryId).session(session);
+        const inventoryItem = await Inventory.findById(inventoryId).session(
+          session
+        );
 
         if (!inventoryItem) {
-          console.warn(`❌ Inventory not found for ID: ${inventoryId} of ${paper}`);
+          console.warn(
+            `❌ Inventory not found for ID: ${inventoryId} of ${paper}`
+          );
           continue;
         }
 
@@ -928,7 +924,6 @@ async function createOutwardInventoryEntries(qpOrder, session) {
           remainingAllocations: res.allocations.length,
           newAvailableKg: res.availableKg,
         });
-
       } catch (error) {
         console.error(`❌ Error processing ${paper}:`, error);
         console.error(`🔍 Error details:`, {
@@ -1192,11 +1187,11 @@ exports.getOrdersByStaffId = async (req, res) => {
         path: "companyName",
         select: "companyName avatar",
       })
-      // .populate({
-      //   path: "party",
-      //   select:
-      //     "partyName address contactPerson personMobileNo personWhatsAppNo GSTNo",
-      // })
+      .populate({
+        path: "party",
+        select:
+          "partyName address contactPerson personMobileNo personWhatsAppNo GSTNo",
+      })
       .populate({
         path: "party",
         select:
@@ -1367,26 +1362,27 @@ exports.updateQPOrderStatus = async (req, res) => {
 exports.bulkUpdateQPOrderStatus = async (req, res) => {
   const session = await mongoose.startSession();
   session.startTransaction();
-
   try {
+    console.log("Bulk update request body:", req);
     const {
       orderIds,
       deliveryStatus,
       billPhotos,
       dispatchPhotos,
       dispatchTime,
-      billNumber, // <-- bill number handled here now
       deliveryTime,
     } = req.body;
     const driverId = req.user?.id;
     const currentTime = new Date();
-
+    console.log(req.body, "reqqqqqq");
     if (!orderIds || !orderIds.length) throw new Error("Order IDs required");
 
     // Check conflicting driver assignments
     const conflictingOrders = await QpData.find({
       _id: { $in: orderIds },
-      driver: { $nin: [null, driverId] },
+      driver: {
+        $nin: [null, driverId], // driver should not be null AND not be current driverId
+      },
     }).session(session);
 
     if (conflictingOrders.length > 0)
@@ -1398,6 +1394,12 @@ exports.bulkUpdateQPOrderStatus = async (req, res) => {
     const driver = await Staff.findById(driverId).session(session);
     if (!driver) throw new Error("Driver not found");
 
+    // Status handling
+    if (billNumber) {
+      updateData.billNumber = billNumber;
+    } else {
+      console.warn("⚠️ No bill number provided for delivery update");
+    }
     // Handle delivery status logic
     if (deliveryStatus) {
       switch (deliveryStatus) {
@@ -1407,7 +1409,6 @@ exports.bulkUpdateQPOrderStatus = async (req, res) => {
               "You already have an ongoing dispatch. Complete delivery before loading new orders."
             );
           }
-
           const driverData = await Staff.findById(driverId).session(session);
           if (driverData) {
             const updatedOrders = [...driverData.orders, ...orderIds];
@@ -1417,11 +1418,9 @@ exports.bulkUpdateQPOrderStatus = async (req, res) => {
               { session }
             );
           }
-
           updateData.loadingStartDate = currentTime;
           updateData.deliveryStatus = "loading";
           break;
-
         case "in_transit":
           if (!dispatchPhotos || !dispatchPhotos.length)
             throw new Error("Dispatch photos required for dispatch");
@@ -1429,6 +1428,7 @@ exports.bulkUpdateQPOrderStatus = async (req, res) => {
           updateData.loadingEndDate = currentTime;
           updateData.deliveryStatus = "in_transit";
           updateData.dispatchTime = dispatchTime || currentTime;
+          // Store dispatch photo
           updateData.dispatchPhoto = dispatchPhotos[0];
           await Staff.findByIdAndUpdate(
             driverId,
@@ -1436,23 +1436,15 @@ exports.bulkUpdateQPOrderStatus = async (req, res) => {
             { session }
           );
           break;
-
         case "delivered":
           if (!billPhotos || !billPhotos.length)
             throw new Error("Bill photos required for delivery");
-
           updateData.deliveryEndTime = currentTime;
           updateData.deliveredAt = currentTime;
           updateData.deliveryStatus = "delivered";
           updateData.deliveryTime = deliveryTime || currentTime;
+          // Store bill photo
           updateData.billPhoto = billPhotos[0];
-
-          // ✅ Now handle billNumber here
-          if (billNumber) {
-            updateData.billNumber = billNumber;
-          } else {
-            console.warn("⚠️ No bill number provided for delivery update");
-          }
 
           break;
       }
@@ -1461,7 +1453,9 @@ exports.bulkUpdateQPOrderStatus = async (req, res) => {
     if (deliveryStatus) updateData.deliveryStatus = deliveryStatus;
 
     // Bulk update
-    await QpData.updateMany({ _id: { $in: orderIds } }, updateData, { session });
+    await QpData.updateMany({ _id: { $in: orderIds } }, updateData, {
+      session,
+    });
 
     const updatedOrders = await QpData.find({ _id: { $in: orderIds } })
       .populate("companyName", "companyName avatar")
@@ -1495,7 +1489,6 @@ exports.bulkUpdateQPOrderStatus = async (req, res) => {
     });
   }
 };
-
 
 // Helper function to get available papers with allocations
 exports.getAvailablePapers = async (req, res) => {

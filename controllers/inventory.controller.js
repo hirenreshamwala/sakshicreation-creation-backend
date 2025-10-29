@@ -175,3 +175,82 @@ exports.updateInventory = async (req, res) => {
     });
   }
 };
+
+exports.getAvailableBoxes = async (req, res) => {
+  try {
+    const { uv, lamination, varnish } = req.query;
+
+    const filter = { category: "printer", type: "inward" };
+
+    if (uv !== undefined) filter.uv = uv === "true";
+    if (lamination !== undefined) filter.lamination = lamination === "true";
+    if (varnish !== undefined) filter.varnish = varnish === "true";
+
+    // 1. Get total inward grouped by box spec
+    const inward = await Inventory.aggregate([
+      { $match: filter },
+      {
+        $group: {
+          _id: {
+            boxLength: "$boxLength",
+            boxWidth: "$boxWidth",
+            boxHeight: "$boxHeight",
+            uv: "$uv",
+            lamination: "$lamination",
+            varnish: "$varnish"
+          },
+          totalInward: { $sum: "$quantity" }
+        }
+      }
+    ]);
+
+    // 2. Get total outward grouped by same spec
+    const outward = await Inventory.aggregate([
+      {
+        $match: {
+          category: "printer",
+          type: "outward"
+        }
+      },
+      {
+        $group: {
+          _id: {
+            boxLength: "$boxLength",
+            boxWidth: "$boxWidth",
+            boxHeight: "$boxHeight",
+            uv: "$uv",
+            lamination: "$lamination",
+            varnish: "$varnish"
+          },
+          totalOutward: { $sum: "$quantity" }
+        }
+      }
+    ]);
+
+    // 3. Merge inward and outward to calculate available
+    const availableBoxes = inward.map(inItem => {
+      const outItem = outward.find(
+        o => JSON.stringify(o._id) === JSON.stringify(inItem._id)
+      );
+
+      const available =
+        inItem.totalInward - (outItem ? outItem.totalOutward : 0);
+
+      return {
+        ...inItem._id,
+        availableBoxes: available
+      };
+    }).filter(item => item.availableBoxes > 0); // Remove zero stock
+
+    res.status(200).json({
+      success: true,
+      count: availableBoxes.length,
+      data: availableBoxes,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Error fetching available boxes: " + error.message,
+    });
+  }
+};
