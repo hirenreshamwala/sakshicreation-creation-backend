@@ -46,7 +46,7 @@ const paperAllocationSchema = new mongoose.Schema(
   { _id: false }
 );
 
-// ✅ UPDATED: Enhanced status history schema
+// ✅ FIXED: Enhanced status history schema with proper defaults
 const statusHistorySchema = new mongoose.Schema(
   {
     previousStatus: {
@@ -64,6 +64,9 @@ const statusHistorySchema = new mongoose.Schema(
     changedBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Staff",
+    },
+    reason: {
+      type: String, // Optional field for change reason
     },
   },
   { _id: false }
@@ -554,8 +557,8 @@ qpDataSchema.pre("save", function (next) {
     const previousStatus = this._originalStatus;
     const newStatus = this.status;
 
-    // Only add to history if status actually changed
-    if (previousStatus && previousStatus !== newStatus) {
+    // Only add to history if status actually changed and both values are present
+    if (previousStatus && newStatus && previousStatus !== newStatus) {
       const statusChange = {
         previousStatus: previousStatus,
         newStatus: newStatus,
@@ -647,8 +650,8 @@ qpDataSchema.pre("findOneAndUpdate", function (next) {
         );
       }
 
-      // ✅ ADD STATUS HISTORY FOR findOneAndUpdate
-      if (currentStatus !== newStatus) {
+      // ✅ FIXED: ADD STATUS HISTORY ONLY WHEN BOTH STATUSES ARE PRESENT AND DIFFERENT
+      if (currentStatus && newStatus && currentStatus !== newStatus) {
         const statusChange = {
           previousStatus: currentStatus,
           newStatus: newStatus,
@@ -676,10 +679,13 @@ qpDataSchema.pre("findOneAndUpdate", function (next) {
 
       next();
     })
-    .catch(next);
+    .catch((error) => {
+      console.error('Error in findOneAndUpdate middleware:', error);
+      next(error);
+    });
 });
 
-// ✅ UPDATED: Store original values for proper comparison
+// ✅ FIXED: Store original values for proper comparison
 qpDataSchema.pre("save", function (next) {
   if (
     (this.isModified("status") || this.isModified("deliveryStatus")) &&

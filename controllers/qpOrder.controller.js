@@ -546,6 +546,8 @@ exports.updateQpOrder = async (req, res) => {
     const now = new Date();
 
     // Base fields to set (exclude paperAllocations; handled separately)
+    delete req.body.statusHistory
+
     const setFields = {
       ...req.body,
       orderdata: packagingOptionId,
@@ -575,6 +577,7 @@ exports.updateQpOrder = async (req, res) => {
       } else {
         // if you don't want to overwrite existing flags when not provided, ensure they are not present
         delete setFields[flag];
+        
       }
     });
 
@@ -582,15 +585,15 @@ exports.updateQpOrder = async (req, res) => {
     const updateOps = { $set: setFields };
 
     // Push to statusHistory if status provided AND changed
-    if (req.body.status && currentOrder.status !== req.body.status) {
-      updateOps.$push = {
-        statusHistory: {
-          status: req.body.status,
-          changedAt: now,
-          changedBy: req.user?._id || null,
-        },
-      };
-    }
+    // if (req.body.status && currentOrder.status !== req.body.status) {
+    //   updateOps.$push = {
+    //     statusHistory: {
+    //       status: req.body.status,
+    //       changedAt: now,
+    //       changedBy: req.user?._id || null,
+    //     },
+    //   };
+    // }
 
     // 6) Perform single atomic update (new: true) within session
     const updatedOrder = await QpData.findByIdAndUpdate(

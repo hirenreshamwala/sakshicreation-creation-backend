@@ -7,4 +7,5 @@ router.get("/bycategory/:category", InventoryController.getInventoryByCategory);
 router.get("/summary/:category", InventoryController.getInventorySummary);
 router.get("/getall", InventoryController.getAllInventory);
 router.put("/update/:id", InventoryController.updateInventory);
+router.post("/getbox",InventoryController.getAvailableBoxes)
 module.exports = router;
