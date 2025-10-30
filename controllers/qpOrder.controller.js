@@ -480,25 +480,25 @@ exports.updateQpOrder = async (req, res) => {
         paper3GSM,
       } = req.body.packagingOption;
 
-      if (
-        !party ||
-        !ply ||
-        !uom ||
-        !length ||
-        !width ||
-        !height ||
-        !deckal ||
-        !paper1GSM ||
-        !paper2GSM ||
-        !paper3GSM
-      ) {
-        await session.abortTransaction();
-        session.endSession();
-        return res.status(400).json({
-          success: false,
-          message: "Missing required packaging option fields",
-        });
-      }
+      // if (
+      //   !party ||
+      //   !ply ||
+      //   !uom ||
+      //   !length ||
+      //   !width ||
+      //   !height ||
+      //   !deckal ||
+      //   !paper1GSM ||
+      //   !paper2GSM ||
+      //   !paper3GSM
+      // ) {
+      //   await session.abortTransaction();
+      //   session.endSession();
+      //   return res.status(400).json({
+      //     success: false,
+      //     message: "Missing required packaging option fields",
+      //   });
+      // }
 
       // Validate UOM field
       if (!["inch", "cm", "mm"].includes(uom)) {
