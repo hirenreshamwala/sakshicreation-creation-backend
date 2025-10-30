@@ -423,12 +423,12 @@ exports.updateQpOrder = async (req, res) => {
       });
     }
 
-    let lastStatusChangeDate = currentOrder.lastStatusChangeDate;
+    // let lastStatusChangeDate = currentOrder.lastStatusChangeDate;
 
-    // ✅ CORRECTION: Status change tabhi detect karo jab status different ho
-    if (req.body.status && currentOrder.status !== req.body.status) {
-      lastStatusChangeDate = new Date();
-    }
+    // // ✅ CORRECTION: Status change tabhi detect karo jab status different ho
+    // if (req.body.status && currentOrder.status !== req.body.status) {
+    //   lastStatusChangeDate = new Date();
+    // }
 
     // 2) Validate incoming ObjectId fields early (so we can abort before mutating DB)
     if (req.body.size && !mongoose.Types.ObjectId.isValid(req.body.size)) {
@@ -546,10 +546,11 @@ exports.updateQpOrder = async (req, res) => {
     const now = new Date();
 
     // Base fields to set (exclude paperAllocations; handled separately)
+    delete req.body.statusHistory
     const setFields = {
       ...req.body,
       orderdata: packagingOptionId,
-      lastStatusChangeDate,
+      // lastStatusChangeDate,
     };
 
     // Remove fields we don't want to blindly set
@@ -582,15 +583,15 @@ exports.updateQpOrder = async (req, res) => {
     const updateOps = { $set: setFields };
 
     // Push to statusHistory if status provided AND changed
-    if (req.body.status && currentOrder.status !== req.body.status) {
-      updateOps.$push = {
-        statusHistory: {
-          status: req.body.status,
-          changedAt: now,
-          changedBy: req.user?._id || null,
-        },
-      };
-    }
+    // if (req.body.status && currentOrder.status !== req.body.status) {
+    //   updateOps.$push = {
+    //     statusHistory: {
+    //       status: req.body.status,
+    //       changedAt: now,
+    //       changedBy: req.user?._id || null,
+    //     },
+    //   };
+    // }
 
     // 6) Perform single atomic update (new: true) within session
     const updatedOrder = await QpData.findByIdAndUpdate(
