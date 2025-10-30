@@ -100,7 +100,7 @@ exports.getAllInventory = async (req, res) => {
 exports.updateInventory = async (req, res) => {
   try {
     const { id } = req.params;
-    
+
     // Validate if the ID is a valid MongoDB ObjectId
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({
@@ -131,12 +131,12 @@ exports.updateInventory = async (req, res) => {
       kantan,
       forCompany,
       remarks,
-      usedKg
+      usedKg,
     } = req.body;
 
     // Create update object with only provided fields
     const updateData = {};
-    
+
     if (material !== undefined) updateData.material = material;
     if (vendor !== undefined) updateData.vendor = vendor;
     if (companyName !== undefined) updateData.companyName = companyName;
@@ -151,11 +151,10 @@ exports.updateInventory = async (req, res) => {
     if (usedKg !== undefined) updateData.usedKg = usedKg;
 
     // Update the inventory item
-    const updatedInventory = await Inventory.findByIdAndUpdate(
-      id,
-      updateData,
-      { new: true, runValidators: true }
-    )
+    const updatedInventory = await Inventory.findByIdAndUpdate(id, updateData, {
+      new: true,
+      runValidators: true,
+    })
       .populate("material", "materialName materialSize materialGSM")
       .populate("vendor", "name")
       .populate("companyName", "companyName")
@@ -180,11 +179,18 @@ exports.getAvailableBoxes = async (req, res) => {
   try {
     const { uv, lamination, varnish } = req.query;
 
-    const filter = { category: "printer", type: "inward" };
+    const filter = {
+      inventoryType: "Box",
+      type: "inward",
 
-    if (uv !== undefined) filter.uv = uv === "true";
-    if (lamination !== undefined) filter.lamination = lamination === "true";
-    if (varnish !== undefined) filter.varnish = varnish === "true";
+      
+    };
+
+    console.log(filter,';filter')
+
+    // if (uv !== undefined) filter.uv = uv === "true";
+    // if (lamination !== undefined) filter.lamination = lamination === "true";
+    // if (varnish !== undefined) filter.varnish = varnish === "true";
 
     // 1. Get total inward grouped by box spec
     const inward = await Inventory.aggregate([
@@ -195,52 +201,51 @@ exports.getAvailableBoxes = async (req, res) => {
             boxLength: "$boxLength",
             boxWidth: "$boxWidth",
             boxHeight: "$boxHeight",
-            uv: "$uv",
-            lamination: "$lamination",
-            varnish: "$varnish"
+            // uv: "$uv",
+            // lamination: "$lamination",
+            // varnish: "$varnish",
           },
-          totalInward: { $sum: "$quantity" }
-        }
-      }
+          totalInward: { $sum: "$quantity" },
+        },
+      },
     ]);
 
     // 2. Get total outward grouped by same spec
     const outward = await Inventory.aggregate([
-      {
-        $match: {
-          category: "printer",
-          type: "outward"
-        }
-      },
+      { $match: filter },
       {
         $group: {
           _id: {
             boxLength: "$boxLength",
             boxWidth: "$boxWidth",
             boxHeight: "$boxHeight",
-            uv: "$uv",
-            lamination: "$lamination",
-            varnish: "$varnish"
+            // uv: "$uv",
+            // lamination: "$lamination",
+            // varnish: "$varnish",
           },
-          totalOutward: { $sum: "$quantity" }
-        }
-      }
+          totalOutward: { $sum: "$quantity" },
+        },
+      },
     ]);
 
+    console.log(inward, "inward", outward, "outward");
+
     // 3. Merge inward and outward to calculate available
-    const availableBoxes = inward.map(inItem => {
-      const outItem = outward.find(
-        o => JSON.stringify(o._id) === JSON.stringify(inItem._id)
-      );
+    const availableBoxes = inward
+      .map((inItem) => {
+        const outItem = outward.find(
+          (o) => JSON.stringify(o._id) === JSON.stringify(inItem._id)
+        );
 
-      const available =
-        inItem.totalInward - (outItem ? outItem.totalOutward : 0);
+        const available =
+          inItem.totalInward - (outItem ? outItem.totalOutward : 0);
 
-      return {
-        ...inItem._id,
-        availableBoxes: available
-      };
-    }).filter(item => item.availableBoxes > 0); // Remove zero stock
+        return {
+          ...inItem._id,
+          availableBoxes: available,
+        };
+      })
+      .filter((item) => item.availableBoxes > 0); // Remove zero stock
 
     res.status(200).json({
       success: true,
