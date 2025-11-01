@@ -323,7 +323,7 @@ exports.getAllAssignTasks = async (req, res) => {
 
       .populate("companyName")
       .populate("partyName")
-      .populate("assignTo", "firstName lastName")
+      .populate("assignTo")
       .populate("originalTaskId")
       .populate({
         path: "partyName",
