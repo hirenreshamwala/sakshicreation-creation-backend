@@ -323,7 +323,15 @@ exports.getAllAssignTasks = async (req, res) => {
 
       .populate("companyName")
       .populate("partyName")
-      .populate("assignTo")
+      .populate({
+        path: "assignTo",
+        populate: {
+          path: "role",
+          model: "Role",
+          select: "roleName" // Only get roleName (optional)
+        }
+      })
+
       .populate("originalTaskId")
       .populate({
         path: "partyName",
