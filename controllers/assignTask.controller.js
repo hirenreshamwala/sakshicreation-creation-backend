@@ -59,7 +59,14 @@ exports.createAssignTask = async (req, res) => {
     const populatedTask = await AssignTask.findById(newAssignTask._id)
       .populate("companyName", "companyName avatar")
       .populate("partyName", "partyName address ownerName personMobileNo")
-      .populate("assignTo", "firstName lastName");
+      .populate({
+        path: "assignTo",
+        populate: {
+          path: "role",
+          select: "roleName" // yaha jitne fields chahiye wo add kar sakte ho
+        }
+      })
+
 
     const taskWithCreatedBy = {
       ...populatedTask.toObject(),
@@ -323,7 +330,14 @@ exports.getAllAssignTasks = async (req, res) => {
 
       .populate("companyName")
       .populate("partyName")
-      .populate("assignTo", "firstName lastName")
+      .populate({
+        path: "assignTo",
+        populate: {
+          path: "role",
+          select: "roleName" // yaha jitne fields chahiye wo add kar sakte ho
+        }
+      })
+
       .populate("originalTaskId")
       .populate({
         path: "partyName",
@@ -452,7 +466,14 @@ exports.getAllAssignTasks = async (req, res) => {
 exports.getAssignTaskById = async (req, res) => {
   try {
     const assignTask = await AssignTask.findById(req.params.id)
-      .populate("assignTo")
+      .populate({
+        path: "assignTo",
+        populate: {
+          path: "role",
+          select: "roleName" // yaha jitne fields chahiye wo add kar sakte ho
+        }
+      })
+
       .populate({
         path: "originalTaskId",
         select: "date status createdAt", // Add createdAt here
@@ -695,7 +716,14 @@ exports.updateAssignTask = async (req, res) => {
         populatedNewTask = await AssignTask.findById(newTask._id)
           .populate("companyName", "companyName avatar")
           .populate("partyName", "partyName address ownerName personMobileNo")
-          .populate("assignTo", "firstName lastName");
+          .populate({
+            path: "assignTo",
+            populate: {
+              path: "role",
+              select: "roleName" // yaha jitne fields chahiye wo add kar sakte ho
+            }
+          })
+
       } else {
         updateData.rescheduleDate = null;
       }
@@ -712,7 +740,14 @@ exports.updateAssignTask = async (req, res) => {
     )
       .populate("companyName", "companyName avatar")
       .populate("partyName", "partyName address ownerName personMobileNo")
-      .populate("assignTo", "firstName lastName");
+      .populate({
+        path: "assignTo",
+        populate: {
+          path: "role",
+          select: "roleName" // yaha jitne fields chahiye wo add kar sakte ho
+        }
+      })
+
 
     if (!updatedAssignTask) {
       return res.status(404).json({
@@ -805,7 +840,14 @@ exports.updateAssignTaskStatus = async (req, res) => {
       updateData,
       { new: true, runValidators: true }
     )
-      .populate("assignTo")
+      .populate({
+        path: "assignTo",
+        populate: {
+          path: "role",
+          select: "roleName" // yaha jitne fields chahiye wo add kar sakte ho
+        }
+      })
+
       .lean();
 
     if (!updatedAssignTask) {
