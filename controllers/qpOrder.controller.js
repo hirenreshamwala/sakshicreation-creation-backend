@@ -546,7 +546,7 @@ exports.updateQpOrder = async (req, res) => {
     const now = new Date();
 
     // Base fields to set (exclude paperAllocations; handled separately)
-    delete req.body.statusHistory
+    delete req.body.statusHistory;
 
     const setFields = {
       ...req.body,
@@ -577,7 +577,6 @@ exports.updateQpOrder = async (req, res) => {
       } else {
         // if you don't want to overwrite existing flags when not provided, ensure they are not present
         delete setFields[flag];
-        
       }
     });
 
@@ -985,6 +984,9 @@ async function createOutwardInventoryEntries(qpOrder, session) {
     console.log(`🔍 Checking actualNoOfPieces:`, qpOrder.actualNoOfPieces);
     if (qpOrder.actualNoOfPieces) {
       console.log(`💾 Creating box inward entry...`);
+      const getOrderdata = await PackagingOption.findById(qpOrder.orderdata);
+
+      console.log("getOrderdata", getOrderdata, "getOrderdata");
       const boxInward = {
         category: "factory",
         type: "inward",
@@ -1004,10 +1006,21 @@ async function createOutwardInventoryEntries(qpOrder, session) {
         companyName: qpOrder.companyName,
         for: qpOrder.assignedTo,
         forCompany: qpOrder.createdBy,
+        // usedBox: qpOrder.noOfPieces,
+        ply: getOrderdata.ply,
+        uom: getOrderdata.uom,
+        length: getOrderdata.length,
+        width: getOrderdata.width,
+        height: getOrderdata.height,
+        deckal: getOrderdata.deckal,
+        paper1GSM: getOrderdata.paper1GSM,
+        paper2GSM: getOrderdata.paper2GSM,
+        paper3GSM: getOrderdata.paper3GSM,
       };
 
       console.log(`📝 Box inward data:`, boxInward);
       await new Inventory(boxInward).save({ session });
+
       console.log(`✅ Box inward created: ${qpOrder.actualNoOfPieces} pieces`);
     } else {
       console.log(`⏭️ Skipping box inward - no actualNoOfPieces`);
@@ -1015,6 +1028,8 @@ async function createOutwardInventoryEntries(qpOrder, session) {
 
     console.log(`🔍 Checking noOfPieces:`, qpOrder.noOfPieces);
     if (qpOrder.noOfPieces) {
+      const getOrderdata = await PackagingOption.findById(qpOrder.orderdata);
+      console.log("getOrderdata", getOrderdata, "getOrderdata");
       console.log(`💾 Creating box outward entry...`);
       const boxOutward = {
         category: "factory",
@@ -1035,10 +1050,39 @@ async function createOutwardInventoryEntries(qpOrder, session) {
         companyName: qpOrder.companyName,
         for: qpOrder.assignedTo,
         forCompany: qpOrder.createdBy,
+        ply: getOrderdata.ply,
+        uom: getOrderdata.uom,
+        length: getOrderdata.length,
+        width: getOrderdata.width,
+        height: getOrderdata.height,
+        deckal: getOrderdata.deckal,
+        paper1GSM: getOrderdata.paper1GSM,
+        paper2GSM: getOrderdata.paper2GSM,
+        paper3GSM: getOrderdata.paper3GSM,
       };
 
       console.log(`📝 Box outward data:`, boxOutward);
       await new Inventory(boxOutward).save({ session });
+
+      const changeQty = await Inventory.find({
+        qpOrder: qpOrder._id,
+        type: "inward",
+        inventoryType: "Box",
+      }).session(session);
+
+      if (changeQty.length > 0) {
+        console.log(`Found ${changeQty.length} matching inward boxes.`);
+        for (const inward of changeQty) {
+          const updated = await Inventory.findByIdAndUpdate(
+            inward._id,
+            { usedBox: qpOrder.noOfPieces },
+            { session, new: true }
+          );
+          console.log("✅ Updated usedBox for:", updated._id);
+        }
+      } else {
+        console.warn("⚠️ No inward box found for qpOrder:", qpOrder._id);
+      }
       console.log(`✅ Box outward created: ${qpOrder.noOfPieces} pieces`);
     } else {
       console.log(`⏭️ Skipping box outward - no noOfPieces`);
@@ -1358,6 +1402,58 @@ exports.updateQPOrderStatus = async (req, res) => {
   }
 };
 
+exports.sendBoxFromGodownOrFactory = async (req, res) => {
+  try {
+    const inventory = await Inventory.findById(req.body.inventory);
+
+    // Prevent exceeding available stock
+    const available = inventory.quantity - (inventory.usedBox || 0);
+    if (req.body.qty > available) {
+      return res.status(400).json({
+        success: false,
+        message: `Insufficient stock in inventory ${inventory.boxName}. Only ${available} left.`,
+      });
+    }
+
+    inventory.usedBox = (inventory.usedBox || 0) + req.body.qty;
+    await inventory.save();
+
+    // ✅ Update QP Order with inventory usage
+    const updatedOrder = await QpData.findByIdAndUpdate(
+      req.params.id,
+      {
+        inventory: req.body.inventory,
+        step: req.body.step,
+        status: "completed",
+      },
+      { new: true }
+    )
+      .populate("companyName", "companyName avatar")
+      .populate(
+        "party",
+        "partyName address contactPerson personMobileNo personWhatsAppNo GSTNo"
+      )
+      .populate(
+        "orderdata",
+        "party ply uom length width height deckal paper1GSM paper2GSM paper3GSM"
+      )
+      .populate("kantan", "kantanName")
+      .populate("driver", "firstName lastName email");
+
+    res.status(200).json({
+      success: true,
+      message: "Boxes successfully assigned from inventory.",
+      data: updatedOrder,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({
+      success: false,
+      message: err.message || "Failed to update orders",
+    });
+  }
+};
+
 // Controller for bulk status updates
 exports.bulkUpdateQPOrderStatus = async (req, res) => {
   const session = await mongoose.startSession();
@@ -1604,6 +1700,59 @@ exports.removeLoadingOrder = async (req, res) => {
     res.status(400).json({
       success: false,
       message: error.message || "Failed to remove loading",
+    });
+  }
+};
+
+
+exports.driverSelectionAndInventoryManage = async (req, res) => {
+  try {
+    const inventory = await Inventory.findById(req.body.inventory);
+
+    // Prevent exceeding available stock
+    const available = inventory.quantity - (inventory.usedBox || 0);
+    if (req.body.qty > available) {
+      return res.status(400).json({
+        success: false,
+        message: `Insufficient stock in inventory ${inventory.boxName}. Only ${available} left.`,
+      });
+    }
+
+    inventory.usedBox = (inventory.usedBox || 0) + req.body.qty;
+    await inventory.save();
+
+    // ✅ Update QP Order with inventory usage
+    const updatedOrder = await QpData.findByIdAndUpdate(
+      req.params.id,
+      {
+        inventory: req.body.inventory,
+        step: req.body.step,
+        status: "completed",
+      },
+      { new: true }
+    )
+      .populate("companyName", "companyName avatar")
+      .populate(
+        "party",
+        "partyName address contactPerson personMobileNo personWhatsAppNo GSTNo"
+      )
+      .populate(
+        "orderdata",
+        "party ply uom length width height deckal paper1GSM paper2GSM paper3GSM"
+      )
+      .populate("kantan", "kantanName")
+      .populate("driver", "firstName lastName email");
+
+    res.status(200).json({
+      success: true,
+      message: "Boxes successfully assigned from inventory.",
+      data: updatedOrder,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({
+      success: false,
+      message: err.message || "Failed to update orders",
     });
   }
 };

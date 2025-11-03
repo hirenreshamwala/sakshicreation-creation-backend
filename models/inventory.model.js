@@ -98,26 +98,6 @@ const InventorySchema = new mongoose.Schema(
       type: Number,
       required: false,
     },
-    paperName: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "PaperGSM",
-      required: false,
-    },
-    height: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "PaperGSM",
-      required: false,
-    },
-    width: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "PaperGSM",
-      required: false,
-    },
-    length: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "PaperGSM",
-      required: false,
-    },
     inventoryType: {
       type: String,
     },
@@ -189,6 +169,33 @@ const InventorySchema = new mongoose.Schema(
     varnish: {
       type: Boolean,
       default: false,
+    },
+    ply: {
+      type: String,
+    },
+    uom: {
+      type: String,
+    },
+    length: {
+      type: String,
+    },
+    width: {
+      type: String,
+    },
+    height: {
+      type: String,
+    },
+    paper1GSM: {
+      type: String,
+    },
+    paper2GSM: {
+      type: String,
+    },
+    paper3GSM: {
+      type: String,
+    },
+    usedBox:{
+      type: Number,
     },
   },
   { timestamps: true }

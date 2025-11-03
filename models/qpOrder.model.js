@@ -468,6 +468,12 @@ const qpDataSchema = new mongoose.Schema(
     printType: {
       type: String,
     },
+    inventory: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Inventory",
+      required: false,
+    },
+    
   },
   {
     timestamps: true,
@@ -680,7 +686,7 @@ qpDataSchema.pre("findOneAndUpdate", function (next) {
       next();
     })
     .catch((error) => {
-      console.error('Error in findOneAndUpdate middleware:', error);
+      console.error("Error in findOneAndUpdate middleware:", error);
       next(error);
     });
 });
