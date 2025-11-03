@@ -360,7 +360,37 @@ exports.getOrderById = async (req, res) => {
 
     const order = await Order.findById(id)
       .populate("companyName", "companyName avatar")
-      .populate("party")
+      .populate({
+        path: "party",
+        select: "-__v",
+        populate: [
+          {
+            path: "address.marketName",
+            model: "Market",
+            select: "marketName", // only marketName
+          },
+          // {
+          //   path: "address.streetAddress",
+          //   model: "Market",
+          //   select: "streetAddress", // only streetAddress
+          // },
+          {
+            path: "address.landMark",
+            model: "Market",
+            select: "landmark", // only landMark
+          },
+          {
+            path: "address.area",
+            model: "Market",
+            select: "area", // only area
+          },
+          {
+            path: "address.pincode",
+            model: "Market",
+            select: "pincode", // only pincode
+          },
+        ],
+      })
       .populate("productItem", "itemName")
       .populate("createdBy")
       .populate("designer", "name")
