@@ -426,9 +426,9 @@ exports.updateQpOrder = async (req, res) => {
     let lastStatusChangeDate = currentOrder.lastStatusChangeDate;
 
     // ✅ CORRECTION: Status change tabhi detect karo jab status different ho
-    if (req.body.status && currentOrder.status !== req.body.status) {
-      lastStatusChangeDate = new Date();
-    }
+    // if (req.body.status && currentOrder.status !== req.body.status) {
+    //   lastStatusChangeDate = new Date();
+    // }
 
     // 2) Validate incoming ObjectId fields early (so we can abort before mutating DB)
     if (req.body.size && !mongoose.Types.ObjectId.isValid(req.body.size)) {
@@ -551,7 +551,7 @@ exports.updateQpOrder = async (req, res) => {
     const setFields = {
       ...req.body,
       orderdata: packagingOptionId,
-      lastStatusChangeDate,
+      // lastStatusChangeDate,  
     };
 
     // Remove fields we don't want to blindly set
