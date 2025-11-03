@@ -371,7 +371,7 @@ const qpDataSchema = new mongoose.Schema(
     lastStatusChangeDate: {
       type: Date,
     },
-    // ✅ FIXED: Enhanced status history with proper validation
+    // ✅ UPDATED: Enhanced status history with previous status tracking
     statusHistory: [statusHistorySchema],
     designDone: {
       type: Boolean,
@@ -486,7 +486,7 @@ qpDataSchema.plugin(AutoIncrement, {
   start_seq: 1000,
 });
 
-// ✅ FIXED: Store original status before any modification
+// ✅ UPDATED: Store original status before any modification
 qpDataSchema.pre("save", function (next) {
   if (this.isModified("status") && !this.isNew) {
     if (!this._originalStatus) {
@@ -496,7 +496,7 @@ qpDataSchema.pre("save", function (next) {
   next();
 });
 
-// ✅ FIXED: Enhanced status change detection middleware with proper history tracking
+// ✅ UPDATED: Enhanced status change detection middleware with proper history tracking
 qpDataSchema.pre("save", function (next) {
   console.log(
     `🔍 Save Middleware - Status modified: ${this.isModified(
@@ -557,7 +557,7 @@ qpDataSchema.pre("save", function (next) {
   next();
 });
 
-// ✅ FIXED: Enhanced status history tracking with proper validation
+// ✅ UPDATED: Enhanced status history tracking with previous status
 qpDataSchema.pre("save", function (next) {
   if (this.isModified("status") && !this.isNew) {
     const previousStatus = this._originalStatus;
@@ -588,7 +588,7 @@ qpDataSchema.pre("save", function (next) {
   next();
 });
 
-// ✅ FIXED: Enhanced middleware for findOneAndUpdate operations with proper status history
+// ✅ UPDATED: Enhanced middleware for findOneAndUpdate operations with status history
 qpDataSchema.pre("findOneAndUpdate", function (next) {
   const update = this.getUpdate();
   const setUpdate = update.$set || {};
