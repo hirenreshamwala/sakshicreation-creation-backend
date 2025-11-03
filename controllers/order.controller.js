@@ -192,7 +192,37 @@ exports.createOrder = async (req, res) => {
     // Populate the order for response
     const populatedOrder = await Order.findById(order._id)
       .populate("companyName", "companyName avatar")
-      .populate("party", "partyName")
+      .populate({
+        path: "party",
+        select: "-__v",
+        populate: [
+          {
+            path: "address.marketName",
+            model: "Market",
+            select: "marketName", // only marketName
+          },
+          // {
+          //   path: "address.streetAddress",
+          //   model: "Market",
+          //   select: "streetAddress", // only streetAddress
+          // },
+          {
+            path: "address.landMark",
+            model: "Market",
+            select: "landmark", // only landMark
+          },
+          {
+            path: "address.area",
+            model: "Market",
+            select: "area", // only area
+          },
+          {
+            path: "address.pincode",
+            model: "Market",
+            select: "pincode", // only pincode
+          },
+        ],
+      })
       .populate("productItem", "itemName")
       .populate("createdBy")
       .populate("designer", "name")
@@ -330,7 +360,37 @@ exports.getOrderById = async (req, res) => {
 
     const order = await Order.findById(id)
       .populate("companyName", "companyName avatar")
-      .populate("party")
+      .populate({
+        path: "party",
+        select: "-__v",
+        populate: [
+          {
+            path: "address.marketName",
+            model: "Market",
+            select: "marketName", // only marketName
+          },
+          // {
+          //   path: "address.streetAddress",
+          //   model: "Market",
+          //   select: "streetAddress", // only streetAddress
+          // },
+          {
+            path: "address.landMark",
+            model: "Market",
+            select: "landmark", // only landMark
+          },
+          {
+            path: "address.area",
+            model: "Market",
+            select: "area", // only area
+          },
+          {
+            path: "address.pincode",
+            model: "Market",
+            select: "pincode", // only pincode
+          },
+        ],
+      })
       .populate("productItem", "itemName")
       .populate("createdBy")
       .populate("designer", "name")
@@ -685,7 +745,37 @@ exports.updateOrder = async (req, res) => {
       runValidators: true,
     })
       .populate("companyName", "companyName avatar")
-      .populate("party", "partyName")
+      .populate({
+        path: "party",
+        select: "-__v",
+        populate: [
+          {
+            path: "address.marketName",
+            model: "Market",
+            select: "marketName", // only marketName
+          },
+          // {
+          //   path: "address.streetAddress",
+          //   model: "Market",
+          //   select: "streetAddress", // only streetAddress
+          // },
+          {
+            path: "address.landMark",
+            model: "Market",
+            select: "landmark", // only landMark
+          },
+          {
+            path: "address.area",
+            model: "Market",
+            select: "area", // only area
+          },
+          {
+            path: "address.pincode",
+            model: "Market",
+            select: "pincode", // only pincode
+          },
+        ],
+      })
       .populate("productItem", "itemName")
       .populate("createdBy")
       .populate("designer", "firstName lastName");
@@ -870,7 +960,37 @@ exports.getOrdersByCompanyAndParty = async (req, res) => {
       party: partyId,
     })
       .populate("companyName", "companyName avatar")
-      .populate("party", "partyName")
+      .populate({
+        path: "party",
+        select: "-__v",
+        populate: [
+          {
+            path: "address.marketName",
+            model: "Market",
+            select: "marketName", // only marketName
+          },
+          // {
+          //   path: "address.streetAddress",
+          //   model: "Market",
+          //   select: "streetAddress", // only streetAddress
+          // },
+          {
+            path: "address.landMark",
+            model: "Market",
+            select: "landmark", // only landMark
+          },
+          {
+            path: "address.area",
+            model: "Market",
+            select: "area", // only area
+          },
+          {
+            path: "address.pincode",
+            model: "Market",
+            select: "pincode", // only pincode
+          },
+        ],
+      })
       .populate("productItem", "itemName")
       .populate("createdBy")
       .populate("designer", "name")
@@ -908,7 +1028,37 @@ exports.getDesignerById = async (req, res) => {
 
     const orders = await Order.find({ designer: id })
       .populate("companyName", "companyName avatar")
-      .populate("party", "partyName contactPerson personWhatsAppNo GSTNo")
+      .populate({
+        path: "party",
+        select: "-__v",
+        populate: [
+          {
+            path: "address.marketName",
+            model: "Market",
+            select: "marketName", // only marketName
+          },
+          // {
+          //   path: "address.streetAddress",
+          //   model: "Market",
+          //   select: "streetAddress", // only streetAddress
+          // },
+          {
+            path: "address.landMark",
+            model: "Market",
+            select: "landmark", // only landMark
+          },
+          {
+            path: "address.area",
+            model: "Market",
+            select: "area", // only area
+          },
+          {
+            path: "address.pincode",
+            model: "Market",
+            select: "pincode", // only pincode
+          },
+        ],
+      })
       .populate("productItem", "itemName")
       .populate("createdBy")
       .populate("designer", "name")
@@ -950,7 +1100,37 @@ exports.getPrinterById = async (req, res) => {
 
     const orders = await Order.find({ printer: id })
       .populate("companyName", "companyName avatar")
-      .populate("party", "partyName contactPerson personWhatsAppNo GSTNo")
+      .populate({
+        path: "party",
+        select: "-__v",
+        populate: [
+          {
+            path: "address.marketName",
+            model: "Market",
+            select: "marketName", // only marketName
+          },
+          // {
+          //   path: "address.streetAddress",
+          //   model: "Market",
+          //   select: "streetAddress", // only streetAddress
+          // },
+          {
+            path: "address.landMark",
+            model: "Market",
+            select: "landmark", // only landMark
+          },
+          {
+            path: "address.area",
+            model: "Market",
+            select: "area", // only area
+          },
+          {
+            path: "address.pincode",
+            model: "Market",
+            select: "pincode", // only pincode
+          },
+        ],
+      })
       .populate("productItem", "itemName")
       .populate("createdBy")
       .populate("designer", "name")
@@ -993,7 +1173,37 @@ exports.getBinderById = async (req, res) => {
 
     const orders = await Order.find({ binder: id })
       .populate("companyName", "companyName avatar")
-      .populate("party", "partyName contactPerson personWhatsAppNo GSTNo")
+      .populate({
+        path: "party",
+        select: "-__v",
+        populate: [
+          {
+            path: "address.marketName",
+            model: "Market",
+            select: "marketName", // only marketName
+          },
+          // {
+          //   path: "address.streetAddress",
+          //   model: "Market",
+          //   select: "streetAddress", // only streetAddress
+          // },
+          {
+            path: "address.landMark",
+            model: "Market",
+            select: "landmark", // only landMark
+          },
+          {
+            path: "address.area",
+            model: "Market",
+            select: "area", // only area
+          },
+          {
+            path: "address.pincode",
+            model: "Market",
+            select: "pincode", // only pincode
+          },
+        ],
+      })
       .populate("productItem", "itemName")
       .populate("createdBy")
       .populate("designer", "name")
@@ -1039,7 +1249,37 @@ exports.getBookletBinderById = async (req, res) => {
 
     const orders = await Order.find({ bookletBinder: id })
       .populate("companyName", "companyName avatar")
-      .populate("party", "partyName contactPerson personWhatsAppNo GSTNo")
+      .populate({
+        path: "party",
+        select: "-__v",
+        populate: [
+          {
+            path: "address.marketName",
+            model: "Market",
+            select: "marketName", // only marketName
+          },
+          // {
+          //   path: "address.streetAddress",
+          //   model: "Market",
+          //   select: "streetAddress", // only streetAddress
+          // },
+          {
+            path: "address.landMark",
+            model: "Market",
+            select: "landmark", // only landMark
+          },
+          {
+            path: "address.area",
+            model: "Market",
+            select: "area", // only area
+          },
+          {
+            path: "address.pincode",
+            model: "Market",
+            select: "pincode", // only pincode
+          },
+        ],
+      })
       .populate("productItem", "itemName")
       .populate("createdBy")
       .populate("designer", "name")
@@ -1222,7 +1462,37 @@ exports.updateStaffStatus = async (req, res) => {
     console.log("🔍 Fetching order:", orderId);
     const currentOrder = await Order.findById(orderId)
       .populate("companyName", "companyName avatar")
-      .populate("party", "partyName")
+      .populate({
+        path: "party",
+        select: "-__v",
+        populate: [
+          {
+            path: "address.marketName",
+            model: "Market",
+            select: "marketName", // only marketName
+          },
+          // {
+          //   path: "address.streetAddress",
+          //   model: "Market",
+          //   select: "streetAddress", // only streetAddress
+          // },
+          {
+            path: "address.landMark",
+            model: "Market",
+            select: "landmark", // only landMark
+          },
+          {
+            path: "address.area",
+            model: "Market",
+            select: "area", // only area
+          },
+          {
+            path: "address.pincode",
+            model: "Market",
+            select: "pincode", // only pincode
+          },
+        ],
+      })
       .populate("productItem", "itemName");
 
     if (!currentOrder) {
@@ -1304,7 +1574,37 @@ exports.updateStaffStatus = async (req, res) => {
       { new: true }
     )
       .populate("companyName", "companyName avatar")
-      .populate("party", "partyName")
+      .populate({
+        path: "party",
+        select: "-__v",
+        populate: [
+          {
+            path: "address.marketName",
+            model: "Market",
+            select: "marketName", // only marketName
+          },
+          // {
+          //   path: "address.streetAddress",
+          //   model: "Market",
+          //   select: "streetAddress", // only streetAddress
+          // },
+          {
+            path: "address.landMark",
+            model: "Market",
+            select: "landmark", // only landMark
+          },
+          {
+            path: "address.area",
+            model: "Market",
+            select: "area", // only area
+          },
+          {
+            path: "address.pincode",
+            model: "Market",
+            select: "pincode", // only pincode
+          },
+        ],
+      })
       .populate("productItem", "itemName");
 
     console.log("✅ Order updated successfully:", updatedOrder._id);

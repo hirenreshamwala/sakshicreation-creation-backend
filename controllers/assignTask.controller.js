@@ -334,7 +334,8 @@ exports.getAllAssignTasks = async (req, res) => {
         path: "assignTo",
         populate: {
           path: "role",
-          select: "roleName" // yaha jitne fields chahiye wo add kar sakte ho
+          model: "Role",
+          select: "roleName" // Only get roleName (optional)
         }
       })
 
