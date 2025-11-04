@@ -1704,30 +1704,40 @@ exports.removeLoadingOrder = async (req, res) => {
   }
 };
 
-
 exports.driverSelectionAndInventoryManage = async (req, res) => {
   try {
-    const inventory = await Inventory.findById(req.body.inventory);
+    const inventory = await Inventory.findById(req.body.inventory).lean();
 
-    // Prevent exceeding available stock
-    const available = inventory.quantity - (inventory.usedBox || 0);
-    if (req.body.qty > available) {
-      return res.status(400).json({
-        success: false,
-        message: `Insufficient stock in inventory ${inventory.boxName}. Only ${available} left.`,
+    if (inventory) {
+      const { _id, ...inventoryData } = inventory;
+
+      await Inventory.create({
+        ...inventoryData,
+        quantity: req.body.noOfPieces,
+        type: "outward",
       });
+
+      if (req.body.step === 2) {
+        await Inventory.create({
+          ...inventoryData,
+          quantity: req.body.noOfPieces,
+          category: "godown",
+          type: "inward",
+        });
+
+        await Inventory.findByIdAndUpdate(
+          inventory._id,
+          { sendTo: "godown" },
+          { new: true }
+        );
+      }
     }
 
-    inventory.usedBox = (inventory.usedBox || 0) + req.body.qty;
-    await inventory.save();
-
-    // ✅ Update QP Order with inventory usage
     const updatedOrder = await QpData.findByIdAndUpdate(
       req.params.id,
       {
-        inventory: req.body.inventory,
-        step: req.body.step,
-        status: "completed",
+        driver: req.body.driverId,
+        deliverTo: req.body.deliverTo,
       },
       { new: true }
     )

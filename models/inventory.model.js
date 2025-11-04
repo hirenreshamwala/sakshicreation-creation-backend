@@ -194,8 +194,11 @@ const InventorySchema = new mongoose.Schema(
     paper3GSM: {
       type: String,
     },
-    usedBox:{
+    usedBox: {
       type: Number,
+    },
+    sendTo: {
+      type: String,
     },
   },
   { timestamps: true }

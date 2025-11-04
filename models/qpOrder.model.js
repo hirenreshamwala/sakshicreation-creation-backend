@@ -473,7 +473,9 @@ const qpDataSchema = new mongoose.Schema(
       ref: "Inventory",
       required: false,
     },
-    
+    deliverTo: {
+      type: String,
+    },
   },
   {
     timestamps: true,
