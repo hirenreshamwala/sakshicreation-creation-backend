@@ -200,6 +200,12 @@ const InventorySchema = new mongoose.Schema(
     sendTo: {
       type: String,
     },
+    isKantan: {
+      type: Boolean,
+    },
+    printType: {
+      type: String,
+    },
   },
   { timestamps: true }
 );

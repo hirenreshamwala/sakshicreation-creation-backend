@@ -1016,6 +1016,8 @@ async function createOutwardInventoryEntries(qpOrder, session) {
         paper1GSM: getOrderdata.paper1GSM,
         paper2GSM: getOrderdata.paper2GSM,
         paper3GSM: getOrderdata.paper3GSM,
+        isKantan: qpOrder.isKantan,
+        printType: qpOrder.printType,
       };
 
       console.log(`📝 Box inward data:`, boxInward);
@@ -1059,6 +1061,8 @@ async function createOutwardInventoryEntries(qpOrder, session) {
         paper1GSM: getOrderdata.paper1GSM,
         paper2GSM: getOrderdata.paper2GSM,
         paper3GSM: getOrderdata.paper3GSM,
+        isKantan: qpOrder.isKantan,
+        printType: qpOrder.printType,
       };
 
       console.log(`📝 Box outward data:`, boxOutward);
