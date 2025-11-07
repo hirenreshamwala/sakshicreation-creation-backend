@@ -476,6 +476,12 @@ const qpDataSchema = new mongoose.Schema(
     deliverTo: {
       type: String,
     },
+    deductFrom: {
+      type: String,
+    },
+    deductQty: {
+      type: String,
+    },
   },
   {
     timestamps: true,

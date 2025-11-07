@@ -1033,40 +1033,40 @@ async function createOutwardInventoryEntries(qpOrder, session) {
       const getOrderdata = await PackagingOption.findById(qpOrder.orderdata);
       console.log("getOrderdata", getOrderdata, "getOrderdata");
       console.log(`💾 Creating box outward entry...`);
-      const boxOutward = {
-        category: "factory",
-        type: "outward",
-        inventoryType: "Box",
-        lamination: qpOrder.lamination,
-        laminationType: qpOrder.laminationType,
-        uv: qpOrder.uv,
-        uvType: qpOrder.uvType,
-        varnish: qpOrder.varnish,
-        quantity: qpOrder.noOfPieces,
-        boxLength: qpOrder.orderdata.length,
-        boxWidth: qpOrder.orderdata.width,
-        boxHeight: qpOrder.orderdata.height,
-        date: new Date(),
-        qpOrder: qpOrder._id,
-        qpPurchase: qpOrder._id,
-        companyName: qpOrder.companyName,
-        for: qpOrder.assignedTo,
-        forCompany: qpOrder.createdBy,
-        ply: getOrderdata.ply,
-        uom: getOrderdata.uom,
-        length: getOrderdata.length,
-        width: getOrderdata.width,
-        height: getOrderdata.height,
-        deckal: getOrderdata.deckal,
-        paper1GSM: getOrderdata.paper1GSM,
-        paper2GSM: getOrderdata.paper2GSM,
-        paper3GSM: getOrderdata.paper3GSM,
-        isKantan: qpOrder.isKantan,
-        printType: qpOrder.printType,
-      };
+      // const boxOutward = {
+      //   category: "factory",
+      //   type: "outward",
+      //   inventoryType: "Box",
+      //   lamination: qpOrder.lamination,
+      //   laminationType: qpOrder.laminationType,
+      //   uv: qpOrder.uv,
+      //   uvType: qpOrder.uvType,
+      //   varnish: qpOrder.varnish,
+      //   quantity: qpOrder.noOfPieces,
+      //   boxLength: qpOrder.orderdata.length,
+      //   boxWidth: qpOrder.orderdata.width,
+      //   boxHeight: qpOrder.orderdata.height,
+      //   date: new Date(),
+      //   qpOrder: qpOrder._id,
+      //   qpPurchase: qpOrder._id,
+      //   companyName: qpOrder.companyName,
+      //   for: qpOrder.assignedTo,
+      //   forCompany: qpOrder.createdBy,
+      //   ply: getOrderdata.ply,
+      //   uom: getOrderdata.uom,
+      //   length: getOrderdata.length,
+      //   width: getOrderdata.width,
+      //   height: getOrderdata.height,
+      //   deckal: getOrderdata.deckal,
+      //   paper1GSM: getOrderdata.paper1GSM,
+      //   paper2GSM: getOrderdata.paper2GSM,
+      //   paper3GSM: getOrderdata.paper3GSM,
+      //   isKantan: qpOrder.isKantan,
+      //   printType: qpOrder.printType,
+      // };
 
-      console.log(`📝 Box outward data:`, boxOutward);
-      await new Inventory(boxOutward).save({ session });
+      // console.log(`📝 Box outward data:`, boxOutward);
+      // await new Inventory(boxOutward).save({ session });
 
       const changeQty = await Inventory.find({
         qpOrder: qpOrder._id,
@@ -1370,7 +1370,45 @@ exports.updateQPOrderStatus = async (req, res) => {
     }
 
     // Handle deliveryStatus override
-    if (deliveryStatus) updateData.deliveryStatus = deliveryStatus;
+    if (deliveryStatus) {
+      updateData.deliveryStatus = deliveryStatus;
+
+      if (updateData.deliveryStatus === "delivered") {
+        const boxOutward = {
+          category: "factory",
+          type: "outward",
+          inventoryType: "Box",
+          lamination: currentOrder.lamination,
+          laminationType: currentOrder.laminationType,
+          uv: currentOrder.uv,
+          uvType: currentOrder.uvType,
+          varnish: currentOrder.varnish,
+          quantity: currentOrder.noOfPieces,
+          boxLength: currentOrder.orderdata.length,
+          boxWidth: currentOrder.orderdata.width,
+          boxHeight: currentOrder.orderdata.height,
+          date: new Date(),
+          qpOrder: currentOrder._id,
+          qpPurchase: currentOrder._id,
+          companyName: currentOrder.companyName,
+          for: currentOrder.assignedTo,
+          forCompany: currentOrder.createdBy,
+          ply: currentOrder.ply,
+          uom: currentOrder.uom,
+          length: currentOrder.length,
+          width: currentOrder.width,
+          height: currentOrder.height,
+          deckal: currentOrder.deckal,
+          paper1GSM: currentOrder.paper1GSM,
+          paper2GSM: currentOrder.paper2GSM,
+          paper3GSM: currentOrder.paper3GSM,
+          isKantan: currentOrder.isKantan,
+          printType: currentOrder.printType,
+        };
+        console.log(`📝 Box outward data:`, boxOutward);
+        await new Inventory(boxOutward).save({ session });
+      }
+    }
 
     const updatedOrder = await QpData.findByIdAndUpdate(orderId, updateData, {
       new: true,
@@ -1715,11 +1753,11 @@ exports.driverSelectionAndInventoryManage = async (req, res) => {
     if (inventory) {
       const { _id, ...inventoryData } = inventory;
 
-      await Inventory.create({
-        ...inventoryData,
-        quantity: req.body.noOfPieces,
-        type: "outward",
-      });
+      // await Inventory.create({
+      //   ...inventoryData,
+      //   quantity: req.body.noOfPieces,
+      //   type: "outward",
+      // });
 
       if (req.body.step === 2) {
         await Inventory.create({
