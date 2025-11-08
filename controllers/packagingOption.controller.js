@@ -6,11 +6,11 @@ const Party = require("../models/Party.model");
 // Create a new Packaging Option
 exports.createPackagingOption = async (req, res) => {
   try {
-    const { party, ply, length, width, height, deckal, paper1GSM, paper2GSM, paper3GSM } = req.body;
+    const { party, ply, length, width, height, deckal, paper1GSM, paper2GSM, paper3GSM, noOfPieces, ratePerPiece } = req.body;
 
     // Validate all required fields
-    if (!ply || !length || !width || !height || !deckal || !paper1GSM || !paper2GSM || !paper3GSM) {
-      return res.status(400).json({ message: "All fields (ply, length, width, height, deckal, paper1GSM, paper2GSM, paper3GSM) are required" });
+    if (!ply || !length || !width || !height || !deckal || !paper1GSM || !paper2GSM || !paper3GSM || !noOfPieces || !ratePerPiece) {
+      return res.status(400).json({ message: "All fields (ply, length, width, height, deckal, paper1GSM, paper2GSM, paper3GSM, no of pieces, rate per piece) are required" });
     }
 
     // Check if identical data already exists
@@ -19,11 +19,13 @@ exports.createPackagingOption = async (req, res) => {
       ply,
       length,
       width,
-      height, 
+      height,
       deckal,
       paper1GSM,
       paper2GSM,
       paper3GSM,
+      noOfPieces,
+      ratePerPiece,
     });
 
     if (existingOption) {
@@ -35,11 +37,13 @@ exports.createPackagingOption = async (req, res) => {
       ply,
       length,
       width,
-      height, 
+      height,
       deckal,
       paper1GSM,
       paper2GSM,
       paper3GSM,
+      noOfPieces,
+      ratePerPiece,
     });
     await newOption.save();
     await newOption.populate("party"); // Populate party to include partyName in response
@@ -73,11 +77,11 @@ exports.getAllPackagingOptions = async (req, res) => {
 exports.updatePackagingOption = async (req, res) => {
   try {
     const { id } = req.params;
-    const { party, ply, length, width, height, deckal, paper1GSM, paper2GSM, paper3GSM } = req.body;
+    const { party, ply, length, width, height, deckal, paper1GSM, paper2GSM, paper3GSM, noOfPieces, ratePerPiece } = req.body;
 
     // Validate all required fields
-    if (!ply || !length || !width || !height || !deckal || !paper1GSM || !paper2GSM || !paper3GSM) {
-      return res.status(400).json({ message: "All fields (ply, length, width, height, deckal, paper1GSM, paper2GSM, paper3GSM) are required" });
+    if (!ply || !length || !width || !height || !deckal || !paper1GSM || !paper2GSM || !paper3GSM || !noOfPieces || !ratePerPiece) {
+      return res.status(400).json({ message: "All fields (ply, length, width, height, deckal, paper1GSM, paper2GSM, paper3GSM, no of pieces, rate per piece) are required" });
     }
 
     // Check if identical data already exists (excluding the current record)
@@ -86,11 +90,13 @@ exports.updatePackagingOption = async (req, res) => {
       ply,
       length,
       width,
-      height, 
+      height,
       deckal,
       paper1GSM,
       paper2GSM,
       paper3GSM,
+      noOfPieces,
+      ratePerPiece,
       _id: { $ne: id },
     });
 
@@ -100,7 +106,7 @@ exports.updatePackagingOption = async (req, res) => {
 
     const updatedOption = await PackagingOption.findByIdAndUpdate(
       id,
-      { party, ply, length, width, height, deckal, paper1GSM, paper2GSM, paper3GSM },
+      { party, ply, length, width, height, deckal, paper1GSM, paper2GSM, paper3GSM, noOfPieces, ratePerPiece },
       { new: true, runValidators: true }
     ).populate("party");
 
@@ -140,7 +146,6 @@ exports.deletePackagingOption = async (req, res) => {
   }
 };
 
-
 exports.bulkUploadPackagingOptions = async (req, res) => {
   const session = await mongoose.startSession();
   session.startTransaction();
@@ -177,9 +182,13 @@ exports.bulkUploadPackagingOptions = async (req, res) => {
 
     for (const [index, row] of records.entries()) {
       try {
-        const { party, ply, length, width, height, deckal, paper1GSM, paper2GSM, paper3GSM } = row;
+        const { 
+          party, ply, length, width, height, deckal, 
+          paper1GSM, paper2GSM, paper3GSM,
+          noOfPieces, ratePerPiece // Add new fields
+        } = row;
 
-        // Validate required fields
+        // Validate required fields (only existing ones are required)
         if (!party || !ply || !length || !width || !height || !deckal || !paper1GSM || !paper2GSM || !paper3GSM) {
           skippedRecords.push({
             row: index + 1,
@@ -211,6 +220,8 @@ exports.bulkUploadPackagingOptions = async (req, res) => {
           paper1GSM,
           paper2GSM,
           paper3GSM,
+          noOfPieces, // Include in duplicate check
+          ratePerPiece, // Include in duplicate check
         }).session(session);
 
         if (existingOption) {
@@ -233,6 +244,8 @@ exports.bulkUploadPackagingOptions = async (req, res) => {
           paper1GSM,
           paper2GSM,
           paper3GSM,
+          noOfPieces, // Add new fields
+          ratePerPiece, // Add new fields
         });
 
       } catch (err) {
@@ -274,6 +287,8 @@ exports.bulkUploadPackagingOptions = async (req, res) => {
           paper1GSM: "paper1GSM",
           paper2GSM: "paper2GSM",
           paper3GSM: "paper3GSM",
+          noOfPieces: "noOfPieces", // Add new headers
+          ratePerPiece: "ratePerPiece", // Add new headers
           reason: "reason",
         },
         ...skippedRecords,
@@ -293,7 +308,7 @@ exports.bulkUploadPackagingOptions = async (req, res) => {
       skippedCount: skippedRecords.length,
       skippedRecords,
       data: populatedOptions,
-      skippedCsv: skippedCsv || null, // Include CSV content in response
+      skippedCsv: skippedCsv || null,
     });
   } catch (error) {
     await session.abortTransaction();

@@ -473,6 +473,10 @@ const qpDataSchema = new mongoose.Schema(
       ref: "Inventory",
       required: false,
     },
+    isUrgent: {
+      type: Boolean,
+      default: false,
+    },
     
   },
   {
