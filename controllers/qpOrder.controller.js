@@ -230,6 +230,14 @@ exports.getAllQpOrders = async (req, res) => {
         path: "party",
         select:
           "partyName address contactPerson personMobileNo personWhatsAppNo GSTNo",
+        // match: partyMatch,
+        populate: [
+          { path: "address.marketName", model: "Market", select: "marketName" },
+          // { path: "address.streetAddress", model: "Market", select: "streetAddress" },
+          { path: "address.landMark", model: "Market", select: "landmark" },
+          { path: "address.area", model: "Market", select: "area" },
+          { path: "address.pincode", model: "Market", select: "pincode" },
+        ],
       })
       .populate("kantan", "kantanName")
       .populate({
@@ -1336,7 +1344,7 @@ exports.updateQPOrderStatus = async (req, res) => {
       const validStatuses = [
         "pending",
         "in_progress",
-        "completed",
+        "Completed",
         "loading",
         "going_to_delivery",
         "delivered",
@@ -1372,42 +1380,6 @@ exports.updateQPOrderStatus = async (req, res) => {
     // Handle deliveryStatus override
     if (deliveryStatus) {
       updateData.deliveryStatus = deliveryStatus;
-
-      if (updateData.deliveryStatus === "delivered") {
-        const boxOutward = {
-          category: "factory",
-          type: "outward",
-          inventoryType: "Box",
-          lamination: currentOrder.lamination,
-          laminationType: currentOrder.laminationType,
-          uv: currentOrder.uv,
-          uvType: currentOrder.uvType,
-          varnish: currentOrder.varnish,
-          quantity: currentOrder.noOfPieces,
-          boxLength: currentOrder.orderdata.length,
-          boxWidth: currentOrder.orderdata.width,
-          boxHeight: currentOrder.orderdata.height,
-          date: new Date(),
-          qpOrder: currentOrder._id,
-          qpPurchase: currentOrder._id,
-          companyName: currentOrder.companyName,
-          for: currentOrder.assignedTo,
-          forCompany: currentOrder.createdBy,
-          ply: currentOrder.ply,
-          uom: currentOrder.uom,
-          length: currentOrder.length,
-          width: currentOrder.width,
-          height: currentOrder.height,
-          deckal: currentOrder.deckal,
-          paper1GSM: currentOrder.paper1GSM,
-          paper2GSM: currentOrder.paper2GSM,
-          paper3GSM: currentOrder.paper3GSM,
-          isKantan: currentOrder.isKantan,
-          printType: currentOrder.printType,
-        };
-        console.log(`📝 Box outward data:`, boxOutward);
-        await new Inventory(boxOutward).save({ session });
-      }
     }
 
     const updatedOrder = await QpData.findByIdAndUpdate(orderId, updateData, {
@@ -1446,6 +1418,30 @@ exports.updateQPOrderStatus = async (req, res) => {
 
 exports.sendBoxFromGodownOrFactory = async (req, res) => {
   try {
+    if (req.body.step === 4) {
+      const updatedOrder = await QpData.findByIdAndUpdate(
+        req.params.id,
+        { step: 4 },
+        { new: true }
+      )
+        .populate("companyName", "companyName avatar")
+        .populate(
+          "party",
+          "partyName address contactPerson personMobileNo personWhatsAppNo GSTNo"
+        )
+        .populate(
+          "orderdata",
+          "party ply uom length width height deckal paper1GSM paper2GSM paper3GSM"
+        )
+        .populate("kantan", "kantanName")
+        .populate("driver", "firstName lastName email");
+
+      return res.status(200).json({
+        success: true,
+        message: "Step 4 updated successfully.",
+        data: updatedOrder,
+      });
+    }
     const inventory = await Inventory.findById(req.body.inventory);
 
     // Prevent exceeding available stock
@@ -1466,7 +1462,7 @@ exports.sendBoxFromGodownOrFactory = async (req, res) => {
       {
         inventory: req.body.inventory,
         step: req.body.step,
-        status: "completed",
+        status: "Completed",
       },
       { new: true }
     )
@@ -1501,7 +1497,8 @@ exports.bulkUpdateQPOrderStatus = async (req, res) => {
   const session = await mongoose.startSession();
   session.startTransaction();
   try {
-    console.log("Bulk update request body:", req);
+    console.log("Bulk update request body:", req.body);
+
     const {
       orderIds,
       deliveryStatus,
@@ -1509,18 +1506,19 @@ exports.bulkUpdateQPOrderStatus = async (req, res) => {
       dispatchPhotos,
       dispatchTime,
       deliveryTime,
+      billNumber,
+      step, // ✅ added for godown logic
     } = req.body;
+
     const driverId = req.user?.id;
     const currentTime = new Date();
-    console.log(req.body, "reqqqqqq");
+
     if (!orderIds || !orderIds.length) throw new Error("Order IDs required");
 
     // Check conflicting driver assignments
     const conflictingOrders = await QpData.find({
       _id: { $in: orderIds },
-      driver: {
-        $nin: [null, driverId], // driver should not be null AND not be current driverId
-      },
+      driver: { $nin: [null, driverId] },
     }).session(session);
 
     if (conflictingOrders.length > 0)
@@ -1532,16 +1530,17 @@ exports.bulkUpdateQPOrderStatus = async (req, res) => {
     const driver = await Staff.findById(driverId).session(session);
     if (!driver) throw new Error("Driver not found");
 
-    // Status handling
     if (billNumber) {
       updateData.billNumber = billNumber;
     } else {
       console.warn("⚠️ No bill number provided for delivery update");
     }
-    // Handle delivery status logic
+
+    // --- STATUS HANDLING ---
     if (deliveryStatus) {
       switch (deliveryStatus) {
-        case "loading":
+        // ---------------- LOADING ----------------
+        case "loading": {
           if (driver.isDisptach) {
             throw new Error(
               "You already have an ongoing dispatch. Complete delivery before loading new orders."
@@ -1549,7 +1548,7 @@ exports.bulkUpdateQPOrderStatus = async (req, res) => {
           }
           const driverData = await Staff.findById(driverId).session(session);
           if (driverData) {
-            const updatedOrders = [...driverData.orders, ...orderIds];
+            const updatedOrders = [...(driverData.orders || []), ...orderIds];
             await Staff.findByIdAndUpdate(
               driverId,
               { orders: updatedOrders },
@@ -1559,40 +1558,167 @@ exports.bulkUpdateQPOrderStatus = async (req, res) => {
           updateData.loadingStartDate = currentTime;
           updateData.deliveryStatus = "loading";
           break;
-        case "in_transit":
+        }
+
+        // ---------------- IN TRANSIT ----------------
+        case "in_transit": {
           if (!dispatchPhotos || !dispatchPhotos.length)
             throw new Error("Dispatch photos required for dispatch");
           updateData.deliveryStartTime = currentTime;
           updateData.loadingEndDate = currentTime;
           updateData.deliveryStatus = "in_transit";
           updateData.dispatchTime = dispatchTime || currentTime;
-          // Store dispatch photo
           updateData.dispatchPhoto = dispatchPhotos[0];
+
           await Staff.findByIdAndUpdate(
             driverId,
             { isDisptach: true },
             { session }
           );
           break;
-        case "delivered":
+        }
+
+        // ---------------- DELIVERED ----------------
+        case "delivered": {
           if (!billPhotos || !billPhotos.length)
             throw new Error("Bill photos required for delivery");
+
           updateData.deliveryEndTime = currentTime;
           updateData.deliveredAt = currentTime;
           updateData.deliveryStatus = "delivered";
           updateData.deliveryTime = deliveryTime || currentTime;
-          // Store bill photo
           updateData.billPhoto = billPhotos[0];
 
+          // Fetch delivered orders
+          const deliveredOrders = await QpData.find({
+            _id: { $in: orderIds },
+          })
+            .populate("orderdata")
+            .session(session);
+
+          // Create outward entries for each order
+          for (const currentOrder of deliveredOrders) {
+            console.log(
+              currentOrder,
+              "jhgkbghsdjkfhbsdjkhfjk-----------------------------"
+            );
+            console.log(currentOrder.step, "current order step ");
+            if (currentOrder.step === 4 || currentOrder.step === 3) {
+              const boxOutward = {
+                category: "factory",
+                type: "outward",
+                inventoryType: "Box",
+                lamination: currentOrder.lamination,
+                laminationType: currentOrder.laminationType,
+                uv: currentOrder.uv,
+                uvType: currentOrder.uvType,
+                varnish: currentOrder.varnish,
+                quantity: currentOrder.noOfPieces,
+                boxLength: currentOrder.orderdata?.length,
+                boxWidth: currentOrder.orderdata?.width,
+                boxHeight: currentOrder.orderdata?.height,
+                date: new Date(),
+                qpOrder: currentOrder._id,
+                qpPurchase: currentOrder._id,
+                companyName: currentOrder.companyName,
+                for: currentOrder.assignedTo,
+                forCompany: currentOrder.createdBy,
+                ply: currentOrder.orderdata.ply,
+                uom: currentOrder.orderdata.uom,
+                length: currentOrder.orderdata.length,
+                width: currentOrder.orderdata.width,
+                height: currentOrder.orderdata.height,
+                deckal: currentOrder.orderdata.deckal,
+                paper1GSM: currentOrder.orderdata.paper1GSM,
+                paper2GSM: currentOrder.orderdata.paper2GSM,
+                paper3GSM: currentOrder.orderdata.paper3GSM,
+                isKantan: currentOrder.isKantan,
+                printType: currentOrder.printType,
+                sendTo: currentOrder.deliverTo,
+              };
+
+              console.log(
+                `📝 Creating Box outward for order ${currentOrder._id}`
+              );
+              const inventory = await new Inventory(boxOutward).save({
+                session,
+              });
+
+              // ✅ If step === 2 → move to godown (create inward)
+              if (currentOrder.deliverTo === "godown") {
+                const godownInward = {
+                  ...boxOutward,
+                  _id: undefined, // new document
+                  category: "godown",
+                  type: "inward",
+                  date: new Date(),
+                  // sendTo: "godown",
+                  // status: "in_stock",
+                };
+
+                console.log(
+                  `📦 Moving order ${currentOrder._id} boxes from factory to godown`
+                );
+
+                await Inventory.create([godownInward], { session });
+
+                // Update the factory outward entry as sent
+                await Inventory.findByIdAndUpdate(
+                  inventory._id,
+                  { sendTo: "godown" },
+                  { session }
+                );
+              }
+            } else if (currentOrder.step === 2) {
+              const boxOutward = {
+                category: "godown",
+                type: "outward",
+                inventoryType: "Box",
+                lamination: currentOrder.lamination,
+                laminationType: currentOrder.laminationType,
+                uv: currentOrder.uv,
+                uvType: currentOrder.uvType,
+                varnish: currentOrder.varnish,
+                quantity: currentOrder.noOfPieces,
+                boxLength: currentOrder.orderdata?.length,
+                boxWidth: currentOrder.orderdata?.width,
+                boxHeight: currentOrder.orderdata?.height,
+                date: new Date(),
+                qpOrder: currentOrder._id,
+                qpPurchase: currentOrder._id,
+                companyName: currentOrder.companyName,
+                for: currentOrder.assignedTo,
+                forCompany: currentOrder.createdBy,
+                ply: currentOrder.orderdata.ply,
+                uom: currentOrder.orderdata.uom,
+                length: currentOrder.orderdata.length,
+                width: currentOrder.orderdata.width,
+                height: currentOrder.orderdata.height,
+                deckal: currentOrder.orderdata.deckal,
+                paper1GSM: currentOrder.orderdata.paper1GSM,
+                paper2GSM: currentOrder.orderdata.paper2GSM,
+                paper3GSM: currentOrder.orderdata.paper3GSM,
+                isKantan: currentOrder.isKantan,
+                printType: currentOrder.printType,
+                status: "used",
+              };
+
+              console.log(
+                `📝 Creating Box outward for order ${currentOrder._id}`
+              );
+              const inventory = await new Inventory(boxOutward).save({
+                session,
+              });
+            }
+          }
           break;
+        }
       }
     }
 
-    // DeliveryStatus override
     if (deliveryStatus) updateData.deliveryStatus = deliveryStatus;
-    console.log(updateData);
 
-    // Bulk update
+    // Bulk update orders
     await QpData.updateMany({ _id: { $in: orderIds } }, updateData, {
       session,
     });
@@ -1622,7 +1748,7 @@ exports.bulkUpdateQPOrderStatus = async (req, res) => {
   } catch (err) {
     await session.abortTransaction();
     session.endSession();
-    console.error(err);
+    console.error("❌ Bulk update failed:", err);
     res.status(500).json({
       success: false,
       message: err.message || "Failed to update orders",
@@ -1752,6 +1878,8 @@ exports.driverSelectionAndInventoryManage = async (req, res) => {
 
     if (inventory) {
       const { _id, ...inventoryData } = inventory;
+
+      // here box will be outward
 
       // await Inventory.create({
       //   ...inventoryData,
