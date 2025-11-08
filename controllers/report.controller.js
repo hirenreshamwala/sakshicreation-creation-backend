@@ -920,7 +920,7 @@ const getqpInactiveParties = async (req, res) => {
       populate: {
         path: "orderdata", // packagingOption reference
         model: "packagingOption",
-        select: "_id ply length width height deckal paper1GSM paper2GSM paper3GSM",
+        select: "_id ply length width height deckal paper1GSM paper2GSM paper3GSM noOfPieces ratePerPiece",
       },
     });
 

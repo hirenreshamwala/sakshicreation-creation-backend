@@ -482,6 +482,11 @@ const qpDataSchema = new mongoose.Schema(
     deductQty: {
       type: String,
     },
+    isUrgent: {
+      type: Boolean,
+      default: false,
+    },
+    
   },
   {
     timestamps: true,

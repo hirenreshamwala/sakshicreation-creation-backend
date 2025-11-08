@@ -58,6 +58,8 @@ exports.createQpOrder = async (req, res) => {
       paper1GSM,
       paper2GSM,
       paper3GSM,
+      noOfPieces,
+      ratePerPiece
     } = packagingOption || {};
     if (
       !ply ||
@@ -68,7 +70,9 @@ exports.createQpOrder = async (req, res) => {
       !deckal ||
       !paper1GSM ||
       !paper2GSM ||
-      !paper3GSM
+      !paper3GSM ||
+      !noOfPieces ||
+      !ratePerPiece
     ) {
       await session.abortTransaction();
       session.endSession();
@@ -88,9 +92,8 @@ exports.createQpOrder = async (req, res) => {
       });
     }
 
-    // Check if a PackagingOption exists for the provided data
     let packaging = await PackagingOption.findOne({
-      party: party, // Use the party ID from req.body
+      party: party,
       ply,
       uom,
       length,
@@ -100,12 +103,13 @@ exports.createQpOrder = async (req, res) => {
       paper1GSM,
       paper2GSM,
       paper3GSM,
+      noOfPieces,
+      ratePerPiece
     }).session(session);
 
     if (!packaging) {
-      // Create new PackagingOption if none exists
       packaging = new PackagingOption({
-        party: party, // Explicitly set the party ID
+        party,
         ply,
         uom,
         length,
@@ -115,8 +119,14 @@ exports.createQpOrder = async (req, res) => {
         paper1GSM,
         paper2GSM,
         paper3GSM,
+        noOfPieces,
+        ratePerPiece,
       });
       await packaging.save({ session });
+    } else {
+      // ✅ packaging exist → update timestamp
+      packaging.updatedAt = new Date();
+      await packaging.save({ session, timestamps: false });
     }
 
     // Create QP Order with orderdata reference
@@ -143,7 +153,7 @@ exports.createQpOrder = async (req, res) => {
       })
       .populate(
         "orderdata",
-        "party ply uom length width height deckal paper1GSM paper2GSM paper3GSM"
+        "party ply uom length width height deckal paper1GSM paper2GSM paper3GSM noOfPieces ratePerPiece"
       )
       .populate("kantan", "kantanName")
       .session(session);
@@ -224,19 +234,32 @@ exports.getAllQpOrders = async (req, res) => {
       })
       .populate(
         "orderdata",
-        "party ply uom length width height deckal paper1GSM paper2GSM paper3GSM"
+        "party ply uom length width height deckal paper1GSM paper2GSM paper3GSM noOfPieces ratePerPiece"
       )
       .populate({
         path: "party",
-        select:
-          "partyName address contactPerson personMobileNo personWhatsAppNo GSTNo",
-        // match: partyMatch,
+        select: "-__v",
         populate: [
-          { path: "address.marketName", model: "Market", select: "marketName" },
-          // { path: "address.streetAddress", model: "Market", select: "streetAddress" },
-          { path: "address.landMark", model: "Market", select: "landmark" },
-          { path: "address.area", model: "Market", select: "area" },
-          { path: "address.pincode", model: "Market", select: "pincode" },
+          {
+            path: "address.marketName",
+            model: "Market",
+            select: "marketName", 
+          },
+          {
+            path: "address.landMark",
+            model: "Market",
+            select: "landmark", 
+          },
+          {
+            path: "address.area",
+            model: "Market",
+            select: "area", 
+          },
+          {
+            path: "address.pincode",
+            model: "Market",
+            select: "pincode", 
+          },
         ],
       })
       .populate("kantan", "kantanName")
@@ -287,7 +310,7 @@ exports.getQpOrderById = async (req, res) => {
       })
       .populate(
         "orderdata",
-        "party ply uom length width height deckal paper1GSM paper2GSM paper3GSM"
+        "party ply uom length width height deckal paper1GSM paper2GSM paper3GSM noOfPieces ratePerPiece"
       )
       .populate("kantan", "kantanName")
       .populate({
@@ -486,6 +509,8 @@ exports.updateQpOrder = async (req, res) => {
         paper1GSM,
         paper2GSM,
         paper3GSM,
+        noOfPieces,
+        ratePerPiece
       } = req.body.packagingOption;
 
       // if (
@@ -529,6 +554,8 @@ exports.updateQpOrder = async (req, res) => {
         paper1GSM,
         paper2GSM,
         paper3GSM,
+        noOfPieces,
+        ratePerPiece
       }).session(session);
 
       if (!packaging) {
@@ -543,8 +570,14 @@ exports.updateQpOrder = async (req, res) => {
           paper1GSM,
           paper2GSM,
           paper3GSM,
+          noOfPieces,
+          ratePerPiece,
         });
         await packaging.save({ session });
+      } else {
+        // ✅ packaging exist → update timestamp
+        packaging.updatedAt = new Date();
+        await packaging.save({ session, timestamps: false });
       }
 
       packagingOptionId = packaging._id;
@@ -624,7 +657,7 @@ exports.updateQpOrder = async (req, res) => {
       .populate({
         path: "orderdata",
         select:
-          "party ply length width height deckal paper1GSM paper2GSM paper3GSM",
+          "party ply length width height deckal paper1GSM paper2GSM paper3GSM noOfPieces ratePerPiece",
       })
       .populate({
         path: "printer",
@@ -884,9 +917,8 @@ async function createOutwardInventoryEntries(qpOrder, session) {
           orderNo: qpOrder.orderNo,
           companyName: qpOrder.companyName || "Unknown",
           allocatedAt: new Date(),
-          note: `Difference Adjustment ${
-            differenceKg > 0 ? "+" : ""
-          }${differenceKg} KG${extraKg > 0 ? ` + Extras ${extraKg} KG` : ""}`,
+          note: `Difference Adjustment ${differenceKg > 0 ? "+" : ""
+            }${differenceKg} KG${extraKg > 0 ? ` + Extras ${extraKg} KG` : ""}`,
         };
 
         console.log(`📝 New allocation object:`, newAlloc);
@@ -1263,7 +1295,7 @@ exports.getOrdersByStaffId = async (req, res) => {
       })
       .populate(
         "orderdata",
-        "party ply uom length width height deckal paper1GSM paper2GSM paper3GSM"
+        "party ply uom length width height deckal paper1GSM paper2GSM paper3GSM noOfPieces ratePerPiece"
       )
       .populate({
         path: "printer",
@@ -1394,7 +1426,7 @@ exports.updateQPOrderStatus = async (req, res) => {
       )
       .populate(
         "orderdata",
-        "party ply uom length width height deckal paper1GSM paper2GSM paper3GSM"
+        "party ply uom length width height deckal paper1GSM paper2GSM paper3GSM noOfPieces ratePerPiece"
       )
       .populate("kantan", "kantanName")
       .populate("driver", "firstName lastName email");
@@ -1473,7 +1505,7 @@ exports.sendBoxFromGodownOrFactory = async (req, res) => {
       )
       .populate(
         "orderdata",
-        "party ply uom length width height deckal paper1GSM paper2GSM paper3GSM"
+        "party ply uom length width height deckal paper1GSM paper2GSM paper3GSM noOfPieces ratePerPiece"
       )
       .populate("kantan", "kantanName")
       .populate("driver", "firstName lastName email");
@@ -1731,7 +1763,7 @@ exports.bulkUpdateQPOrderStatus = async (req, res) => {
       )
       .populate(
         "orderdata",
-        "party ply uom length width height deckal paper1GSM paper2GSM paper3GSM"
+        "party ply uom length width height deckal paper1GSM paper2GSM paper3GSM noOfPieces ratePerPiece"
       )
       .populate("kantan", "kantanName")
       .populate("driver", "firstName lastName email isDisptach")
@@ -1918,7 +1950,7 @@ exports.driverSelectionAndInventoryManage = async (req, res) => {
       )
       .populate(
         "orderdata",
-        "party ply uom length width height deckal paper1GSM paper2GSM paper3GSM"
+        "party ply uom length width height deckal paper1GSM paper2GSM paper3GSM noOfPieces ratePerPiece"
       )
       .populate("kantan", "kantanName")
       .populate("driver", "firstName lastName email");
@@ -1933,6 +1965,45 @@ exports.driverSelectionAndInventoryManage = async (req, res) => {
     res.status(500).json({
       success: false,
       message: err.message || "Failed to update orders",
+    });
+  }
+};
+
+exports.updateMarkUrgent = async (req, res) => {
+  try {
+    const orderId = req.params.id;
+    const { isUrgent } = req.body; 
+
+    // ✅ Update QP Order with urgent status
+    const updatedOrder = await QpData.findByIdAndUpdate(
+      orderId,
+      {
+        isUrgent: isUrgent, 
+      },
+      { new: true }
+    )
+      .populate("companyName", "companyName avatar")
+      .populate(
+        "party",
+        "partyName address contactPerson personMobileNo personWhatsAppNo GSTNo"
+      )
+      .populate(
+        "orderdata",
+        "party ply uom length width height deckal paper1GSM paper2GSM paper3GSM noOfPieces ratePerPiece"
+      )
+      .populate("kantan", "kantanName")
+      .populate("driver", "firstName lastName email");
+
+    res.status(200).json({
+      success: true,
+      message: `Order successfully ${isUrgent ? 'marked as urgent' : 'unmarked as urgent'}.`,
+      data: updatedOrder,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({
+      success: false,
+      message: err.message || "Failed to update order urgent status",
     });
   }
 };
