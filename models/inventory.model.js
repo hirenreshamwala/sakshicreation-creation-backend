@@ -190,6 +190,42 @@ const InventorySchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    ply: {
+      type: String,
+    },
+    uom: {
+      type: String,
+    },
+    length: {
+      type: String,
+    },
+    width: {
+      type: String,
+    },
+    height: {
+      type: String,
+    },
+    paper1GSM: {
+      type: String,
+    },
+    paper2GSM: {
+      type: String,
+    },
+    paper3GSM: {
+      type: String,
+    },
+    usedBox: {
+      type: Number,
+    },
+    sendTo: {
+      type: String,
+    },
+    isKantan: {
+      type: Boolean,
+    },
+    printType: {
+      type: String,
+    },
   },
   { timestamps: true }
 );

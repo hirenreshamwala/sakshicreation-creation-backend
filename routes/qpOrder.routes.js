@@ -12,4 +12,7 @@ router.get("/getbystaff/:id", QpOrderController.getOrdersByStaffId);
 router.post("/remove-loading", QpOrderController.removeLoadingOrder);
 router.post("/updatestatus", QpOrderController.updateQPOrderStatus);
 router.post("/bulkupdatestatus", QpOrderController.bulkUpdateQPOrderStatus);
+router.post('/sendboxfromgodownorfactory/:id',QpOrderController.sendBoxFromGodownOrFactory)
+router.post('/driverselection/:id',QpOrderController.driverSelectionAndInventoryManage)
+router.post('/mark-urgent/:id',QpOrderController.updateMarkUrgent)
 module.exports = router;

@@ -5,7 +5,7 @@ const packagingOptionSchema = new mongoose.Schema(
     party: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Party",
-      required:false
+      required: false
     },
     ply: {
       type: String,
@@ -34,7 +34,7 @@ const packagingOptionSchema = new mongoose.Schema(
       required: true,
       trim: true,
     },
-    deckal:{
+    deckal: {
       type: String,
       required: true,
       trim: true,
@@ -51,6 +51,16 @@ const packagingOptionSchema = new mongoose.Schema(
       type: String,
       required: true,
     },
+    noOfPieces: {
+      type: String,
+      required: false,
+      trim: true,
+    },
+    ratePerPiece: {
+      type: String,
+      required: false,
+      trim: true,
+    }
   },
   { timestamps: true }
 );

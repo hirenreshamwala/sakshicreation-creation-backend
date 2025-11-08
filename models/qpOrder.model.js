@@ -468,6 +468,25 @@ const qpDataSchema = new mongoose.Schema(
     printType: {
       type: String,
     },
+    inventory: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Inventory",
+      required: false,
+    },
+    deliverTo: {
+      type: String,
+    },
+    deductFrom: {
+      type: String,
+    },
+    deductQty: {
+      type: String,
+    },
+    isUrgent: {
+      type: Boolean,
+      default: false,
+    },
+    
   },
   {
     timestamps: true,

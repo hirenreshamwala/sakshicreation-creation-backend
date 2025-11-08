@@ -33,6 +33,7 @@ const factoryArrival = require("./factoryReturn.routes");
 
 
 router.use("/staff", StaffRouter);
+router.use("/filedownload", filedownloadRouter);
 router.use(authenticateToken);
 router.use("/company", CompanyRouter);
 router.use("/report", report);
@@ -56,7 +57,6 @@ router.use("/packagingOptions", packagingOptions);
 router.use("/paperGSM", paperGSM);
 router.use("/market", marketData);
 router.use("/kantan", kantan);
-router.use("/filedownload", filedownloadRouter);
 router.use("/material", MaterialRouter);
 router.use("/roleDepartment", RoleDepartmentRouter);
 router.use("/roleDepartmentCompany", RoleDepartmentCompanyRouter);
