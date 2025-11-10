@@ -59,7 +59,7 @@ exports.createQpOrder = async (req, res) => {
       paper2GSM,
       paper3GSM,
       noOfPieces,
-      ratePerPiece
+      ratePerPiece,
     } = packagingOption || {};
     if (
       !ply ||
@@ -104,7 +104,7 @@ exports.createQpOrder = async (req, res) => {
       paper2GSM,
       paper3GSM,
       noOfPieces,
-      ratePerPiece
+      ratePerPiece,
     }).session(session);
 
     if (!packaging) {
@@ -243,22 +243,22 @@ exports.getAllQpOrders = async (req, res) => {
           {
             path: "address.marketName",
             model: "Market",
-            select: "marketName", 
+            select: "marketName",
           },
           {
             path: "address.landMark",
             model: "Market",
-            select: "landmark", 
+            select: "landmark",
           },
           {
             path: "address.area",
             model: "Market",
-            select: "area", 
+            select: "area",
           },
           {
             path: "address.pincode",
             model: "Market",
-            select: "pincode", 
+            select: "pincode",
           },
         ],
       })
@@ -510,7 +510,7 @@ exports.updateQpOrder = async (req, res) => {
         paper2GSM,
         paper3GSM,
         noOfPieces,
-        ratePerPiece
+        ratePerPiece,
       } = req.body.packagingOption;
 
       // if (
@@ -555,7 +555,7 @@ exports.updateQpOrder = async (req, res) => {
         paper2GSM,
         paper3GSM,
         noOfPieces,
-        ratePerPiece
+        ratePerPiece,
       }).session(session);
 
       if (!packaging) {
@@ -587,12 +587,12 @@ exports.updateQpOrder = async (req, res) => {
     const now = new Date();
 
     // Base fields to set (exclude paperAllocations; handled separately)
-    delete req.body.statusHistory
+    delete req.body.statusHistory;
 
     const setFields = {
       ...req.body,
       orderdata: packagingOptionId,
-      // lastStatusChangeDate,  
+      // lastStatusChangeDate,
     };
 
     // Remove fields we don't want to blindly set
@@ -618,7 +618,6 @@ exports.updateQpOrder = async (req, res) => {
       } else {
         // if you don't want to overwrite existing flags when not provided, ensure they are not present
         delete setFields[flag];
-        
       }
     });
 
@@ -918,8 +917,9 @@ async function createOutwardInventoryEntries(qpOrder, session) {
           orderNo: qpOrder.orderNo,
           companyName: qpOrder.companyName || "Unknown",
           allocatedAt: new Date(),
-          note: `Difference Adjustment ${differenceKg > 0 ? "+" : ""
-            }${differenceKg} KG${extraKg > 0 ? ` + Extras ${extraKg} KG` : ""}`,
+          note: `Difference Adjustment ${
+            differenceKg > 0 ? "+" : ""
+          }${differenceKg} KG${extraKg > 0 ? ` + Extras ${extraKg} KG` : ""}`,
         };
 
         console.log(`📝 New allocation object:`, newAlloc);
@@ -1024,6 +1024,7 @@ async function createOutwardInventoryEntries(qpOrder, session) {
   try {
     console.log(`🔍 Checking actualNoOfPieces:`, qpOrder.actualNoOfPieces);
     if (qpOrder.actualNoOfPieces) {
+      const getOrderdata = await PackagingOption.findById(qpOrder.orderData);
       console.log(`💾 Creating box inward entry...`);
       const boxInward = {
         category: "factory",
@@ -1967,13 +1968,13 @@ exports.driverSelectionAndInventoryManage = async (req, res) => {
 exports.updateMarkUrgent = async (req, res) => {
   try {
     const orderId = req.params.id;
-    const { isUrgent } = req.body; 
+    const { isUrgent } = req.body;
 
     // ✅ Update QP Order with urgent status
     const updatedOrder = await QpData.findByIdAndUpdate(
       orderId,
       {
-        isUrgent: isUrgent, 
+        isUrgent: isUrgent,
       },
       { new: true }
     )
@@ -1991,7 +1992,9 @@ exports.updateMarkUrgent = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      message: `Order successfully ${isUrgent ? 'marked as urgent' : 'unmarked as urgent'}.`,
+      message: `Order successfully ${
+        isUrgent ? "marked as urgent" : "unmarked as urgent"
+      }.`,
       data: updatedOrder,
     });
   } catch (err) {
