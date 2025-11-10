@@ -1022,10 +1022,23 @@ async function createOutwardInventoryEntries(qpOrder, session) {
   // 📦 Step 3: Box Inward / Outward
   console.log("\n📦 STEP 3: Processing box inward/outward entries...");
   try {
-    console.log(`🔍 Checking actualNoOfPieces:`, qpOrder.actualNoOfPieces);
+    console.log(`🔍 Checking actualNoOfPieces:`, qpOrder);
     if (qpOrder.actualNoOfPieces) {
-      // const getOrderdata = await PackagingOption.findById(qpOrder.orderData._id);
-      console.log(`💾 Creating box inward entry...getOrderdata`);
+      let getOrderdata;
+
+      if (
+        qpOrder.orderdata &&
+        typeof qpOrder.orderdata === "object" &&
+        qpOrder.orderdata._id
+      ) {
+        // orderData is an object
+        getOrderdata = qpOrder.orderdata;
+      } else {
+        // orderData is an ID
+        getOrderdata = await PackagingOption.findById(qpOrder.orderdata);
+      }
+
+      console.log(`💾 Creating box inward entry...getOrderdata`,qpOrder, getOrderdata);
       const boxInward = {
         category: "factory",
         type: "inward",
@@ -1046,14 +1059,14 @@ async function createOutwardInventoryEntries(qpOrder, session) {
         for: qpOrder.assignedTo,
         forCompany: qpOrder.createdBy,
         // usedBox: qpOrder.noOfPieces,
-        ply: qpOrder.orderData?.ply,
-        uom: qpOrder.orderData?.uom || "inch",
+        ply: getOrderdata.ply || qpOrder.orderData?.ply,
+        uom: getOrderdata.uom || qpOrder.orderData?.uom || "inch",
         width: qpOrder.orderData?.width,
         height: qpOrder.orderData?.height,
         deckal: qpOrder.orderData?.deckal,
-        paper1GSM: qpOrder.orderData?.paper1GSM,
-        paper2GSM: qpOrder.orderData?.paper2GSM,
-        paper3GSM: qpOrder.orderData?.paper3GSM,
+        paper1GSM: qpOrder.paperKG?.paper1.gsm,
+        paper2GSM: qpOrder.paperKG?.paper2.gsm,
+        paper3GSM: qpOrder.paperKG?.paper3.gsm,
         isKantan: qpOrder.isKantan,
         printType: qpOrder.printType,
       };
