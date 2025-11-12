@@ -124,7 +124,37 @@ exports.getAllPerformanceInvoices = async (req, res) => {
   try {
     const performanceInvoices = await PerformanceInvoice.find()
       .populate("companyName")
-      .populate("party")
+      .populate({
+        path: "party",
+        select: "-__v",
+        populate: [
+          {
+            path: "address.marketName",
+            model: "Market",
+            select: "marketName", // only marketName
+          },
+          // {
+          //   path: "address.streetAddress",
+          //   model: "Market",
+          //   select: "streetAddress", // only streetAddress
+          // },
+          {
+            path: "address.landMark",
+            model: "Market",
+            select: "landmark", // only landMark
+          },
+          {
+            path: "address.area",
+            model: "Market",
+            select: "area", // only area
+          },
+          {
+            path: "address.pincode",
+            model: "Market",
+            select: "pincode", // only pincode
+          },
+        ],
+      })
       .populate("order")
       .sort({ createdAt: -1 });
 
@@ -157,9 +187,9 @@ exports.getPerformanceInvoiceById = async (req, res) => {
     const performanceInvoice = await PerformanceInvoice.findById(id)
       .populate("companyName")
       .populate("party", "partyName GSTNo address")
-      .populate("assignedTo", "firstName lastName");  
-    
-      if (!performanceInvoice) {
+      .populate("assignedTo", "firstName lastName");
+
+    if (!performanceInvoice) {
       return res.status(404).json({
         success: false,
         message: "Performance invoice not found",
