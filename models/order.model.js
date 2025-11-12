@@ -382,6 +382,24 @@ const orderSchema = new mongoose.Schema(
         },
       },
     ],
+    approvedFiles: [{type: String}],
+    reworkFiles: [
+      {
+        path: {
+          type: String,
+          trim: true,
+        },
+        remark: {
+          type: String,
+          trim: true,
+          default: "",
+        },
+        uploadedAt: {
+          type: Date,
+          default: Date.now,
+        },
+      },
+    ],
     printerFiles: [
       {
         path: {
