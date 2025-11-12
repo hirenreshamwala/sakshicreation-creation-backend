@@ -177,85 +177,125 @@ exports.updateInventory = async (req, res) => {
 
 exports.getAvailableBoxes = async (req, res) => {
   try {
-    const { uv, lamination, varnish } = req.query;
+    const {
+      ply,
+      length,
+      width,
+      height,
+      deckal,
+      paper1GSM,
+      paper2GSM,
+      paper3GSM,
+    } = req.body;
 
-    const filter = {
+    // ✅ Validate input
+    if (!ply || !length || !width || !height) {
+      return res.status(400).json({
+        success: false,
+        message: "Missing required box specification fields",
+      });
+    }
+
+    // 🔍 Base filter
+    const baseFilter = {
       inventoryType: "Box",
-      type: "inward",
-
-      
+      ply,
+      length,
+      width,
+      height,
+      deckal,
+      paper1GSM,
+      paper2GSM,
+      paper3GSM,
     };
 
-    console.log(filter,';filter')
+    console.log(baseFilter, "filter-------------");
 
-    // if (uv !== undefined) filter.uv = uv === "true";
-    // if (lamination !== undefined) filter.lamination = lamination === "true";
-    // if (varnish !== undefined) filter.varnish = varnish === "true";
+    // 🏭 Get inward/outward records for factory (only where usedBox < quantity)
+    const factoryInward = await Inventory.find({
+      ...baseFilter,
+      type: "inward",
+      category: "factory",
+      $expr: { $lt: ["$usedBox", "$quantity"] },
+    }).lean();
 
-    // 1. Get total inward grouped by box spec
-    const inward = await Inventory.aggregate([
-      { $match: filter },
-      {
-        $group: {
-          _id: {
-            boxLength: "$boxLength",
-            boxWidth: "$boxWidth",
-            boxHeight: "$boxHeight",
-            // uv: "$uv",
-            // lamination: "$lamination",
-            // varnish: "$varnish",
-          },
-          totalInward: { $sum: "$quantity" },
-        },
+    const factoryOutward = await Inventory.find({
+      ...baseFilter,
+      type: "outward",
+      category: "factory",
+      $expr: { $lt: ["$usedBox", "$quantity"] },
+    }).lean();
+
+    // 📦 Get inward/outward records for godown (only where usedBox < quantity)
+    const godownInward = await Inventory.find({
+      ...baseFilter,
+      type: "inward",
+      category: "godown",
+      $expr: { $lt: ["$usedBox", "$quantity"] },
+    }).lean();
+
+    const godownOutward = await Inventory.find({
+      ...baseFilter,
+      type: "outward",
+      category: "godown",
+      $expr: { $lt: ["$usedBox", "$quantity"] },
+    }).lean();
+
+    // 🧮 Calculate totals for each
+    const calcTotal = (records) =>
+      records.reduce((sum, item) => sum + (item.quantity || 0), 0);
+
+    const factoryIn = calcTotal(factoryInward);
+    const factoryOut = calcTotal(factoryOutward);
+    const godownIn = calcTotal(godownInward);
+    const godownOut = calcTotal(godownOutward);
+
+    const factoryAvailable = factoryIn - factoryOut;
+    const godownAvailable = godownIn - godownOut;
+    const totalAvailable = factoryAvailable + godownAvailable;
+
+    // ✅ Summary
+    const summary = {
+      factory: {
+        inward: factoryIn,
+        inArray: factoryInward,
+        // outward: factoryOut,
+        available: factoryAvailable > 0 ? factoryAvailable : 0,
       },
-    ]);
-
-    // 2. Get total outward grouped by same spec
-    const outward = await Inventory.aggregate([
-      { $match: filter },
-      {
-        $group: {
-          _id: {
-            boxLength: "$boxLength",
-            boxWidth: "$boxWidth",
-            boxHeight: "$boxHeight",
-            // uv: "$uv",
-            // lamination: "$lamination",
-            // varnish: "$varnish",
-          },
-          totalOutward: { $sum: "$quantity" },
-        },
+      godown: {
+        inward: godownIn,
+        inArray: factoryOutward,
+        // outward: godownOut,
+        available: godownAvailable > 0 ? godownAvailable : 0,
       },
-    ]);
+      totalAvailable: totalAvailable > 0 ? totalAvailable : 0,
+    };
 
-    console.log(inward, "inward", outward, "outward");
-
-    // 3. Merge inward and outward to calculate available
-    const availableBoxes = inward
-      .map((inItem) => {
-        const outItem = outward.find(
-          (o) => JSON.stringify(o._id) === JSON.stringify(inItem._id)
-        );
-
-        const available =
-          inItem.totalInward - (outItem ? outItem.totalOutward : 0);
-
-        return {
-          ...inItem._id,
-          availableBoxes: available,
-        };
-      })
-      .filter((item) => item.availableBoxes > 0); // Remove zero stock
-
-    res.status(200).json({
+    // ✅ Response payload
+    const response = {
       success: true,
-      count: availableBoxes.length,
-      data: availableBoxes,
-    });
+      filter: baseFilter,
+      data: summary,
+    };
+
+    // 📋 Include full records only if boxes are available
+    if (totalAvailable > 0) {
+      response.records = {
+        factoryInward,
+        factoryOutward,
+        godownInward,
+        godownOutward,
+      };
+    }
+
+    // ✅ Send response
+    res.status(200).json(response);
   } catch (error) {
+    console.error("Error fetching available boxes:", error);
     res.status(500).json({
       success: false,
       message: "Error fetching available boxes: " + error.message,
     });
   }
 };
+ 
