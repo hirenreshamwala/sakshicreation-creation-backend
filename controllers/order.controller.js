@@ -27,6 +27,9 @@ exports.createOrder = async (req, res) => {
       rateType,
       isLamination,
       laminationType,
+      color,
+      color1,
+      color2,
     } = req.body;
 
     // Validate required fields
@@ -176,8 +179,10 @@ exports.createOrder = async (req, res) => {
       orderData.startNumber = req.body.startNumber;
     }
 
-    if (req.body.color !== "") {
-      orderData.color = req.body.color;
+    if (color) {
+      orderData.color = color;
+      orderData.color1 = color1 || "";
+      orderData.color2 = color2 || "";
     }
 
     const order = new Order(orderData);
@@ -455,6 +460,9 @@ exports.updateOrder = async (req, res) => {
       printerPapers,
       binderPapers,
       bookletPapers,
+      color,
+      color1,
+      color2,
       ...updateData
     } = req.body;
 
@@ -690,6 +698,12 @@ exports.updateOrder = async (req, res) => {
 
     if (size !== undefined) {
       updateData.size = size;
+    }
+
+    if (color) {
+      updateData.color = color;
+      updateData.color1 = color1 || "";
+      updateData.color2 = color2 || "";
     }
 
     // Process file paths with remarks if provided
