@@ -72,8 +72,7 @@ const processPermissions = (permissions) => {
 
 // CREATE role
 exports.createRole = async (req, res) => {
-  const { roleName, permissions } = req.body;
-
+  let { roleName, permissions } = req.body;
   try {
     // Validate roleName
     if (!roleName || typeof roleName !== "string" || roleName.trim() === "") {
@@ -83,7 +82,9 @@ exports.createRole = async (req, res) => {
       });
     }
 
-    const existingRole = await Role.findOne({ roleName });
+    roleName = roleName.trim();
+
+    const existingRole = await Role.findOne({ roleName: { $regex: `^${roleName}$`, $options: "i" } });
     if (existingRole) {
       return res.status(406).json({
         success: false,
