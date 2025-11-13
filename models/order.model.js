@@ -123,6 +123,14 @@ const orderSchema = new mongoose.Schema(
       enum: ["1", "2", "4", "6"],
       trim: true,
     },
+    color1: {
+      type: String,
+      trim: true,
+    },
+    color2: {
+      type: String,
+      trim: true,
+    },
     pType: {
       type: String,
       trim: true,
