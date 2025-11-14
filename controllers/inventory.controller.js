@@ -200,9 +200,9 @@ exports.getAvailableBoxes = async (req, res) => {
     const baseFilter = {
       inventoryType: "Box",
       ply,
-      length,
-      width,
-      height,
+      boxLength:length,
+      boxWidth:width,
+      boxHeight:height,
       deckal,
       paper1GSM,
       paper2GSM,
