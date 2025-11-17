@@ -895,6 +895,39 @@ exports.deleteAssignTask = async (req, res) => {
   }
 };
 
+exports.bulkDeleteAssignTasks = async (req, res) => {
+  try {
+    const { ids } = req.body;
+    
+    if (!ids || !Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "No task IDs provided for deletion",
+      });
+    }
+
+    const result = await AssignTask.deleteMany({ _id: { $in: ids } });
+    
+    if (result.deletedCount > 0) {
+      res.status(200).json({
+        success: true,
+        message: `${result.deletedCount} tasks deleted successfully`,
+        deletedCount: result.deletedCount,
+      });
+    } else {
+      return res.status(404).json({
+        success: false,
+        message: "No tasks found to delete",
+      });
+    }
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
 exports.getPartyNamesByCompany = async (req, res) => {
   try {
     const { companyName } = req.query;

@@ -30,6 +30,7 @@ const kantan = require("./kantan.routes");
 const complain = require("./complain.routes");
 const report = require("./report.routes");
 const factoryArrival = require("./factoryReturn.routes");
+const paymentFolder = require("./paymentFolder.routes");
 
 
 router.use("/staff", StaffRouter);
@@ -63,4 +64,5 @@ router.use("/roleDepartmentCompany", RoleDepartmentCompanyRouter);
 router.use("/performance-invoice", performanceInvoiceRoutes);
 router.use("/complain", complain);
 router.use("/factoryReturn", factoryArrival);
+router.use("/payment-folders", paymentFolder);
 module.exports = router;
