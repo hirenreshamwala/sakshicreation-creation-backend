@@ -30,7 +30,9 @@ exports.createPaymentFolder = async (req, res) => {
             area,
             receivedAmount,
             pendingAmount
-        }).populate("company")
+        })
+
+            const newData = await PaymentFolder.findById(data._id).populate("company")
             .populate({
                 path: "party",
                 select: "-__v",
@@ -65,7 +67,7 @@ exports.createPaymentFolder = async (req, res) => {
             .populate("assignedTo", "firstName lastName email")
             .sort({ createdAt: -1 });
 
-        res.status(201).json({ message: "Payment Folder Created Successfully", data });
+        res.status(201).json({ message: "Payment Folder Created Successfully", newData });
 
     } catch (error) {
         res.status(500).json({ message: "Server Error", error: error.message });
