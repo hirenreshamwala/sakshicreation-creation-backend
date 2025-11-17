@@ -1287,11 +1287,6 @@ exports.getOrdersByStaffId = async (req, res) => {
         path: "party",
         select:
           "partyName address contactPerson personMobileNo personWhatsAppNo GSTNo",
-      })
-      .populate({
-        path: "party",
-        select:
-          "partyName address contactPerson personMobileNo personWhatsAppNo GSTNo",
         // match: partyMatch,
         populate: [
           { path: "address.marketName", model: "Market", select: "marketName" },

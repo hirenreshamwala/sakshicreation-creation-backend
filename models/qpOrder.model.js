@@ -486,7 +486,43 @@ const qpDataSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
-    
+    printerRemark: {
+      type: String,
+    },
+    designerRemark: {
+      type: String,
+    },
+    laminationRemark: {
+      type: String,
+    },
+    designerFiles: [
+      {
+        type: String,
+      },
+    ],
+    designFiles: [
+      {
+        type: String,
+      },
+    ],
+    approveDesign: {
+      type: Boolean,
+    },
+    reworkDesignerFiles: [
+      {
+        type: String,
+      },
+    ],
+    reworkDesignFiles: [
+      {
+        type: String,
+      },
+    ],
+    printerFiles: [
+      {
+        type: String,
+      },
+    ],
   },
   {
     timestamps: true,

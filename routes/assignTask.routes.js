@@ -22,6 +22,7 @@ router.patch("/updatestatus/:id", AssignTaskController.updateAssignTaskStatus);
 
 // Delete an assign task by ID
 router.delete("/delete/:id", AssignTaskController.deleteAssignTask);
+router.post("/bulkdelete", AssignTaskController.bulkDeleteAssignTasks);
 
 // Get party names by company name for dropdown
 router.get("/party-names", AssignTaskController.getPartyNamesByCompany);
