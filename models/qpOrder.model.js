@@ -476,6 +476,10 @@ const qpDataSchema = new mongoose.Schema(
     deliverTo: {
       type: String,
     },
+    operatorCuttingLength: {
+      type: String,
+    },
+
     deductFrom: {
       type: String,
     },
@@ -735,7 +739,7 @@ qpDataSchema.pre("findOneAndUpdate", function (next) {
       next();
     })
     .catch((error) => {
-      console.error('Error in findOneAndUpdate middleware:', error);
+      console.error("Error in findOneAndUpdate middleware:", error);
       next(error);
     });
 });
