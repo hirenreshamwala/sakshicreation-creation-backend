@@ -1,5 +1,6 @@
 const mongoose = require("mongoose");
 const PaymentFolder = require("../models/paymentFolder.model");
+const AssignTask = require("../models/assignTask.model")
 
 exports.createPaymentFolder = async (req, res) => {
   try {
@@ -73,7 +74,7 @@ exports.createPaymentFolder = async (req, res) => {
       partyName:party,
       date: new Date(assignedDate),
       time: assignedDate,
-      reasonForVisit:"payment",
+      reasonForVisit:"Get Payment",
       remarks: req.body.remarks || "",
       assignTo:assignedTo,
       status:  "Pending",
