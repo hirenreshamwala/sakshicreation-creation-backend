@@ -476,6 +476,10 @@ const qpDataSchema = new mongoose.Schema(
     deliverTo: {
       type: String,
     },
+    operatorCuttingLength: {
+      type: String,
+    },
+
     deductFrom: {
       type: String,
     },
