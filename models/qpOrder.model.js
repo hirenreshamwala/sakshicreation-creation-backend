@@ -523,10 +523,13 @@ const qpDataSchema = new mongoose.Schema(
         type: String,
       },
     ],
-    printerQty: {
+    paperQty: {
       type: String,
     },
-    boxSize: {
+    paperGsm: {
+      type: String,
+    },
+    paperQuality: {
       type: String,
     },
     paperSize: {

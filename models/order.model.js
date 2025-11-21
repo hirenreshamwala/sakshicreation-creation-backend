@@ -255,7 +255,7 @@ const orderSchema = new mongoose.Schema(
       {
         paperName: {
           type: String,
-          required: true,
+          required: false,
           trim: true,
         },
         numberOfSheetsUsed: {
@@ -269,31 +269,35 @@ const orderSchema = new mongoose.Schema(
         sheetSize: {
           type: String,
           trim: true,
-          required: true,
+          required: false,
         },
         paperType: {
           type: mongoose.Schema.Types.ObjectId,
           ref: "Material",
           required: false,
+          set: (v) => (v === "" ? null : v),
         },
         gsm: {
           type: mongoose.Schema.Types.ObjectId,
           ref: "Material",
           required: false,
+          set: (v) => (v === "" ? null : v),
         },
         materialSize: {
           type: mongoose.Schema.Types.ObjectId,
           ref: "Material",
           required: false,
+          set: (v) => (v === "" ? null : v),
         },
         wastage: {
           type: String,
           trim: true,
+          required: false,
         },
         ratePerUnit: {
           type: String,
           trim: true,
-          required: true,
+          required: false,
         },
       },
     ],
