@@ -19,6 +19,26 @@ exports.createPaymentFolder = async (req, res) => {
 
     const pendingAmount = paymentAmount - receivedAmount;
 
+    // First create the assign task
+    const newAssignTask = new AssignTask({
+      companyName: company,
+      partyName: party,
+      date: new Date(assignedDate),
+      time: assignedDate,
+      reasonForVisit: "Get Payment",
+      remarks: remarks || "",
+      assignTo: assignedTo,
+      status: "Pending",
+      visitDate: req.body.visitDate ? new Date(req.body.visitDate) : null,
+      visitTime: req.body.visitTime || "",
+      feedback: req.body.feedback || "",
+      isRescheduledTask: req.body.isRescheduledTask || false,
+      originalTaskId: req.body.originalTaskId || null,
+    });
+
+    const savedAssignTask = await newAssignTask.save();
+
+    // Now create payment folder with assignTask ID
     const data = await PaymentFolder.create({
       company,
       party,
@@ -31,6 +51,7 @@ exports.createPaymentFolder = async (req, res) => {
       area,
       receivedAmount,
       pendingAmount,
+      assignTask: savedAssignTask._id, // Store the assign task ID
     });
 
     const newData = await PaymentFolder.findById(data._id)
@@ -42,56 +63,33 @@ exports.createPaymentFolder = async (req, res) => {
           {
             path: "address.marketName",
             model: "Market",
-            select: "marketName", // only marketName
+            select: "marketName",
           },
-          // {
-          //   path: "address.streetAddress",
-          //   model: "Market",
-          //   select: "streetAddress", // only streetAddress
-          // },
           {
             path: "address.landMark",
             model: "Market",
-            select: "landmark", // only landMark
+            select: "landmark",
           },
           {
             path: "address.area",
             model: "Market",
-            select: "area", // only area
+            select: "area",
           },
           {
             path: "address.pincode",
             model: "Market",
-            select: "pincode", // only pincode
+            select: "pincode",
           },
         ],
       })
       .populate("assignedTo", "firstName lastName email")
+      .populate("assignTask") // Populate assign task as well
       .sort({ createdAt: -1 });
 
-    const newAssignTask = new AssignTask({
-      companyName:company,
-      partyName:party,
-      date: new Date(assignedDate),
-      time: assignedDate,
-      reasonForVisit:"Get Payment",
-      remarks: req.body.remarks || "",
-      assignTo:assignedTo,
-      status:  "Pending",
-      visitDate: req.body.visitDate ? new Date(req.body.visitDate) : null,
-      visitTime: req.body.visitTime || "",
-      feedback: req.body.feedback || "",
-      isRescheduledTask: req.body.isRescheduledTask || false,
-      originalTaskId: req.body.originalTaskId || null,
+    res.status(201).json({ 
+      message: "Payment Folder Created Successfully", 
+      newData 
     });
-
-    await newAssignTask.save();
-
-    // Fetch AccountMaster using raw ObjectIds before population
-
-    res
-      .status(201)
-      .json({ message: "Payment Folder Created Successfully", newData });
   } catch (error) {
     res.status(500).json({ message: "Server Error", error: error.message });
   }
@@ -108,31 +106,27 @@ exports.getPaymentFolders = async (req, res) => {
           {
             path: "address.marketName",
             model: "Market",
-            select: "marketName", // only marketName
+            select: "marketName",
           },
-          // {
-          //   path: "address.streetAddress",
-          //   model: "Market",
-          //   select: "streetAddress", // only streetAddress
-          // },
           {
             path: "address.landMark",
             model: "Market",
-            select: "landmark", // only landMark
+            select: "landmark",
           },
           {
             path: "address.area",
             model: "Market",
-            select: "area", // only area
+            select: "area",
           },
           {
             path: "address.pincode",
             model: "Market",
-            select: "pincode", // only pincode
+            select: "pincode",
           },
         ],
       })
       .populate("assignedTo", "firstName lastName email")
+      .populate("assignTask") // Populate assign task
       .sort({ createdAt: -1 });
 
     res.status(200).json({ data });
@@ -152,31 +146,27 @@ exports.getPaymentFolderById = async (req, res) => {
           {
             path: "address.marketName",
             model: "Market",
-            select: "marketName", // only marketName
+            select: "marketName",
           },
-          // {
-          //   path: "address.streetAddress",
-          //   model: "Market",
-          //   select: "streetAddress", // only streetAddress
-          // },
           {
             path: "address.landMark",
             model: "Market",
-            select: "landmark", // only landMark
+            select: "landmark",
           },
           {
             path: "address.area",
             model: "Market",
-            select: "area", // only area
+            select: "area",
           },
           {
             path: "address.pincode",
             model: "Market",
-            select: "pincode", // only pincode
+            select: "pincode",
           },
         ],
       })
-      .populate("assignedTo", "firstName lastName email");
+      .populate("assignedTo", "firstName lastName email")
+      .populate("assignTask"); // Populate assign task
 
     if (!data)
       return res.status(404).json({ message: "Payment folder not found" });
@@ -195,6 +185,28 @@ exports.updatePaymentFolder = async (req, res) => {
     const existing = await PaymentFolder.findById(req.params.id);
     if (!existing) {
       return res.status(404).json({ message: "Payment folder not found" });
+    }
+
+    // If assignedDate is being updated, also update the assign task
+    if (updateData.assignedDate && existing.assignTask) {
+      await AssignTask.findByIdAndUpdate(existing.assignTask, {
+        date: new Date(updateData.assignedDate),
+        time: updateData.assignedDate,
+      });
+    }
+
+    // If assignedTo is being updated, also update the assign task
+    if (updateData.assignedTo && existing.assignTask) {
+      await AssignTask.findByIdAndUpdate(existing.assignTask, {
+        assignTo: updateData.assignedTo,
+      });
+    }
+
+    // If remarks is being updated, also update the assign task
+    if (updateData.remarks && existing.assignTask) {
+      await AssignTask.findByIdAndUpdate(existing.assignTask, {
+        remarks: updateData.remarks,
+      });
     }
 
     // If only receivedAmount comes, recalculate pending
@@ -228,31 +240,27 @@ exports.updatePaymentFolder = async (req, res) => {
           {
             path: "address.marketName",
             model: "Market",
-            select: "marketName", // only marketName
+            select: "marketName",
           },
-          // {
-          //   path: "address.streetAddress",
-          //   model: "Market",
-          //   select: "streetAddress", // only streetAddress
-          // },
           {
             path: "address.landMark",
             model: "Market",
-            select: "landmark", // only landMark
+            select: "landmark",
           },
           {
             path: "address.area",
             model: "Market",
-            select: "area", // only area
+            select: "area",
           },
           {
             path: "address.pincode",
             model: "Market",
-            select: "pincode", // only pincode
+            select: "pincode",
           },
         ],
       })
       .populate("assignedTo", "firstName lastName email")
+      .populate("assignTask") // Populate assign task
       .sort({ createdAt: -1 });
 
     res.json({
@@ -266,10 +274,67 @@ exports.updatePaymentFolder = async (req, res) => {
 
 exports.deletePaymentFolder = async (req, res) => {
   try {
-    console.log("delete data");
-    const data = await PaymentFolder.findByIdAndDelete(req.params.id);
-    res.json({ message: "Payment folder deleted successfully" });
+    // First find the payment folder to get assignTask ID
+    const paymentFolder = await PaymentFolder.findById(req.params.id);
+    
+    if (!paymentFolder) {
+      return res.status(404).json({ message: "Payment folder not found" });
+    }
+
+    // Delete the associated assign task
+    if (paymentFolder.assignTask) {
+      await AssignTask.findByIdAndDelete(paymentFolder.assignTask);
+    }
+
+    // Delete the payment folder
+    await PaymentFolder.findByIdAndDelete(req.params.id);
+    
+    res.json({ message: "Payment folder and associated task deleted successfully" });
   } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+exports.deleteMultiplePaymentFolder = async (req, res) => {
+  try {
+    const { ids } = req.body;
+
+    if (ids && Array.isArray(ids)) {
+      if (ids.length === 0) {
+        return res.status(400).json({ error: "No IDs provided for deletion" });
+      }
+
+      // First find all payment folders to get their assignTask IDs
+      const paymentFolders = await PaymentFolder.find({ 
+        _id: { $in: ids } 
+      });
+
+      // Extract all assignTask IDs
+      const assignTaskIds = paymentFolders
+        .map(folder => folder.assignTask)
+        .filter(taskId => taskId);
+
+      // Delete all associated assign tasks
+      if (assignTaskIds.length > 0) {
+        await AssignTask.deleteMany({ 
+          _id: { $in: assignTaskIds } 
+        });
+      }
+
+      // Delete all payment folders
+      const result = await PaymentFolder.deleteMany({ 
+        _id: { $in: ids } 
+      });
+      
+      res.json({ 
+        message: `${result.deletedCount} payment folder(s) and associated tasks deleted successfully`,
+        deletedCount: result.deletedCount
+      });
+    } else {
+      res.status(400).json({ error: "No ID provided for deletion" });
+    }
+  } catch (error) {
+    console.error("Delete error:", error);
     res.status(500).json({ error: error.message });
   }
 };
@@ -355,6 +420,7 @@ exports.addPaymentToFolder = async (req, res) => {
         ],
       })
       .populate("assignedTo", "firstName lastName email")
+      .populate("assignTask") // Populate assign task
       .populate("payments.receivedBy", "firstName lastName")
       .sort({ createdAt: -1 });
 
