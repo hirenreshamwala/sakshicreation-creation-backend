@@ -84,11 +84,15 @@ exports.createPaymentFolder = async (req, res) => {
       })
       .populate("assignedTo", "firstName lastName email")
       .populate("assignTask") // Populate assign task as well
+      .populate({
+        path: "payments.receivedBy",
+        select: "firstName lastName",
+      })
       .sort({ createdAt: -1 });
 
-    res.status(201).json({ 
-      message: "Payment Folder Created Successfully", 
-      newData 
+    res.status(201).json({
+      message: "Payment Folder Created Successfully",
+      newData
     });
   } catch (error) {
     res.status(500).json({ message: "Server Error", error: error.message });
@@ -127,6 +131,10 @@ exports.getPaymentFolders = async (req, res) => {
       })
       .populate("assignedTo", "firstName lastName email")
       .populate("assignTask") // Populate assign task
+      .populate({
+        path: "payments.receivedBy",
+        select: "firstName lastName",
+      })
       .sort({ createdAt: -1 });
 
     res.status(200).json({ data });
@@ -166,7 +174,11 @@ exports.getPaymentFolderById = async (req, res) => {
         ],
       })
       .populate("assignedTo", "firstName lastName email")
-      .populate("assignTask"); // Populate assign task
+      .populate("assignTask") // Populate assign task
+      .populate({
+        path: "payments.receivedBy",
+        select: "firstName lastName",
+      })
 
     if (!data)
       return res.status(404).json({ message: "Payment folder not found" });
@@ -261,6 +273,10 @@ exports.updatePaymentFolder = async (req, res) => {
       })
       .populate("assignedTo", "firstName lastName email")
       .populate("assignTask") // Populate assign task
+      .populate({
+        path: "payments.receivedBy",
+        select: "firstName lastName",
+      })
       .sort({ createdAt: -1 });
 
     res.json({
@@ -276,7 +292,7 @@ exports.deletePaymentFolder = async (req, res) => {
   try {
     // First find the payment folder to get assignTask ID
     const paymentFolder = await PaymentFolder.findById(req.params.id);
-    
+
     if (!paymentFolder) {
       return res.status(404).json({ message: "Payment folder not found" });
     }
@@ -288,7 +304,7 @@ exports.deletePaymentFolder = async (req, res) => {
 
     // Delete the payment folder
     await PaymentFolder.findByIdAndDelete(req.params.id);
-    
+
     res.json({ message: "Payment folder and associated task deleted successfully" });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -305,8 +321,8 @@ exports.deleteMultiplePaymentFolder = async (req, res) => {
       }
 
       // First find all payment folders to get their assignTask IDs
-      const paymentFolders = await PaymentFolder.find({ 
-        _id: { $in: ids } 
+      const paymentFolders = await PaymentFolder.find({
+        _id: { $in: ids }
       });
 
       // Extract all assignTask IDs
@@ -316,17 +332,17 @@ exports.deleteMultiplePaymentFolder = async (req, res) => {
 
       // Delete all associated assign tasks
       if (assignTaskIds.length > 0) {
-        await AssignTask.deleteMany({ 
-          _id: { $in: assignTaskIds } 
+        await AssignTask.deleteMany({
+          _id: { $in: assignTaskIds }
         });
       }
 
       // Delete all payment folders
-      const result = await PaymentFolder.deleteMany({ 
-        _id: { $in: ids } 
+      const result = await PaymentFolder.deleteMany({
+        _id: { $in: ids }
       });
-      
-      res.json({ 
+
+      res.json({
         message: `${result.deletedCount} payment folder(s) and associated tasks deleted successfully`,
         deletedCount: result.deletedCount
       });
@@ -421,7 +437,10 @@ exports.addPaymentToFolder = async (req, res) => {
       })
       .populate("assignedTo", "firstName lastName email")
       .populate("assignTask") // Populate assign task
-      .populate("payments.receivedBy", "firstName lastName")
+      .populate({
+        path: "payments.receivedBy",
+        select: "firstName lastName",
+      })
       .sort({ createdAt: -1 });
 
     res.status(200).json({

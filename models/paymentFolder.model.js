@@ -66,10 +66,14 @@ const paymentFolderSchema = new mongoose.Schema(
     area: {
       type: String,
     },
+    paymentTerms: {
+      type: String,
+      default: "",
+    },
     assignTask: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "AssignTask",
-      required: true,
+      required: false,
     },
     // Remove individual receivedAmount and pendingAmount fields
     payments: [paymentSchema], // Array of payment objects
