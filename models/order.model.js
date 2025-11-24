@@ -118,6 +118,14 @@ const orderSchema = new mongoose.Schema(
         return this.number === "Yes";
       },
     },
+    totalNumbering: {
+      type: String,
+      trim: true,
+    },
+    numberingAmount: {
+      type: String,
+      trim: true,
+    },
     color: {
       type: String,
       enum: ["1", "2", "4", "6"],
