@@ -58,6 +58,20 @@ const orderSchema = new mongoose.Schema(
       ref: "BinderType",
       required: false,
     },
+    bookletFolder: {
+      type: Boolean,
+      default: false,
+    },
+    bookletFolderType: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+    bindingPage: {
+      type: String,
+      trim: true,
+      default: "",
+    },
     filePaths: [
       {
         path: {
@@ -331,7 +345,7 @@ const orderSchema = new mongoose.Schema(
           type: mongoose.Schema.Types.ObjectId,
           ref: "Material",
           required: false,
-          set: (v) => (v === "" ? null : v), 
+          set: (v) => (v === "" ? null : v),
         },
         gsm: {
           type: mongoose.Schema.Types.ObjectId,
@@ -408,7 +422,7 @@ const orderSchema = new mongoose.Schema(
         },
       },
     ],
-    approvedFiles: [{type: String}],
+    approvedFiles: [{ type: String }],
     reworkFiles: [
       {
         path: {
@@ -637,27 +651,27 @@ const orderSchema = new mongoose.Schema(
       required: true,
     },
     quotation: [quotationHistory],
-    
+
     // ✅ LAST STATUS CHANGE DATE FIELD
     lastStatusChangeDate: {
       type: Date,
       default: Date.now // ✅ DEFAULT VALUE FOR NEW ORDERS
     },
-    
+
     // ✅ STATUS HISTORY TRACKING
     statusHistory: [
       {
-        status: { 
-          type: String, 
-          required: true 
+        status: {
+          type: String,
+          required: true
         },
-        changedAt: { 
-          type: Date, 
-          default: Date.now 
+        changedAt: {
+          type: Date,
+          default: Date.now
         },
-        changedBy: { 
-          type: mongoose.Schema.Types.ObjectId, 
-          ref: "Staff" 
+        changedBy: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "Staff"
         },
       },
     ],
@@ -680,20 +694,20 @@ orderSchema.index({ lastStatusChangeDate: -1 });
 // ✅ COMPREHENSIVE STATUS CHANGE DETECTION MIDDLEWARE
 orderSchema.pre("save", function (next) {
   console.log(`🔍 Order Save Middleware - Status modified: ${this.isModified("status")}, Is New: ${this.isNew}`);
-  
+
   // Always ensure lastStatusChangeDate has a value for new orders
   if (this.isNew && !this.lastStatusChangeDate) {
     this.lastStatusChangeDate = new Date();
     console.log(`✅ New order created, setting lastStatusChangeDate to current date`);
   }
-  
+
   // Handle status changes for existing orders
   if (!this.isNew && this.isModified("status")) {
     const previousStatus = this._originalStatus;
     const newStatus = this.status;
-    
+
     console.log(`🔄 Status Change Detected: ${previousStatus} -> ${newStatus}`);
-    
+
     // Case 1: If status is being changed to "Delivery", set lastStatusChangeDate to null
     if (this.status === "Delivery") {
       this.lastStatusChangeDate = null;
@@ -709,7 +723,7 @@ orderSchema.pre("save", function (next) {
       }
     }
   }
-  
+
   next();
 });
 
@@ -728,9 +742,9 @@ orderSchema.pre("save", function (next) {
 orderSchema.pre("findOneAndUpdate", function (next) {
   const update = this.getUpdate();
   const setUpdate = update.$set || {};
-  
+
   console.log(`🔍 Order FindOneAndUpdate - Status Update: ${setUpdate.status}`);
-  
+
   // Get the current document to check current values
   this.model.findOne(this.getQuery()).then((doc) => {
     if (!doc) {
@@ -779,11 +793,11 @@ orderSchema.pre("save", function (next) {
       status: this.status,
       changedAt: new Date()
     };
-    
+
     if (!this.statusHistory) {
       this.statusHistory = [];
     }
-    
+
     this.statusHistory.push(statusChange);
     console.log(`📝 Added to statusHistory: ${JSON.stringify(statusChange)}`);
   }

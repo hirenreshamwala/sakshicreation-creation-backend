@@ -167,6 +167,9 @@ exports.createOrder = async (req, res) => {
       pType: req.body.pType,
       binding: req.body.binding,
       bindingType: req.body.bindingType,
+      bookletFolder: req.body.bookletFolder,
+      bookletFolderType: req.body.bookletFolderType,
+      bindingPage: req.body.bindingPage,
       rate: rate !== undefined ? Number.parseFloat(rate) : undefined,
       rateType: rateType || undefined,
       isLamination: isLamination !== undefined ? isLamination : false,
@@ -293,6 +296,7 @@ exports.getAllOrders = async (req, res) => {
     // Fetch orders without pagination
     const orders = await Order.find(filter)
       .populate("companyName", "companyName avatar")
+      .populate("bindingType", "name")
       .populate({
         path: "party",
         select: "-__v",
@@ -1077,6 +1081,7 @@ exports.getDesignerById = async (req, res) => {
       .populate("createdBy")
       .populate("designer", "name")
       .populate("reworkHistory.createdBy", "name")
+      .populate("bindingType", "name")
       .sort({ createdAt: -1 });
 
     // if (!orders || orders.length === 0) {
@@ -1150,6 +1155,7 @@ exports.getPrinterById = async (req, res) => {
       .populate("designer", "name")
       .populate("printer", "name")
       .populate("reworkHistory.createdBy", "name")
+      .populate("bindingType", "name")
       .sort({ createdAt: -1 });
 
     // if (!orders || orders.length === 0) {
@@ -1225,6 +1231,7 @@ exports.getBinderById = async (req, res) => {
       .populate("binder", "name")
       .populate("bookletBinder", "name")
       .populate("reworkHistory.createdBy", "name")
+      .populate("bindingType", "name")
       .sort({ createdAt: -1 });
 
     // if (!orders || orders.length === 0) {
@@ -1301,6 +1308,7 @@ exports.getBookletBinderById = async (req, res) => {
       .populate("binder", "name")
       .populate("bookletBinder", "name")
       .populate("reworkHistory.createdBy", "name")
+      .populate("bindingType", "name")
       .sort({ createdAt: -1 });
 
     console.log("orders", orders);
@@ -1413,6 +1421,7 @@ exports.getOrdersByStaffId = async (req, res) => {
         path: "reworkHistory.createdBy",
         select: "name",
       })
+      .populate("bindingType", "name")
       .sort({ createdAt: -1 });
 
     // 4. If no orders found, return an empty array with a message
