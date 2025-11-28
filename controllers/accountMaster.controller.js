@@ -8,6 +8,7 @@ const Staff = require("../models/staff.model");
 const Party = require("../models/Party.model");
 const CompanyName = require("../models/companyName.model");
 const Market = require("../models/marketData.model");
+const moment = require("moment");
 
 // Create a new Account Master
 exports.createAccountMaster = async (req, res) => {
@@ -234,182 +235,335 @@ exports.createAccountMaster = async (req, res) => {
   }
 };
 
-exports.getAllAccountMasters = async (req, res) => {
-  try {
-    const filters = req.body || {};
+// exports.getAllAccountMasters = async (req, res) => {
+//   try {
+//     const filters = req.body || {};
+//     const {
+//       isPagination = false,
+//       page = 1,
+//       pageSize = 10,
+//       search,
+//       includeCounts = false, // New parameter to include counts
+//       ...otherFilters
+//     } = filters;
 
-    // Base query object
-    const query = {};
+//     // Base query object
+//     const query = {};
 
-    // companyName filter
-    if (filters.companyName) {
-      query.companyName = filters.companyName;
-    }
+//     // companyName filter
+//     if (otherFilters.companyName) {
+//       query.companyName = otherFilters.companyName;
+//     }
 
-    // createdBy (Staff Id) filter
-    if (filters.staffId) {
-      query.createdBy = filters.staffId;
-    }
+//     // createdBy (Staff Id) filter
+//     if (otherFilters.staffId) {
+//       query.createdBy = otherFilters.staffId;
+//     }
 
-    // reasonToVisit filter
-    if (filters.reasonToVisit) {
-      query.reasonToVisit = { $regex: filters.reasonToVisit, $options: "i" };
-    }
+//     // reasonToVisit filter
+//     if (otherFilters.reasonToVisit) {
+//       query.reasonToVisit = { $regex: otherFilters.reasonToVisit, $options: "i" };
+//     }
 
-    if (filters.startDate || filters.endDate) {
-      query.createdAt = {};
-      if (filters.startDate) {
-        const start = new Date(filters.startDate);
-        start.setHours(0, 0, 0, 0);
-        query.createdAt.$gte = start;
-      }
-      if (filters.endDate) {
-        const end = new Date(filters.endDate);
-        end.setHours(23, 59, 59, 999);
-        query.createdAt.$lte = end;
-      }
-    }
+//     // Enhanced Search across multiple fields
+//     if (search && search.trim() !== "") {
+//       const searchTerm = search.trim();
+//       const searchRegex = { $regex: searchTerm, $options: "i" };
 
+//       const searchConditions = [];
 
-    let partyMatch = {};
+//       // Text fields for regex search
+//       const textFields = [
+//         { field: "reasonToVisit" },
+//         { field: "party.partyName" },
+//         { field: "party.ownerName" },
+//         { field: "party.contactPerson" },
+//         { field: "party.contactForPayment" },
+//         { field: "party.partyTag" },
+//         { field: "party.GSTNo" },
+//         { field: "party.address.marketName.marketName" },
+//         { field: "party.address.area.area" },
+//         { field: "party.address.landMark.landmark" },
+//         { field: "createdBy.firstName" },
+//         { field: "createdBy.lastName" },
+//         { field: "companyName.companyName" }
+//       ];
 
-    if (filters.partyName) {
-      partyMatch.partyName = { $regex: filters.partyName, $options: "i" };
-    }
+//       textFields.forEach(({ field }) => {
+//         searchConditions.push({ [field]: searchRegex });
+//       });
 
-    if (filters.ownerWhatsAppNo) {
-      partyMatch.ownerWhatsAppNo = filters.ownerWhatsAppNo;
-    }
+//       // Exact match for mobile numbers if search is numeric
+//       if (!isNaN(searchTerm) && searchTerm.length >= 6) {
+//         const exactMobileConditions = [
+//           { "party.ownerMobileNo": searchTerm },
+//           { "party.ownerWhatsAppNo": searchTerm },
+//           { "party.personMobileNo": searchTerm },
+//           { "party.personWhatsAppNo": searchTerm },
+//           { "party.contactMobileNo": searchTerm },
+//           { "party.contactWhatsAppNo": searchTerm }
+//         ];
+//         searchConditions.push(...exactMobileConditions);
+//       }
 
-    if (filters.statusApproval) {
-      partyMatch.statusApproval = filters.statusApproval;
-    }
+//       // Email search
+//       if (searchTerm.includes('@')) {
+//         searchConditions.push(
+//           { "party.ownerEmail": searchRegex },
+//           { "party.contactPersonEmail": searchRegex },
+//           { "party.contactForPaymentEmail": searchRegex }
+//         );
+//       }
 
-    if (filters.partyTag) {
-      if (Array.isArray(filters.partyTag)) {
-        // If it's an array, match any of the tags (case-insensitive)
-        partyMatch.partyTag = { $in: filters.partyTag.map(tag => new RegExp(tag.trim(), "i")) };
-      } else {
-        // Single value
-        partyMatch.partyTag = new RegExp(filters.partyTag.trim(), "i");
-      }
-    }
+//       // If there are search conditions, add them to query
+//       if (searchConditions.length > 0) {
+//         query.$or = searchConditions;
+//       }
+//     }
 
+//     // Date range filter
+//     if (otherFilters.startDate || otherFilters.endDate) {
+//       query.createdAt = {};
+//       if (otherFilters.startDate) {
+//         const start = new Date(otherFilters.startDate);
+//         start.setHours(0, 0, 0, 0);
+//         query.createdAt.$gte = start;
+//       }
+//       if (otherFilters.endDate) {
+//         const end = new Date(otherFilters.endDate);
+//         end.setHours(23, 59, 59, 999);
+//         query.createdAt.$lte = end;
+//       }
+//     }
 
-    const accountMasters = await AccountMaster.find(query)
-      .populate("createdBy", "firstName lastName email")
-      .populate("companyName", "companyName avatar _id")
-      .populate({
-        path: "party",
-        select: "-__v",
-        match: partyMatch,
-        populate: [
-          { path: "address.marketName", model: "Market", select: "marketName" },
-          // { path: "address.streetAddress", model: "Market", select: "streetAddress" },
-          { path: "address.landMark", model: "Market", select: "landmark" },
-          { path: "address.area", model: "Market", select: "area" },
-          { path: "address.pincode", model: "Market", select: "pincode" },
-        ],
-      })
-      .sort({ createdAt: -1 });
+//     let partyMatch = {};
 
-    const filteredAccountMasters = accountMasters.filter(
-      (account) => account.party !== null
-    );
+//     if (otherFilters.partyName) {
+//       partyMatch.partyName = { $regex: otherFilters.partyName, $options: "i" };
+//     }
 
-    // AssignTask logic same रहेगा
-    const assignTasks = await AssignTask.aggregate([
-      { $sort: { createdAt: -1 } },
-      {
-        $group: {
-          _id: { partyName: "$partyName", companyName: "$companyName" },
-          latestTask: { $first: "$$ROOT" },
-        },
-      },
-    ]);
+//     if (otherFilters.ownerWhatsAppNo) {
+//       partyMatch.ownerWhatsAppNo = otherFilters.ownerWhatsAppNo;
+//     }
 
-    const taskMap = {};
-    assignTasks.forEach((task) => {
-      const key = `${task._id.partyName}_${task._id.companyName}`;
-      taskMap[key] = task.latestTask;
-    });
+//     if (otherFilters.statusApproval) {
+//       partyMatch.statusApproval = otherFilters.statusApproval;
+//     }
 
-    const enrichedAccountMasters = await Promise.all(
-      filteredAccountMasters.map(async (account) => {
-        const taskKey = `${account.party._id}_${account.companyName._id}`;
-        const latestTask = taskMap[taskKey];
+//     if (otherFilters.partyTag) {
+//       if (Array.isArray(otherFilters.partyTag)) {
+//         partyMatch.partyTag = { $in: otherFilters.partyTag.map(tag => new RegExp(tag.trim(), "i")) };
+//       } else {
+//         partyMatch.partyTag = new RegExp(otherFilters.partyTag.trim(), "i");
+//       }
+//     }
 
-        let taskDetails = {
-          assignedTo: account.createdBy,
-          remarks: "NA",
-          status: "Not Started",
-        };
+//     // Calculate skip and limit for pagination
+//     const skip = isPagination ? (page - 1) * pageSize : 0;
+//     const limit = isPagination ? pageSize : 0;
 
-        if (latestTask) {
-          const populatedTask = await AssignTask.populate(latestTask, {
-            path: "assignTo",
-            select: "firstName lastName email",
-          });
+//     // Get total count for pagination
+//     let totalCountQuery = { ...query };
 
-          taskDetails = {
-            assignedTo: populatedTask.assignTo || account.createdBy,
-            remarks: populatedTask.remarks || "NA",
-            status: populatedTask.status || "Not Started",
-          };
-        }
+//     const countQuery = AccountMaster.find(totalCountQuery)
+//       .populate({
+//         path: "party",
+//         match: partyMatch
+//       });
 
-        return {
-          _id: account._id,
-          companyName: {
-            _id: account.companyName?._id,
-            name: account.companyName?.companyName,
-            avatar: account.companyName?.avatar,
-          },
-          reasonToVisit: account.reasonToVisit,
-          createdAt: account.createdAt,
-          updatedAt: account.updatedAt,
-          createdBy: account.createdBy,
-          party: {
-            _id: account.party._id,
-            partyName: account.party.partyName,
-            ownerName: account.party.ownerName,
-            ownerMobileNo: account.party.ownerMobileNo,
-            ownerWhatsAppNo: account.party.ownerWhatsAppNo,
-            ownerEmail: account.party.ownerEmail || "N/A",
-            contactPerson: account.party.contactPerson,
-            personMobileNo: account.party.personMobileNo,
-            personWhatsAppNo: account.party.personWhatsAppNo,
-            contactPersonEmail: account.party.contactPersonEmail || "N/A",
-            contactForPayment: account.party.contactForPayment,
-            contactMobileNo: account.party.contactMobileNo,
-            contactWhatsAppNo: account.party.contactWhatsAppNo,
-            contactForPaymentEmail: account.party.contactForPaymentEmail || "N/A",
-            GSTNo: account.party.GSTNo,
-            address: account.party.address,
-            partyTag: account.party.partyTag,
-            statusApproval: account.party.statusApproval,
-            createdAt: account.party.createdAt,
-            updatedAt: account.party.updatedAt,
-          },
-          assignment: taskDetails,
-        };
-      })
-    );
+//     const allMatches = await countQuery.exec();
+//     const filteredCount = allMatches.filter(account => account.party !== null).length;
 
-    res.status(200).json({
-      success: true,
-      count: enrichedAccountMasters.length,
-      data: enrichedAccountMasters,
-    });
-  } catch (error) {
-    console.error("Error getting account masters:", error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to fetch account masters",
-      error: error.message,
-    });
-  }
-};
+//     // Get counts for approved and pending if requested
+//     let counts = { approved: 0, pending: 0, total: filteredCount };
+//     if (includeCounts) {
+//       // Count approved parties
+//       const approvedQuery = { ...query };
+//       const approvedPartyMatch = { ...partyMatch, statusApproval: "APPROVED" };
+
+//       const approvedCountQuery = AccountMaster.find(approvedQuery)
+//         .populate({
+//           path: "party",
+//           match: approvedPartyMatch
+//         });
+
+//       const approvedMatches = await approvedCountQuery.exec();
+//       counts.approved = approvedMatches.filter(account => account.party !== null).length;
+
+//       // Count pending parties
+//       const pendingQuery = { ...query };
+//       const pendingPartyMatch = { ...partyMatch, statusApproval: "PENDING" };
+
+//       const pendingCountQuery = AccountMaster.find(pendingQuery)
+//         .populate({
+//           path: "party",
+//           match: pendingPartyMatch
+//         });
+
+//       const pendingMatches = await pendingCountQuery.exec();
+//       counts.pending = pendingMatches.filter(account => account.party !== null).length;
+
+//       // Ensure total matches the sum (in case of any discrepancies)
+//       counts.total = counts.approved + counts.pending;
+//     }
+
+//     // Main query with pagination
+//     const accountMastersQuery = AccountMaster.find(query)
+//       .populate("createdBy", "firstName lastName email")
+//       .populate("companyName", "companyName avatar _id")
+//       .populate({
+//         path: "party",
+//         select: "-__v",
+//         match: partyMatch,
+//         populate: [
+//           { path: "address.marketName", model: "Market", select: "marketName" },
+//           { path: "address.landMark", model: "Market", select: "landmark" },
+//           { path: "address.area", model: "Market", select: "area" },
+//           { path: "address.pincode", model: "Market", select: "pincode" },
+//         ],
+//       })
+//       .sort({ createdAt: -1 });
+
+//     // Apply pagination only if enabled
+//     if (isPagination) {
+//       accountMastersQuery.skip(skip).limit(limit);
+//     }
+
+//     const accountMasters = await accountMastersQuery.exec();
+
+//     const filteredAccountMasters = accountMasters.filter(
+//       (account) => account.party !== null
+//     );
+
+//     // AssignTask logic
+//     const assignTasks = await AssignTask.aggregate([
+//       { $sort: { createdAt: -1 } },
+//       {
+//         $group: {
+//           _id: { partyName: "$partyName", companyName: "$companyName" },
+//           latestTask: { $first: "$$ROOT" },
+//         },
+//       },
+//     ]);
+
+//     const taskMap = {};
+//     assignTasks.forEach((task) => {
+//       const key = `${task._id.partyName}_${task._id.companyName}`;
+//       taskMap[key] = task.latestTask;
+//     });
+
+//     const enrichedAccountMasters = await Promise.all(
+//       filteredAccountMasters.map(async (account) => {
+//         const taskKey = `${account.party._id}_${account.companyName._id}`;
+//         const latestTask = taskMap[taskKey];
+
+//         let taskDetails = {
+//           assignedTo: account.createdBy,
+//           remarks: "NA",
+//           status: "Not Started",
+//         };
+
+//         if (latestTask) {
+//           const populatedTask = await AssignTask.populate(latestTask, {
+//             path: "assignTo",
+//             select: "firstName lastName email",
+//           });
+
+//           taskDetails = {
+//             assignedTo: populatedTask.assignTo || account.createdBy,
+//             remarks: populatedTask.remarks || "NA",
+//             status: populatedTask.status || "Not Started",
+//           };
+//         }
+
+//         return {
+//           _id: account._id,
+//           companyName: {
+//             _id: account.companyName?._id,
+//             name: account.companyName?.companyName,
+//             avatar: account.companyName?.avatar,
+//           },
+//           reasonToVisit: account.reasonToVisit,
+//           createdAt: account.createdAt,
+//           updatedAt: account.updatedAt,
+//           createdBy: account.createdBy,
+//           party: {
+//             _id: account.party._id,
+//             partyName: account.party.partyName,
+//             ownerName: account.party.ownerName,
+//             ownerMobileNo: account.party.ownerMobileNo,
+//             ownerWhatsAppNo: account.party.ownerWhatsAppNo,
+//             ownerEmail: account.party.ownerEmail || "N/A",
+//             contactPerson: account.party.contactPerson,
+//             personMobileNo: account.party.personMobileNo,
+//             personWhatsAppNo: account.party.personWhatsAppNo,
+//             contactPersonEmail: account.party.contactPersonEmail || "N/A",
+//             contactForPayment: account.party.contactForPayment,
+//             contactMobileNo: account.party.contactMobileNo,
+//             contactWhatsAppNo: account.party.contactWhatsAppNo,
+//             contactForPaymentEmail: account.party.contactForPaymentEmail || "N/A",
+//             GSTNo: account.party.GSTNo,
+//             address: account.party.address,
+//             partyTag: account.party.partyTag,
+//             statusApproval: account.party.statusApproval,
+//             createdAt: account.party.createdAt,
+//             updatedAt: account.party.updatedAt,
+//           },
+//           assignment: taskDetails,
+//         };
+//       })
+//     );
+
+//     // Apply additional filters that couldn't be handled in MongoDB query
+//     let finalResults = enrichedAccountMasters;
+
+//     // Filter by assignment status if provided
+//     if (otherFilters.assignmentStatus) {
+//       finalResults = finalResults.filter(account =>
+//         account.assignment.status === otherFilters.assignmentStatus
+//       );
+//     }
+
+//     // Filter by assignedTo if provided
+//     if (otherFilters.assignedTo) {
+//       finalResults = finalResults.filter(account => {
+//         const assignedToName = `${account.assignment.assignedTo?.firstName || ''} ${account.assignment.assignedTo?.lastName || ''}`.toLowerCase();
+//         return assignedToName.includes(otherFilters.assignedTo.toLowerCase());
+//       });
+//     }
+
+//     // Response structure based on pagination
+//     const response = {
+//       success: true,
+//       data: finalResults,
+//     };
+
+//     if (isPagination) {
+//       response.pagination = {
+//         currentPage: parseInt(page),
+//         pageSize: parseInt(pageSize),
+//         totalCount: filteredCount,
+//         totalPages: Math.ceil(filteredCount / pageSize),
+//         hasNext: page * pageSize < filteredCount,
+//         hasPrev: page > 1,
+//         counts: counts
+//       };
+//     }
+
+//     if (includeCounts) {
+//       response.counts = counts;
+//     }
+
+//     res.status(200).json(response);
+//   } catch (error) {
+//     console.error("Error getting account masters:", error);
+//     res.status(500).json({
+//       success: false,
+//       message: "Failed to fetch account masters",
+//       error: error.message,
+//     });
+//   }
+// };
 
 // exports.bulkCreateAccountMasters = async (req, res) => {
 //   const session = await mongoose.startSession();
@@ -737,6 +891,898 @@ exports.getAllAccountMasters = async (req, res) => {
 //     });
 //   }
 // };
+// exports.getAllAccountMasters = async (req, res) => {
+//   try {
+//     const {
+//       filters = {},
+//       search = "",
+//       startDate,
+//       endDate,
+//       isPagination = true,
+//       page = 1,
+//       pageSize = 10,
+//       includeCounts = true
+//     } = req.body;
+
+//     // Base query object
+//     const query = {};
+
+//     // Search functionality - search across multiple fields
+//     if (search) {
+//       query.$or = [
+//         { "reasonToVisit": { $regex: search, $options: "i" } },
+//         { "party.partyName": { $regex: search, $options: "i" } },
+//         { "party.ownerName": { $regex: search, $options: "i" } },
+//         { "party.ownerMobileNo": { $regex: search, $options: "i" } },
+//         { "party.ownerWhatsAppNo": { $regex: search, $options: "i" } },
+//         { "party.contactPerson": { $regex: search, $options: "i" } },
+//         { "party.personMobileNo": { $regex: search, $options: "i" } },
+//         { "party.personWhatsAppNo": { $regex: search, $options: "i" } },
+//         { "party.contactForPayment": { $regex: search, $options: "i" } },
+//         { "party.contactMobileNo": { $regex: search, $options: "i" } },
+//         { "party.contactWhatsAppNo": { $regex: search, $options: "i" } },
+//         { "party.GSTNo": { $regex: search, $options: "i" } },
+//         { "party.address.unitNo": { $regex: search, $options: "i" } },
+//         { "party.address.marketName.marketName": { $regex: search, $options: "i" } },
+//         { "party.address.landMark.landmark": { $regex: search, $options: "i" } },
+//         { "party.address.area.area": { $regex: search, $options: "i" } },
+//         { "party.address.pincode.pincode": { $regex: search, $options: "i" } },
+//       ];
+//     }
+
+//     // companyName filter
+//     if (filters.company && filters.company.length > 0) {
+//       query.companyName = { $in: filters.company };
+//     }
+
+//     // createdBy (Staff Id) filter
+//     if (filters.createdBy && filters.createdBy.length > 0) {
+//       query.createdBy = { $in: filters.createdBy };
+//     }
+
+//     // reasonToVisit filter
+//     if (filters.reason && filters.reason.length > 0) {
+//       query.reasonToVisit = { $in: filters.reason };
+//     }
+
+//     // Date range filter
+//     if (startDate || endDate) {
+//       query.createdAt = {};
+//       if (startDate) {
+//         const start = new Date(startDate);
+//         start.setHours(0, 0, 0, 0);
+//         query.createdAt.$gte = start;
+//       }
+//       if (endDate) {
+//         const end = new Date(endDate);
+//         end.setHours(23, 59, 59, 999);
+//         query.createdAt.$lte = end;
+//       }
+//     }
+
+//     let partyMatch = {};
+
+//     // Party name filter
+//     if (filters.party && filters.party.length > 0) {
+//       partyMatch.partyName = { $in: filters.party };
+//     }
+
+//     // Contact person filter
+//     if (filters.contactPerson && filters.contactPerson.length > 0) {
+//       partyMatch.contactPerson = { $in: filters.contactPerson };
+//     }
+
+//     // Party tag filter
+//     if (filters.partyTag && filters.partyTag.length > 0) {
+//       partyMatch.partyTag = { $in: filters.partyTag };
+//     }
+
+//     // Mobile number filters
+//     if (filters.mobile && filters.mobile.length > 0) {
+//       partyMatch.$or = [
+//         { ownerMobileNo: { $in: filters.mobile } },
+//         { ownerWhatsAppNo: { $in: filters.mobile } },
+//         { personMobileNo: { $in: filters.mobile } },
+//         { personWhatsAppNo: { $in: filters.mobile } },
+//         { contactMobileNo: { $in: filters.mobile } },
+//         { contactWhatsAppNo: { $in: filters.mobile } },
+//       ];
+//     }
+
+//     // Unit number filter
+//     if (filters.unitNo && filters.unitNo.length > 0) {
+//       partyMatch["address.unitNo"] = { $in: filters.unitNo };
+//     }
+
+//     // Market filter
+//     if (filters.market && filters.market.length > 0) {
+//       partyMatch["address.marketName"] = { $in: filters.market };
+//     }
+
+//     // Area filter
+//     if (filters.area && filters.area.length > 0) {
+//       partyMatch["address.area"] = { $in: filters.area };
+//     }
+
+//     // Status filter
+//     if (filters.status && filters.status.length > 0) {
+//       partyMatch.statusApproval = { $in: filters.status };
+//     }
+
+//     // Create the aggregation pipeline
+//     let pipeline = [
+//       {
+//         $lookup: {
+//           from: "parties",
+//           localField: "party",
+//           foreignField: "_id",
+//           as: "party",
+//         },
+//       },
+//       {
+//         $unwind: {
+//           path: "$party",
+//           preserveNullAndEmptyArrays: false,
+//         },
+//       },
+//       {
+//         $lookup: {
+//           from: "users",
+//           localField: "createdBy",
+//           foreignField: "_id",
+//           as: "createdBy",
+//         },
+//       },
+//       {
+//         $unwind: {
+//           path: "$createdBy",
+//           preserveNullAndEmptyArrays: true,
+//         },
+//       },
+//       {
+//         $lookup: {
+//           from: "companies",
+//           localField: "companyName",
+//           foreignField: "_id",
+//           as: "companyName",
+//         },
+//       },
+//       {
+//         $unwind: {
+//           path: "$companyName",
+//           preserveNullAndEmptyArrays: true,
+//         },
+//       },
+//       {
+//         $lookup: {
+//           from: "markets",
+//           localField: "party.address.marketName",
+//           foreignField: "_id",
+//           as: "party.address.marketName",
+//         },
+//       },
+//       {
+//         $unwind: {
+//           path: "$party.address.marketName",
+//           preserveNullAndEmptyArrays: true,
+//         },
+//       },
+//       {
+//         $lookup: {
+//           from: "markets",
+//           localField: "party.address.landMark",
+//           foreignField: "_id",
+//           as: "party.address.landMark",
+//         },
+//       },
+//       {
+//         $unwind: {
+//           path: "$party.address.landMark",
+//           preserveNullAndEmptyArrays: true,
+//         },
+//       },
+//       {
+//         $lookup: {
+//           from: "markets",
+//           localField: "party.address.area",
+//           foreignField: "_id",
+//           as: "party.address.area",
+//         },
+//       },
+//       {
+//         $unwind: {
+//           path: "$party.address.area",
+//           preserveNullAndEmptyArrays: true,
+//         },
+//       },
+//       {
+//         $lookup: {
+//           from: "markets",
+//           localField: "party.address.pincode",
+//           foreignField: "_id",
+//           as: "party.address.pincode",
+//         },
+//       },
+//       {
+//         $unwind: {
+//           path: "$party.address.pincode",
+//           preserveNullAndEmptyArrays: true,
+//         },
+//       },
+//     ];
+
+//     // Add match conditions for the main query and party filters
+//     const matchConditions = {};
+
+//     // Add main query conditions
+//     if (Object.keys(query).length > 0) {
+//       Object.assign(matchConditions, query);
+//     }
+
+//     // Add party match conditions
+//     if (Object.keys(partyMatch).length > 0) {
+//       const partyConditions = {};
+//       Object.entries(partyMatch).forEach(([key, value]) => {
+//         if (key === "$or") {
+//           partyConditions.$or = value;
+//         } else {
+//           partyConditions[`party.${key}`] = value;
+//         }
+//       });
+
+//       if (matchConditions.$and) {
+//         matchConditions.$and.push(partyConditions);
+//       } else if (Object.keys(matchConditions).length > 0) {
+//         matchConditions.$and = [matchConditions, partyConditions];
+//       } else {
+//         Object.assign(matchConditions, partyConditions);
+//       }
+//     }
+
+//     if (Object.keys(matchConditions).length > 0) {
+//       pipeline.push({ $match: matchConditions });
+//     }
+
+//     // Add sorting
+//     pipeline.push({ $sort: { createdAt: -1 } });
+
+//     // Execute the aggregation without pagination to get all results
+//     let allAccountMasters = await AccountMaster.aggregate(pipeline);
+
+//     // Get the latest tasks for each party-company combination
+//     const assignTasks = await AssignTask.aggregate([
+//       { $sort: { createdAt: -1 } },
+//       {
+//         $group: {
+//           _id: { partyName: "$partyName", companyName: "$companyName" },
+//           latestTask: { $first: "$$ROOT" },
+//         },
+//       },
+//     ]);
+
+//     const taskMap = {};
+//     assignTasks.forEach((task) => {
+//       const key = `${task._id.partyName}_${task._id.companyName}`;
+//       taskMap[key] = task.latestTask;
+//     });
+
+//     // Enrich all account masters with task details
+//     const enrichedAllAccountMasters = await Promise.all(
+//       allAccountMasters.map(async (account) => {
+//         const taskKey = `${account?.party?._id}_${account?.companyName?._id}`;
+//         const latestTask = taskMap[taskKey];
+
+//         let taskDetails = {
+//           assignedTo: account.createdBy,
+//           remarks: "NA",
+//           status: "Not Started",
+//         };
+
+//         if (latestTask) {
+//           const populatedTask = await AssignTask.populate(latestTask, {
+//             path: "assignTo",
+//             select: "firstName lastName email",
+//           });
+
+//           taskDetails = {
+//             assignedTo: populatedTask.assignTo || account.createdBy,
+//             remarks: populatedTask.remarks || "NA",
+//             status: populatedTask.status || "Not Started",
+//           };
+//         }
+
+//         return {
+//           _id: account._id,
+//           companyName: {
+//             _id: account.companyName?._id,
+//             name: account.companyName?.companyName,
+//             avatar: account.companyName?.avatar,
+//           },
+//           reasonToVisit: account.reasonToVisit,
+//           createdAt: account.createdAt,
+//           updatedAt: account.updatedAt,
+//           createdBy: account.createdBy,
+//           party: {
+//             _id: account.party._id,
+//             partyName: account.party.partyName,
+//             ownerName: account.party.ownerName,
+//             ownerMobileNo: account.party.ownerMobileNo,
+//             ownerWhatsAppNo: account.party.ownerWhatsAppNo,
+//             ownerEmail: account.party.ownerEmail || "N/A",
+//             contactPerson: account.party.contactPerson,
+//             personMobileNo: account.party.personMobileNo,
+//             personWhatsAppNo: account.party.personWhatsAppNo,
+//             contactPersonEmail: account.party.contactPersonEmail || "N/A",
+//             contactForPayment: account.party.contactForPayment,
+//             contactMobileNo: account.party.contactMobileNo,
+//             contactWhatsAppNo: account.party.contactWhatsAppNo,
+//             contactForPaymentEmail: account.party.contactForPaymentEmail || "N/A",
+//             GSTNo: account.party.GSTNo,
+//             address: account.party.address,
+//             partyTag: account.party.partyTag,
+//             statusApproval: account.party.statusApproval,
+//             createdAt: account.party.createdAt,
+//             updatedAt: account.party.updatedAt,
+//           },
+//           assignment: taskDetails,
+//         };
+//       })
+//     );
+
+//     // Apply additional filters for remarks and assignedTo
+//     let filteredAccountMasters = [...enrichedAllAccountMasters];
+
+//     if (filters.remarks && filters.remarks.length > 0 || filters.assignedTo && filters.assignedTo.length > 0) {
+//       filteredAccountMasters = [];
+
+//       for (const account of enrichedAllAccountMasters) {
+//         let includeAccount = true;
+
+//         // Check remarks filter
+//         if (filters.remarks && filters.remarks.length > 0) {
+//           includeAccount = filters.remarks.some(remark => 
+//             account.assignment.remarks.toLowerCase().includes(remark.toLowerCase())
+//           );
+//         }
+
+//         // Check assignedTo filter
+//         if (includeAccount && filters.assignedTo && filters.assignedTo.length > 0) {
+//           includeAccount = filters.assignedTo.some(assignedToId => 
+//             account.assignment.assignedTo._id.toString() === assignedToId
+//           );
+//         }
+
+//         if (includeAccount) {
+//           filteredAccountMasters.push(account);
+//         }
+//       }
+//     }
+
+//     // Get the total count after all filters
+//     const totalCount = filteredAccountMasters.length;
+
+//     // Apply pagination if enabled
+//     let enrichedAccountMasters = [...filteredAccountMasters];
+//     if (isPagination) {
+//       const startIndex = (page - 1) * pageSize;
+//       const endIndex = startIndex + pageSize;
+//       enrichedAccountMasters = filteredAccountMasters.slice(startIndex, endIndex);
+//     }
+
+//     // Calculate counts for status
+//     let counts = {
+//       approved: 0,
+//       pending: 0,
+//       total: totalCount,
+//     };
+
+//     if (includeCounts) {
+//       filteredAccountMasters.forEach((account) => {
+//         if (account.party.statusApproval === "APPROVED") {
+//           counts.approved++;
+//         } else if (account.party.statusApproval === "PENDING") {
+//           counts.pending++;
+//         }
+//       });
+//     }
+
+//     // Prepare pagination information
+//     const pagination = isPagination
+//       ? {
+//           currentPage: page,
+//           pageSize: pageSize,
+//           totalCount: totalCount,
+//           totalPages: Math.ceil(totalCount / pageSize),
+//           hasNext: page < Math.ceil(totalCount / pageSize),
+//           hasPrev: page > 1,
+//           counts: counts,
+//         }
+//       : null;
+
+//     res.status(200).json({
+//       success: true,
+//       data: enrichedAccountMasters,
+//       pagination: pagination,
+//       counts: counts,
+//     });
+//   } catch (error) {
+//     console.error("Error getting account masters:", error);
+//     res.status(500).json({
+//       success: false,
+//       message: "Failed to fetch account masters",
+//       error: error.message,
+//     });
+//   }
+// };
+
+
+
+
+
+
+exports.getAllAccountMasters = async (req, res) => {
+  try {
+    const {
+      filters = {},
+      search = "",
+      startDate,
+      endDate,
+      isPagination = true,
+      page = 1,
+      pageSize = 10,
+      includeCounts = true
+    } = req.body;
+
+    // Base query object
+    const query = {};
+
+    // Search functionality - search across multiple fields
+    if (search) {
+      query.$or = [
+        { "reasonToVisit": { $regex: search, $options: "i" } },
+        { "party.partyName": { $regex: search, $options: "i" } },
+        { "party.ownerName": { $regex: search, $options: "i" } },
+        { "party.ownerMobileNo": { $regex: search, $options: "i" } },
+        { "party.ownerWhatsAppNo": { $regex: search, $options: "i" } },
+        { "party.contactPerson": { $regex: search, $options: "i" } },
+        { "party.personMobileNo": { $regex: search, $options: "i" } },
+        { "party.personWhatsAppNo": { $regex: search, $options: "i" } },
+        { "party.contactForPayment": { $regex: search, $options: "i" } },
+        { "party.contactMobileNo": { $regex: search, $options: "i" } },
+        { "party.contactWhatsAppNo": { $regex: search, $options: "i" } },
+        { "party.GSTNo": { $regex: search, $options: "i" } },
+        { "party.address.unitNo": { $regex: search, $options: "i" } },
+        { "party.address.marketName.marketName": { $regex: search, $options: "i" } },
+        { "party.address.landMark.landmark": { $regex: search, $options: "i" } },
+        { "party.address.area.area": { $regex: search, $options: "i" } },
+        { "party.address.pincode.pincode": { $regex: search, $options: "i" } },
+      ];
+    }
+
+    // companyName filter (populated from companies collection)
+    if (filters.company && filters.company.length > 0) {
+      query.companyName = { $in: filters.company };
+    }
+
+    // createdBy filter (populated from staff collection, matching firstName + lastName)
+    if (filters.createdBy && filters.createdBy.length > 0) {
+      // Get staff IDs that match the first or last names
+      const createdByStaff = await Staff.find({
+        $or: [
+          { firstName: { $in: filters.createdBy } },
+          { lastName: { $in: filters.createdBy } },
+          {
+            $expr: {
+              $regexMatch: {
+                input: { $concat: ["$firstName", " ", "$lastName"] },
+                regex: new RegExp(filters.createdBy.join("|"), "i")
+              }
+            }
+          }
+        ]
+      });
+
+      if (createdByStaff.length > 0) {
+        query["createdBy._id"] = { $in: createdByStaff.map(s => s._id) };
+
+      }
+    }
+
+    // reasonToVisit filter (direct match)
+    if (filters.reason && filters.reason.length > 0) {
+      query.reasonToVisit = { $in: filters.reason };
+    }
+
+    // Date range filter (direct match)
+    if (startDate || endDate) {
+      query.createdAt = {};
+      if (startDate) {
+        const start = new Date(startDate);
+        start.setHours(0, 0, 0, 0);
+        query.createdAt.$gte = start;
+      }
+      if (endDate) {
+        const end = new Date(endDate);
+        end.setHours(23, 59, 59, 999);
+        query.createdAt.$lte = end;
+      }
+    }
+
+    let partyMatch = {};
+
+    // Party name filter (populated from parties collection)
+    if (filters.party && filters.party.length > 0) {
+      partyMatch.partyName = { $in: filters.party };
+    }
+
+    // Contact person filter (direct match)
+    if (filters.contactPerson && filters.contactPerson.length > 0) {
+      partyMatch.contactPerson = { $in: filters.contactPerson };
+    }
+
+    // Party tag filter (direct match)
+    if (filters.partyTag && filters.partyTag.length > 0) {
+      partyMatch.partyTag = { $in: filters.partyTag };
+    }
+
+    // Mobile number filters (matching ownerMobileNo)
+    if (filters.mobile && filters.mobile.length > 0) {
+      partyMatch.ownerMobileNo = { $in: filters.mobile };
+    }
+
+    // Unit number filter (matching party.address.unitNo)
+    if (filters.unitNo && filters.unitNo.length > 0) {
+      partyMatch["address.unitNo"] = { $in: filters.unitNo };
+    }
+
+    // Market filter (populated from markets collection)
+    if (filters.market && filters.market.length > 0) {
+      // First get market IDs that match the market names
+      const markets = await Market.find({
+        marketName: { $in: filters.market }
+      });
+
+      if (markets.length > 0) {
+        partyMatch["address.marketName._id"] = { $in: markets.map(m => m._id) };
+
+      }
+    }
+
+    // Area filter (populated from markets collection)
+    if (filters.area && filters.area.length > 0) {
+      // First get area IDs that match the area names
+      const areas = await Market.find({
+        area: { $in: filters.area }
+      });
+
+      if (areas.length > 0) {
+        partyMatch["address.area._id"] = { $in: areas.map(area => area._id) };
+      }
+    }
+
+    // Status filter (direct match)
+    if (filters.status && filters.status.length > 0) {
+      partyMatch.statusApproval = { $in: filters.status };
+    }
+
+    // Create the aggregation pipeline
+    let pipeline = [
+      {
+        $lookup: {
+          from: "parties",
+          localField: "party",
+          foreignField: "_id",
+          as: "party",
+        },
+      },
+      {
+        $unwind: {
+          path: "$party",
+          preserveNullAndEmptyArrays: false,
+        },
+      },
+      {
+        $lookup: {
+          from: "staffs", // Changed from "users" to "staffs"
+          localField: "createdBy",
+          foreignField: "_id",
+          as: "createdBy",
+        },
+      },
+      {
+        $unwind: {
+          path: "$createdBy",
+          preserveNullAndEmptyArrays: true,
+        },
+      },
+      {
+        $lookup: {
+          from: "companynames",
+          localField: "companyName",
+          foreignField: "_id",
+          as: "companyName",
+        },
+      },
+      {
+        $unwind: {
+          path: "$companyName",
+          preserveNullAndEmptyArrays: true,
+        },
+      },
+      {
+        $lookup: {
+          from: "markets",
+          localField: "party.address.marketName",
+          foreignField: "_id",
+          as: "party.address.marketName",
+        },
+      },
+      {
+        $unwind: {
+          path: "$party.address.marketName",
+          preserveNullAndEmptyArrays: true,
+        },
+      },
+      {
+        $lookup: {
+          from: "markets",
+          localField: "party.address.landMark",
+          foreignField: "_id",
+          as: "party.address.landMark",
+        },
+      },
+      {
+        $unwind: {
+          path: "$party.address.landMark",
+          preserveNullAndEmptyArrays: true,
+        },
+      },
+      {
+        $lookup: {
+          from: "markets",
+          localField: "party.address.area",
+          foreignField: "_id",
+          as: "party.address.area",
+        },
+      },
+      {
+        $unwind: {
+          path: "$party.address.area",
+          preserveNullAndEmptyArrays: true,
+        },
+      },
+      {
+        $lookup: {
+          from: "markets",
+          localField: "party.address.pincode",
+          foreignField: "_id",
+          as: "party.address.pincode",
+        },
+      },
+      {
+        $unwind: {
+          path: "$party.address.pincode",
+          preserveNullAndEmptyArrays: true,
+        },
+      },
+
+    ];
+
+    // Add match conditions for the main query and party filters
+    const matchConditions = {};
+
+    // Add main query conditions
+    if (Object.keys(query).length > 0) {
+      Object.assign(matchConditions, query);
+    }
+
+    // Add party match conditions
+    if (Object.keys(partyMatch).length > 0) {
+      const partyConditions = {};
+      Object.entries(partyMatch).forEach(([key, value]) => {
+        if (key === "$or") {
+          partyConditions.$or = value;
+        } else {
+          partyConditions[`party.${key}`] = value;
+        }
+      });
+
+      if (matchConditions.$and) {
+        matchConditions.$and.push(partyConditions);
+      } else if (Object.keys(matchConditions).length > 0) {
+        matchConditions.$and = [matchConditions, partyConditions];
+      } else {
+        Object.assign(matchConditions, partyConditions);
+      }
+    }
+
+    if (Object.keys(matchConditions).length > 0) {
+      pipeline.push({ $match: matchConditions });
+    }
+
+    // Add sorting
+    pipeline.push({ $sort: { createdAt: -1 } });
+
+    // Execute the aggregation without pagination to get all results
+    let allAccountMasters = await AccountMaster.aggregate(pipeline);
+
+    // Get the latest tasks for each party-company combination
+    const assignTasks = await AssignTask.aggregate([
+      { $sort: { createdAt: -1 } },
+      {
+        $group: {
+          _id: { partyName: "$partyName", companyName: "$companyName" },
+          latestTask: { $first: "$$ROOT" },
+        },
+      },
+    ]);
+
+    const taskMap = {};
+    assignTasks.forEach((task) => {
+      const key = `${task._id.partyName}_${task._id.companyName}`;
+      taskMap[key] = task.latestTask;
+    });
+
+    // Enrich all account masters with task details
+    const enrichedAllAccountMasters = await Promise.all(
+      allAccountMasters.map(async (account) => {
+        const taskKey = `${account?.party?._id}_${account?.companyName?._id}`;
+        const latestTask = taskMap[taskKey];
+
+        let taskDetails = {
+          assignedTo: account.createdBy,
+          remarks: "NA",
+          status: "Not Started",
+        };
+
+        if (latestTask) {
+          const populatedTask = await AssignTask.populate(latestTask, {
+            path: "assignTo",
+            select: "firstName lastName email",
+          });
+
+          taskDetails = {
+            assignedTo: populatedTask.assignTo || account.createdBy,
+            remarks: populatedTask.remarks || "NA",
+            status: populatedTask.status || "Not Started",
+          };
+        }
+
+        return {
+          _id: account._id,
+          companyName: {
+            _id: account.companyName?._id,
+            name: account.companyName?.companyName,
+            avatar: account.companyName?.avatar,
+          },
+          reasonToVisit: account.reasonToVisit,
+          createdAt: account.createdAt,
+          updatedAt: account.updatedAt,
+          createdBy: account.createdBy,
+          party: {
+            _id: account.party._id,
+            partyName: account.party.partyName,
+            ownerName: account.party.ownerName,
+            ownerMobileNo: account.party.ownerMobileNo,
+            ownerWhatsAppNo: account.party.ownerWhatsAppNo,
+            ownerEmail: account.party.ownerEmail || "N/A",
+            contactPerson: account.party.contactPerson,
+            personMobileNo: account.party.personMobileNo,
+            personWhatsAppNo: account.party.personWhatsAppNo,
+            contactPersonEmail: account.party.contactPersonEmail || "N/A",
+            contactForPayment: account.party.contactForPayment,
+            contactMobileNo: account.party.contactMobileNo,
+            contactWhatsAppNo: account.party.contactWhatsAppNo,
+            contactForPaymentEmail: account.party.contactForPaymentEmail || "N/A",
+            GSTNo: account.party.GSTNo,
+            address: account.party.address,
+            partyTag: account.party.partyTag,
+            statusApproval: account.party.statusApproval,
+            createdAt: account.party.createdAt,
+            updatedAt: account.party.updatedAt,
+          },
+          assignment: taskDetails,
+        };
+      })
+    );
+
+    // Apply additional filters for remarks and assignedTo
+    let filteredAccountMasters = [...enrichedAllAccountMasters];
+
+    // Remarks filter (direct match)
+    if (filters.remarks && filters.remarks.length > 0) {
+      filteredAccountMasters = filteredAccountMasters.filter(account =>
+        filters.remarks.some(remark =>
+          account.assignment.remarks.toLowerCase().includes(remark.toLowerCase())
+        )
+      );
+    }
+
+    // AssignedTo filter (populated from staff collection, matching firstName + lastName)
+    if (filters.assignedTo && filters.assignedTo.length > 0) {
+      const assignedToStaff = await Staff.find({
+        $or: [
+          { firstName: { $in: filters.assignedTo } },
+          { lastName: { $in: filters.assignedTo } },
+          {
+            $expr: {
+              $regexMatch: {
+                input: { $concat: ["$firstName", " ", "$lastName"] },
+                regex: new RegExp(filters.assignedTo.join("|"), "i")
+              }
+            }
+          }
+        ]
+      });
+
+      const assignedToIds = assignedToStaff.map(s => s._id.toString());
+
+      filteredAccountMasters = filteredAccountMasters.filter(acc => {
+        const assigned = acc.assignment?.assignedTo?._id?.toString();
+        return assigned && assignedToIds.includes(assigned);
+      });
+    }
+
+
+    // Get the total count after all filters
+    const totalCount = filteredAccountMasters.length;
+
+    // Apply pagination if enabled
+    let enrichedAccountMasters = [...filteredAccountMasters];
+    if (isPagination) {
+      const startIndex = (page - 1) * pageSize;
+      const endIndex = startIndex + pageSize;
+      enrichedAccountMasters = filteredAccountMasters.slice(startIndex, endIndex);
+    }
+
+    // Calculate counts for status
+    let counts = {
+      approved: 0,
+      pending: 0,
+      total: totalCount,
+    };
+
+    if (includeCounts) {
+      filteredAccountMasters.forEach((account) => {
+        if (account.party.statusApproval === "APPROVED") {
+          counts.approved++;
+        } else if (account.party.statusApproval === "PENDING") {
+          counts.pending++;
+        }
+      });
+    }
+
+    // Prepare pagination information
+    const pagination = isPagination
+      ? {
+        currentPage: page,
+        pageSize: pageSize,
+        totalCount: totalCount,
+        totalPages: Math.ceil(totalCount / pageSize),
+        hasNext: page < Math.ceil(totalCount / pageSize),
+        hasPrev: page > 1,
+        counts: counts,
+      }
+      : null;
+
+    res.status(200).json({
+      success: true,
+      data: enrichedAccountMasters,
+      pagination: pagination,
+      counts: counts,
+    });
+  } catch (error) {
+    console.error("Error getting account masters:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch account masters",
+      error: error.message,
+    });
+  }
+};
+
+
+
 const normalize = (val) => (val ? String(val).trim().toLowerCase() : null);
 
 // Helper to find a Market by field
@@ -1719,13 +2765,13 @@ exports.getAccountMasterByStaffId = async (req, res) => {
 exports.searchParties = async (req, res) => {
   try {
     const { q, companyId } = req.query;
-    
+
     // First find account masters for the company
     const accountMatchQuery = {};
     if (companyId && mongoose.Types.ObjectId.isValid(companyId)) {
       accountMatchQuery.companyName = companyId;
     }
-    
+
     const accountMasters = await AccountMaster.find(accountMatchQuery)
       .select('party')
       .populate({
@@ -1733,19 +2779,19 @@ exports.searchParties = async (req, res) => {
         match: q ? { partyName: { $regex: q, $options: "i" } } : {},
         select: 'partyName address'
       });
-    
+
     // Filter out accounts where party is null (due to population match)
     const validParties = accountMasters
       .filter(acc => acc.party !== null)
       .map(acc => acc.party);
-    
+
     // Now populate the market details for these parties
     const partiesWithMarket = await Party.find({
       _id: { $in: validParties.map(p => p._id) }
     })
-    .populate('address.marketName')
-    .limit(20)
-    .sort({ partyName: 1 });
+      .populate('address.marketName')
+      .limit(20)
+      .sort({ partyName: 1 });
 
     res.status(200).json({
       success: true,
@@ -1799,6 +2845,233 @@ exports.getQualityPackingParties = async (req, res) => {
     return res.status(500).json({
       message: "Server Error",
       error: error.message,
+    });
+  }
+};
+
+exports.getFilterOptionsData = async (req, res) => {
+  try {
+    const { field } = req.params;
+    const filters = req.body || {};
+    const { search, ...otherFilters } = filters;
+
+    if (!field) {
+      return res.status(400).json({ success: false, message: "Field parameter is required" });
+    }
+
+    // -----------------------
+    // BUILD MAIN FILTER QUERY
+    // -----------------------
+    const query = {};
+
+    if (otherFilters.companyName) {
+      query.companyName = otherFilters.companyName;
+    }
+
+    if (otherFilters.staffId) {
+      query.createdBy = otherFilters.staffId;
+    }
+
+    // DATE RANGE
+    if (otherFilters.startDate || otherFilters.endDate) {
+      query.createdAt = {};
+      if (otherFilters.startDate) {
+        const start = new Date(otherFilters.startDate);
+        start.setHours(0, 0, 0, 0);
+        query.createdAt.$gte = start;
+      }
+      if (otherFilters.endDate) {
+        const end = new Date(otherFilters.endDate);
+        end.setHours(23, 59, 59, 999);
+        query.createdAt.$lte = end;
+      }
+    }
+
+    let uniqueValues = [];
+
+    // ===========================================
+    //          FIELD WISE CLEAN SOLUTIONS
+    // ===========================================
+
+    switch (field) {
+
+      case "company":
+        const companyIds = await AccountMaster.distinct("companyName", query);
+
+        const companies = await CompanyName.find(
+          { _id: { $in: companyIds } },
+          "companyName"
+        );
+
+        uniqueValues = companies.map(c => c.companyName);
+        break;
+
+
+      case "party":
+        const partyIds = await AccountMaster.distinct("party", query);
+        const parties = await Party.find({ _id: { $in: partyIds } }, "partyName");
+        uniqueValues = parties.map(p => p.partyName);
+        break;
+
+      case "contactPerson":
+        const partyIds1 = await AccountMaster.distinct("party", query);
+        const persons = await Party.find({ _id: { $in: partyIds1 } }, "contactPerson");
+        uniqueValues = persons.map(p => p.contactPerson);
+        break;
+
+      case "createdAt":
+        const dates = await AccountMaster.distinct("createdAt", query);
+
+        uniqueValues = dates
+          .sort((a, b) => new Date(b) - new Date(a))
+          .map(d => moment(d).format("DD-MM-YYYY HH:mm:ss"));
+
+        break;
+
+      case "mobile":
+        const partyIds8 = await AccountMaster.distinct("party", query);
+
+        const partyMobiles = await Party.find(
+          { _id: { $in: partyIds8 } },
+          "ownerMobileNo"
+        );
+
+        uniqueValues = partyMobiles
+          .map(p => p.ownerMobileNo)
+          .filter(Boolean);
+        break;
+
+
+
+      case "partyTag":
+        const partyIds2 = await AccountMaster.distinct("party", query);
+        const tags = await Party.find({ _id: { $in: partyIds2 } }, "partyTag");
+        uniqueValues = tags.map(p => p.partyTag);
+        break;
+
+      case "unitNo":
+        const partyIds3 = await AccountMaster.distinct("party", query);
+        console.log(partyIds3, 'partyIds3');
+
+        const partiess = await Party.find(
+          { _id: { $in: partyIds3 } },
+          "address.unitNo"   // <-- Only this nested field
+        );
+
+        console.log(partiess, 'parties');
+
+        uniqueValues = partiess.map(p => p.address?.unitNo).filter(v => v);
+        break;
+
+      case "mobileNo":
+        const partyIds4 = await AccountMaster.distinct("party", query);
+        const numbers = await Party.find(
+          { _id: { $in: partyIds4 } },
+          "ownerMobileNo ownerWhatsAppNo personMobileNo personWhatsAppNo contactMobileNo contactWhatsAppNo"
+        );
+
+        uniqueValues = [
+          ...new Set(
+            numbers.flatMap(n => [
+              n.ownerMobileNo,
+              n.ownerWhatsAppNo,
+              n.personMobileNo,
+              n.personWhatsAppNo,
+              n.contactMobileNo,
+              n.contactWhatsAppNo,
+            ]).filter(Boolean)
+          )
+        ];
+        break;
+
+      case "market":
+        const partyIds5 = await AccountMaster.distinct("party", query);
+        const markets = await Party.find({ _id: { $in: partyIds5 } })
+          .populate("address.marketName", "marketName");
+
+        uniqueValues = [
+          ...new Set(
+            markets.map(m => m.address?.marketName?.marketName).filter(Boolean)
+          )
+        ];
+        break;
+
+      case "area":
+        const partyIds6 = await AccountMaster.distinct("party", query);
+        const areas = await Party.find({ _id: { $in: partyIds6 } })
+          .populate("address.area", "area");
+
+        uniqueValues = [
+          ...new Set(
+            areas.map(a => a.address?.area?.area).filter(Boolean)
+          )
+        ];
+        break;
+
+      case "reason":
+        uniqueValues = await AccountMaster.distinct("reasonToVisit", query);
+        break;
+
+      case "createdBy":
+        const createdByIds = await AccountMaster.distinct("createdBy", query);
+
+        const staffUsers = await Staff.find(
+          { _id: { $in: createdByIds } },
+          "firstName lastName"
+        );
+
+        uniqueValues = staffUsers.map(u => `${u.firstName} ${u.lastName}`);
+        break;
+
+      case "status":
+        const partyIds7 = await AccountMaster.distinct("party", query);
+        const statuses = await Party.find(
+          { _id: { $in: partyIds7 } },
+          "statusApproval"
+        );
+
+        uniqueValues = statuses.map(s => s.statusApproval);
+        break;
+
+      case "assignedTo":
+        const tasks = await AssignTask.distinct("assignTo", {
+          assignTo: { $exists: true, $ne: null }
+        });
+
+        const users = await Staff.find({ _id: { $in: tasks } }, "firstName lastName");
+
+        uniqueValues = users.map(u => `${u.firstName} ${u.lastName}`);
+        break;
+
+      default:
+        return res.status(400).json({ success: false, message: "Invalid field parameter" });
+    }
+
+    // SEARCH FILTER
+    if (search) {
+      const searchText = search.toLowerCase();
+      uniqueValues = uniqueValues.filter(v =>
+        v?.toString().toLowerCase().includes(searchText)
+      );
+    }
+
+    // REMOVE DUPLICATES + SORT
+    uniqueValues = [...new Set(uniqueValues)].filter(Boolean).sort();
+
+    // LIMIT FOR SAFETY
+    uniqueValues = uniqueValues.slice(0, 100);
+
+    res.status(200).json({
+      success: true,
+      data: uniqueValues,
+      count: uniqueValues.length
+    });
+
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      message: "Error loading filter options",
+      error: err.message
     });
   }
 };

@@ -426,15 +426,12 @@ const getSCReport = async (req, res) => {
         // Sirf ek baar check karein
         if (/^get visit$/i.test(task.reasonForVisit)) {
           getVisitCount++;
-          console.log("DEBUG : getSCReport : getVisitCount:", getVisitCount);
 
           // Count partyTag NEW / CUSTOMER only for "Get Visit" tasks
           if (task.partyName?.partyTag === 'NEW') {
             newPartyCount++;
-            console.log("DEBUG : getSCReport : NEW party found:", task.partyName?.partyName);
           } else if (task.partyName?.partyTag === 'CUSTOMER') {
             customerPartyCount++;
-            console.log("DEBUG : getSCReport : CUSTOMER party found:", task.partyName?.partyName);
           }
         }
       })
@@ -502,7 +499,6 @@ const getSCReport = async (req, res) => {
       const sakshiOrderParties = await Order.find({ createdBy: staff._id, companyName: company._id, ...otherModelsDateFilter }).distinct('party');
 
       const createdParties = await AccountMaster.find({ createdBy: staff._id, companyName: company._id, ...otherModelsDateFilter }).distinct('party');
-      console.log("DEBUG : getSCReport : createdParties:", createdParties);
 
       const newToCustomerParties = await Party.countDocuments({ _id: { $in: [...new Set([...sakshiOrderParties])] }, partyTag: 'CUSTOMER', createdBy: staff._id, });
       const newPartiesStillNew = await Party.countDocuments({ _id: { $in: createdParties }, partyTag: 'NEW', createdBy: staff._id });
@@ -512,7 +508,6 @@ const getSCReport = async (req, res) => {
         _id: { $in: createdParties },
         partyTag: 'NEW'
       });
-      console.log("DEBUG : getSCReport : newparty:", newparty);
 
 
       // Count CUSTOMER parties for this staff
@@ -520,7 +515,6 @@ const getSCReport = async (req, res) => {
         _id: { $in: createdParties },
         partyTag: 'CUSTOMER'
       });
-      console.log("DEBUG : getSCReport : customerparty:", customerparty);
 
       return {
         staffId: staff._id,
@@ -656,15 +650,12 @@ const getQPReport = async (req, res) => {
         // Sirf ek baar check karein
         if (/^get visit$/i.test(task.reasonForVisit)) {
           getVisitCount++;
-          console.log("DEBUG : getSCReport : getVisitCount:", getVisitCount);
 
           // Count partyTag NEW / CUSTOMER only for "Get Visit" tasks
           if (task.partyName?.partyTag === 'NEW') {
             newPartyCount++;
-            console.log("DEBUG : getSCReport : NEW party found:", task.partyName?.partyName);
           } else if (task.partyName?.partyTag === 'CUSTOMER') {
             customerPartyCount++;
-            console.log("DEBUG : getSCReport : CUSTOMER party found:", task.partyName?.partyName);
           }
         }
       })
@@ -673,9 +664,6 @@ const getQPReport = async (req, res) => {
       const completedLeads = await Lead.countDocuments({ assignedTo: staff._id, companyName: company._id, status: { $regex: '^completed$', $options: 'i' }, ...taskLeadDateFilter });
       const cancelledLeads = await Lead.countDocuments({ assignedTo: staff._id, companyName: company._id, status: { $regex: '^cancelled$', $options: 'i' }, ...taskLeadDateFilter });
       const rescheduledLeads = await Lead.countDocuments({ assignedTo: staff._id, companyName: company._id, status: { $regex: '^rescheduled$', $options: 'i' }, ...taskLeadDateFilter });
-      console.log("DEBUG : getQPReport : companyName: company._id:", company._id);
-
-      console.log("DEBUG : getQPReport :  assignedTo: staff._id:", staff._id);
 
       const totalLeads = await Lead.countDocuments({
         assignedTo: staff._id,
@@ -709,11 +697,6 @@ const getQPReport = async (req, res) => {
       const sakshiOrderParties = await Order.find({ createdBy: staff._id, companyName: company._id, ...otherModelsDateFilter }).distinct('party');
 
       const createdParties = await AccountMaster.find({ createdBy: staff._id, companyName: company._id, ...otherModelsDateFilter }).distinct('party');
-      console.log("DEBUG : getQPReport : company._id:", company._id);
-
-      console.log("DEBUG : getQPReport : staff._id:", staff._id);
-
-      console.log("DEBUG : getQPReport : createdParties:", createdParties);
 
       const newToCustomerParties = await Party.countDocuments({ _id: { $in: [...new Set([...qpOrderParties])] }, partyTag: 'CUSTOMER' });
       const newPartiesStillNew = await Party.countDocuments({ _id: { $in: createdParties }, partyTag: 'NEW' });
@@ -723,7 +706,6 @@ const getQPReport = async (req, res) => {
         _id: { $in: createdParties },
         partyTag: 'NEW'
       });
-      console.log("DEBUG : getQPReport : newparty:", newparty);
 
 
       // Count CUSTOMER parties for this staff
@@ -731,7 +713,6 @@ const getQPReport = async (req, res) => {
         _id: { $in: createdParties },
         partyTag: 'CUSTOMER'
       });
-      console.log("DEBUG : getQPReport : customerparty:", customerparty);
 
       return {
         staffId: staff._id,

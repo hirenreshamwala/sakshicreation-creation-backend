@@ -36,6 +36,6 @@ router.post("/by-company-party",authenticateToken, AccountMasterController.getAc
 
 router.get("/parties/search",authenticateToken, AccountMasterController.searchParties);
 
-
+router.post("/filter-options/:field",authenticateToken, AccountMasterController.getFilterOptionsData);
 
 module.exports = router;

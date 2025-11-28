@@ -154,9 +154,6 @@ exports.createLead = async (req, res) => {
 exports.getAllLeads = async (req, res) => {
   try {
     const { status, partyName, companyName, startDate, endDate, assignedTo,staffId } = req.body; 
-    console.log("DEBUG :  req.body:",  req.body);
-
-    console.log("DEBUG : staffId:", staffId);
 
     let filter = {};
 
@@ -196,8 +193,6 @@ exports.getAllLeads = async (req, res) => {
         });
       }
       filter.assignedTo = staffId;
-      console.log("DEBUG : staffId:", staffId);
-
     }
 
     // ✅ Date filter
