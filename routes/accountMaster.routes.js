@@ -16,7 +16,7 @@ router.put("/party/:id/approve",authenticateToken, AccountMasterController.appro
 
 // Get a single account master by ID
 router.get("/getbyid/:id",authenticateToken, AccountMasterController.getAccountMasterById);
-router.get("/getbystaffid/:id",authenticateToken, AccountMasterController.getAccountMasterByStaffId);
+router.post("/getbystaffid/:id",authenticateToken, AccountMasterController.getAccountMasterByStaffId);
 
 // Update an account master by ID
 router.patch("/update/:id",authenticateToken, AccountMasterController.updateAccountMaster);
