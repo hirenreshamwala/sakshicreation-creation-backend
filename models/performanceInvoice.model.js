@@ -82,6 +82,15 @@ const performanceInvoiceSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    gstPercentage: {
+      type: String,
+      default: 0
+    },
+    paymentDate: { // Add this
+      type: Number,
+      required: false
+    },
+
     finalAmount: {
       type: Number,
       default: 0,

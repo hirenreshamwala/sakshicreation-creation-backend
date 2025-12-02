@@ -162,6 +162,7 @@ exports.createAccountMaster = async (req, res) => {
       address: req.body.address,
       reference: req.body.reference,
       statusApproval: req.body.isRequestMode ? "Pending" : "Approved", // Set based on isRequestMode
+      partyType: req.body.partyType
     };
 
     const newParty = await Party.create(partyData);
@@ -869,6 +870,7 @@ exports.bulkCreateAccountMasters = async (req, res) => {
           statusApproval: row.isRequestMode === "TRUE" ? "Pending" : "Approved",
           createdBy: staff._id,
           partyTag,
+          partyType: row.partyType || "",
         };
 
         const newParty = await Party.create([partyData], { session });
@@ -991,6 +993,8 @@ exports.getAccountMasterById = async (req, res) => {
       contactWhatsAppNo: accountMaster.party.contactWhatsAppNo,
       contactForPaymentEmail: accountMaster.party.contactForPaymentEmail || "",
       GSTNo: accountMaster.party.GSTNo,
+      partyTag: accountMaster.party.partyTag,
+      partyType: accountMaster.party.partyType || "",
       address: {
         unitNo: accountMaster.party.address.unitNo,
         marketName: accountMaster.party.address.marketName,
@@ -1115,6 +1119,7 @@ exports.updateAccountMaster = async (req, res) => {
       contactForPaymentEmail: req.body.contactForPaymentEmail || null,
       GSTNo: req.body.GSTNo,
       address: req.body.address,
+      partyType: req.body.partyType,
       reference: req.body.reference,
       // Preserve existing statusApproval unless explicitly updated
       statusApproval:
@@ -1692,6 +1697,7 @@ exports.getAccountMasterByStaffId = async (req, res) => {
             GSTNo: account.party?.GSTNo,
             address: account.party?.address,
             partyTag: account.party?.partyTag,
+             partyType: account.party.partyType || "",
             statusApproval: account.party?.statusApproval,
             createdAt: account.party?.createdAt,
             updatedAt: account.party?.updatedAt,
@@ -1719,13 +1725,13 @@ exports.getAccountMasterByStaffId = async (req, res) => {
 exports.searchParties = async (req, res) => {
   try {
     const { q, companyId } = req.query;
-    
+
     // First find account masters for the company
     const accountMatchQuery = {};
     if (companyId && mongoose.Types.ObjectId.isValid(companyId)) {
       accountMatchQuery.companyName = companyId;
     }
-    
+
     const accountMasters = await AccountMaster.find(accountMatchQuery)
       .select('party')
       .populate({
@@ -1733,19 +1739,19 @@ exports.searchParties = async (req, res) => {
         match: q ? { partyName: { $regex: q, $options: "i" } } : {},
         select: 'partyName address'
       });
-    
+
     // Filter out accounts where party is null (due to population match)
     const validParties = accountMasters
       .filter(acc => acc.party !== null)
       .map(acc => acc.party);
-    
+
     // Now populate the market details for these parties
     const partiesWithMarket = await Party.find({
       _id: { $in: validParties.map(p => p._id) }
     })
-    .populate('address.marketName')
-    .limit(20)
-    .sort({ partyName: 1 });
+      .populate('address.marketName')
+      .limit(20)
+      .sort({ partyName: 1 });
 
     res.status(200).json({
       success: true,

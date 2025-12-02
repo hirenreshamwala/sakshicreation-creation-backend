@@ -35,6 +35,10 @@ const partySchema = new mongoose.Schema(
       // enum: ["New", "Customer"],
       default: "NEW",
     },
+    partyType: {
+      type: String,
+      default: ""
+    },
     statusApproval: {
       type: String,
       // enum: ["Pending", "APPROVED"],
