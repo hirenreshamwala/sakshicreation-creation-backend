@@ -48,6 +48,19 @@ const partySchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+partySchema.index({ companyName: 1, partyName: 1, createdAt: -1 });
+partySchema.index({ ownerMobileNo: 1, ownerWhatsAppNo: 1 });
+partySchema.index({ statusApproval: 1, partyTag: 1 });
+partySchema.index({ "address.area": 1, partyName: 1 });
+partySchema.index({ "address.marketName": 1, partyName: 1 });
+partySchema.index({
+  partyName: "text",
+  ownerName: "text",
+  contactPerson: "text",
+  GSTNo: "text",
+});
+
+
 // Middleware to make all string fields uppercase
 partySchema.pre("save", function (next) {
   const doc = this;

@@ -4,6 +4,7 @@ const Staff = require("../models/staff.model");
 const mongoose = require("mongoose");
 const CompanyName = require("../models/companyName.model");
 const Party = require("../models/Party.model");
+const moment = require("moment");
 
 const normalizeDate = (dateStr) => {
   if (!dateStr) return null;
@@ -151,109 +152,594 @@ exports.createLead = async (req, res) => {
 };
 
 // Get all Leads
+// exports.getAllLeads = async (req, res) => {
+//   try {
+//     const {
+//       status,
+//       partyName,
+//       companyName,
+//       startDate,
+//       endDate,
+//       assignedTo,
+//       staffId,
+//       page = 1,
+//       limit = 10,
+//       date,
+//       getDatesOnly = false // New parameter to get only dates
+//     } = req.body;
+
+//     let filter = {};
+
+//     // Status filter (multiple allowed)
+//     if (status && Array.isArray(status) && status.length > 0) {
+//       filter.status = { $in: status };
+//     }
+
+//     // Party filter
+//     if (partyName) {
+//       if (!mongoose.Types.ObjectId.isValid(partyName)) {
+//         return res.status(400).json({
+//           success: false,
+//           message: "Invalid partyName ID format",
+//         });
+//       }
+//       filter.partyName = partyName;
+//     }
+
+//     // Company filter
+//     if (companyName) {
+//       if (!mongoose.Types.ObjectId.isValid(companyName)) {
+//         return res.status(400).json({
+//           success: false,
+//           message: "Invalid companyName ID format",
+//         });
+//       }
+//       filter.companyName = companyName;
+//     }
+
+//     // AssignedTo filter
+//     if (staffId) {
+//       if (!mongoose.Types.ObjectId.isValid(staffId)) {
+//         return res.status(400).json({
+//           success: false,
+//           message: "Invalid assignedTo ID format",
+//         });
+//       }
+//       filter.assignedTo = staffId;
+//     }
+
+//     // Date filter
+//     if (date) {
+//       // Format: DD/MM/YYYY
+//       const [day, month, year] = date.split('/');
+//       const startOfDay = new Date(`${year}-${month}-${day}`);
+//       startOfDay.setHours(0, 0, 0, 0);
+//       const endOfDay = new Date(`${year}-${month}-${day}`);
+//       endOfDay.setHours(23, 59, 59, 999);
+//       filter.date = { $gte: startOfDay, $lte: endOfDay };
+//     } else if (startDate && endDate) {
+//       const start = new Date(startDate);
+//       start.setHours(0, 0, 0, 0);
+//       const end = new Date(endDate);
+//       end.setHours(23, 59, 59, 999);
+//       filter.date = { $gte: start, $lte: end };
+//     }
+
+//     // If getDatesOnly is true, return only dates with counts
+//     if (getDatesOnly) {
+//       const datePipeline = [
+//         { $match: filter },
+//         {
+//           $group: {
+//             _id: {
+//               $dateToString: {
+//                 format: "%d/%m/%Y",
+//                 date: "$date"
+//               }
+//             },
+//             count: { $sum: 1 }
+//           }
+//         },
+//         { $sort: { _id: -1 } }
+//       ];
+
+//       const dateGroups = await Lead.aggregate(datePipeline);
+
+//       // Format the response
+//       const formattedDates = dateGroups.map(item => ({
+//         date: item._id,
+//         count: item.count
+//       }));
+
+//       return res.status(200).json({
+//         success: true,
+//         dates: formattedDates
+//       });
+//     }
+//     // If date is provided, we're fetching paginated data for that specific date
+//     else if (date) {
+//       const skip = (page - 1) * limit;
+
+//       const leads = await Lead.find(filter)
+//         .populate("companyName")
+//         .populate("partyName")
+//         .populate({
+//           path: "partyName",
+//           select: "-__v",
+//           populate: [
+//             { path: "address.marketName", model: "Market", select: "marketName", strictPopulate: false },
+//             { path: "address.landMark", model: "Market", select: "landmark", strictPopulate: false },
+//             { path: "address.area", model: "Market", select: "area", strictPopulate: false },
+//             { path: "address.pincode", model: "Market", select: "pincode", strictPopulate: false },
+//           ],
+//         })
+//         .populate("assignedTo", "firstName lastName email")
+//         .populate("originalLeadId", "date createdAt")
+//         .sort({ createdAt: -1 })
+//         .skip(skip)
+//         .limit(limit)
+//         .lean();
+
+//       const populatedLeads = await Promise.all(
+//         leads.map(async (lead) => {
+//           const accountMaster = await AccountMaster.findOne({
+//             party: lead.partyName?._id,
+//             companyName: lead.companyName?._id,
+//           })
+//             .populate("createdBy", "firstName lastName")
+//             .lean();
+
+//           return {
+//             ...lead,
+//             partyName: {
+//               ...lead.partyName,
+//               createdBy: accountMaster ? accountMaster.createdBy : null,
+//             },
+//           };
+//         })
+//       );
+
+//       const total = await Lead.countDocuments(filter);
+
+//       return res.status(200).json({
+//         success: true,
+//         data: populatedLeads,
+//         count: total,
+//         pagination: {
+//           total,
+//           page: parseInt(page),
+//           limit: parseInt(limit),
+//           totalPages: Math.ceil(total / limit)
+//         }
+//       });
+//     }
+//     // If no specific date is provided, return all leads (for backward compatibility)
+//     else {
+//       const leads = await Lead.find(filter)
+//         .populate("companyName")
+//         .populate("partyName")
+//         .populate({
+//           path: "partyName",
+//           select: "-__v",
+//           populate: [
+//             { path: "address.marketName", model: "Market", select: "marketName", strictPopulate: false },
+//             { path: "address.landMark", model: "Market", select: "landmark", strictPopulate: false },
+//             { path: "address.area", model: "Market", select: "area", strictPopulate: false },
+//             { path: "address.pincode", model: "Market", select: "pincode", strictPopulate: false },
+//           ],
+//         })
+//         .populate("assignedTo", "firstName lastName email")
+//         .populate("originalLeadId", "date createdAt")
+//         .sort({ createdAt: -1 })
+//         .lean();
+
+//       const populatedLeads = await Promise.all(
+//         leads.map(async (lead) => {
+//           const accountMaster = await AccountMaster.findOne({
+//             party: lead.partyName?._id,
+//             companyName: lead.companyName?._id,
+//           })
+//             .populate("createdBy", "firstName lastName")
+//             .lean();
+
+//           return {
+//             ...lead,
+//             partyName: {
+//               ...lead.partyName,
+//               createdBy: accountMaster ? accountMaster.createdBy : null,
+//             },
+//           };
+//         })
+//       );
+
+//       return res.status(200).json({
+//         success: true,
+//         data: populatedLeads,
+//         count: populatedLeads.length,
+//       });
+//     }
+//   } catch (error) {
+//     console.error("Error fetching leads:", error);
+//     return res.status(500).json({
+//       success: false,
+//       message: "Server error while fetching leads",
+//       error: error.message,
+//     });
+//   }
+// };
 exports.getAllLeads = async (req, res) => {
   try {
-    const { status, partyName, companyName, startDate, endDate, assignedTo,staffId } = req.body; 
-    console.log("DEBUG :  req.body:",  req.body);
+    const {
+      status,
+      partyName,
+      companyName,
+      startDate,
+      endDate,
+      assignedTo,
+      staffId,
+      page = 1,
+      limit = 10,
+      date,
+      getDatesOnly = false,
+      search,
+      mobile,
+      unitNo,
+      marketName,
+      area,
+      partyTag,
+      createdBy,
+      assignedToFilter,
+      reason,
+    } = req.body;
 
-    console.log("DEBUG : staffId:", staffId);
+    // Build aggregation pipeline
+    const pipeline = [];
 
-    let filter = {};
+    // Step 1: Lookup partyName
+    pipeline.push({
+      $lookup: {
+        from: "parties",
+        localField: "partyName",
+        foreignField: "_id",
+        as: "partyData"
+      }
+    });
+    pipeline.push({ $unwind: { path: "$partyData", preserveNullAndEmptyArrays: true } });
 
-    // ✅ Status filter (multiple allowed)
-    if (status && Array.isArray(status) && status.length > 0) {
-      filter.status = { $in: status };
+    // Step 2: Lookup companyName
+    pipeline.push({
+      $lookup: {
+        from: "companynames",
+        localField: "companyName",
+        foreignField: "_id",
+        as: "companyData"
+      }
+    });
+    pipeline.push({ $unwind: { path: "$companyData", preserveNullAndEmptyArrays: true } });
+
+    // Step 3: Lookup assignedTo
+    pipeline.push({
+      $lookup: {
+        from: "staffs",
+        localField: "assignedTo",
+        foreignField: "_id",
+        as: "assignedToData"
+      }
+    });
+    pipeline.push({ $unwind: { path: "$assignedToData", preserveNullAndEmptyArrays: true } });
+
+    // Step 4: Lookup market data for address fields
+    pipeline.push({
+      $lookup: {
+        from: "markets",
+        localField: "partyData.address.marketName",
+        foreignField: "_id",
+        as: "marketNameData"
+      }
+    });
+    pipeline.push({
+      $lookup: {
+        from: "markets",
+        localField: "partyData.address.area",
+        foreignField: "_id",
+        as: "areaData"
+      }
+    });
+
+    // Step 5: Build match conditions
+    const matchConditions = {};
+
+    // Search across multiple fields
+    if (search) {
+      matchConditions.$or = [
+        { 'partyData.partyName': { $regex: search, $options: 'i' } },
+        { 'partyData.ownerName': { $regex: search, $options: 'i' } },
+        { 'partyData.ownerMobileNo': { $regex: search, $options: 'i' } },
+        { 'partyData.ownerWhatsAppNo': { $regex: search, $options: 'i' } },
+        { 'companyData.companyName': { $regex: search, $options: 'i' } },
+        { reason: { $regex: search, $options: 'i' } },
+      ];
     }
 
-    // Party filter
-    if (partyName) {
-      if (!mongoose.Types.ObjectId.isValid(partyName)) {
-        return res.status(400).json({
-          success: false,
-          message: "Invalid partyName ID format",
-        });
+    // Mobile filter - handle comma-separated values
+    if (mobile) {
+      if (mobile.includes(',')) {
+        const mobiles = mobile.split(',').map(m => m.trim()).filter(m => m);
+        matchConditions['partyData.ownerWhatsAppNo'] = { $in: mobiles };
+      } else {
+        matchConditions['partyData.ownerWhatsAppNo'] = mobile;
       }
-      filter.partyName = partyName;
+    }
+
+    // Unit No filter - handle comma-separated values
+    if (unitNo) {
+      if (unitNo.includes(',')) {
+        const unitNos = unitNo.split(',').map(u => u.trim()).filter(u => u);
+        matchConditions['partyData.address.unitNo'] = { $in: unitNos };
+      } else {
+        matchConditions['partyData.address.unitNo'] = unitNo;
+      }
+    }
+
+    // Market Name filter - handle comma-separated values
+    if (marketName) {
+      if (marketName.includes(',')) {
+        const markets = marketName.split(',').map(m => m.trim()).filter(m => m);
+        matchConditions['marketNameData.marketName'] = { $in: markets };
+      } else {
+        matchConditions['marketNameData.marketName'] = marketName;
+      }
+    }
+
+    // Area filter - handle comma-separated values
+    if (area) {
+      if (area.includes(',')) {
+        const areas = area.split(',').map(a => a.trim()).filter(a => a);
+        matchConditions['areaData.area'] = { $in: areas };
+      } else {
+        matchConditions['areaData.area'] = area;
+      }
+    }
+
+    // Party Tag filter - handle comma-separated values
+    if (partyTag) {
+      if (partyTag.includes(',')) {
+        const tags = partyTag.split(',').map(t => t.trim()).filter(t => t);
+        matchConditions['partyData.partyTag'] = { $in: tags };
+      } else {
+        matchConditions['partyData.partyTag'] = partyTag;
+      }
+    }
+
+    // Assigned To filter by name/email - handle comma-separated values
+    if (assignedToFilter) {
+      if (assignedToFilter.includes(',')) {
+        const names = assignedToFilter.split(',').map(n => n.trim()).filter(n => n);
+        const regexArray = names.map(n => new RegExp(n, 'i'));
+        matchConditions.$or = matchConditions.$or || [];
+        matchConditions.$or.push(
+          { 'assignedToData.firstName': { $in: regexArray } },
+          { 'assignedToData.lastName': { $in: regexArray } },
+          { 'assignedToData.email': { $in: regexArray } }
+        );
+      } else {
+        matchConditions.$or = matchConditions.$or || [];
+        matchConditions.$or.push(
+          { 'assignedToData.firstName': { $regex: assignedToFilter, $options: 'i' } },
+          { 'assignedToData.lastName': { $regex: assignedToFilter, $options: 'i' } },
+          { 'assignedToData.email': { $regex: assignedToFilter, $options: 'i' } }
+        );
+      }
+    }
+
+    // Reason filter - handle comma-separated values
+    if (reason) {
+      if (reason.includes(',')) {
+        const reasons = reason.split(',').map(r => r.trim()).filter(r => r);
+        matchConditions.reason = { $in: reasons };
+      } else {
+        matchConditions.reason = reason;
+      }
+    }
+
+    // Status filter (multiple allowed)
+    if (status && Array.isArray(status) && status.length > 0) {
+      matchConditions.status = { $in: status };
+    } else if (status) {
+      matchConditions.status = status;
+    }
+
+    // Party filter - handle both ObjectId and comma-separated names
+    if (partyName) {
+      if (partyName.includes(',')) {
+        // Comma-separated list of party names
+        const names = partyName.split(',').map(n => n.trim()).filter(n => n);
+        matchConditions['partyData.partyName'] = { $in: names };
+      } else if (mongoose.Types.ObjectId.isValid(partyName)) {
+        // Single ObjectId
+        matchConditions.partyName = new mongoose.Types.ObjectId(partyName);
+      } else {
+        // Single party name
+        matchConditions['partyData.partyName'] = partyName;
+      }
     }
 
     // Company filter
     if (companyName) {
-      if (!mongoose.Types.ObjectId.isValid(companyName)) {
-        return res.status(400).json({
-          success: false,
-          message: "Invalid companyName ID format",
-        });
+      if (mongoose.Types.ObjectId.isValid(companyName)) {
+        matchConditions.companyName = new mongoose.Types.ObjectId(companyName);
+      } else {
+        // If not a valid ObjectId, filter by company name
+        matchConditions['companyData.companyName'] = companyName;
       }
-      filter.companyName = companyName;
     }
 
-    // AssignedTo filter
+    // Staff ID filter (assignedTo by ID)
     if (staffId) {
-      if (!mongoose.Types.ObjectId.isValid(staffId)) {
+      if (mongoose.Types.ObjectId.isValid(staffId)) {
+        matchConditions.assignedTo = new mongoose.Types.ObjectId(staffId);
+      } else {
         return res.status(400).json({
           success: false,
-          message: "Invalid assignedTo ID format",
+          message: "Invalid staffId ID format",
         });
       }
-      filter.assignedTo = staffId;
-      console.log("DEBUG : staffId:", staffId);
-
     }
 
-    // ✅ Date filter
-    if (startDate && endDate) {
+    // Date filter
+    if (date) {
+      // Format: DD/MM/YYYY
+      const [day, month, year] = date.split('/');
+      const startOfDay = new Date(`${year}-${month}-${day}`);
+      startOfDay.setHours(0, 0, 0, 0);
+      const endOfDay = new Date(`${year}-${month}-${day}`);
+      endOfDay.setHours(23, 59, 59, 999);
+      matchConditions.date = { $gte: startOfDay, $lte: endOfDay };
+    } else if (startDate && endDate) {
       const start = new Date(startDate);
       start.setHours(0, 0, 0, 0);
-
       const end = new Date(endDate);
       end.setHours(23, 59, 59, 999);
-
-      filter.date = { $gte: start, $lte: end };
+      matchConditions.date = { $gte: start, $lte: end };
     }
 
-    // Fetch leads
-    const leads = await Lead.find(filter)
-      .populate("companyName")
-      .populate("partyName")
-      .populate({
-        path: "partyName",
-        select: "-__v",
-        populate: [
-          { path: "address.marketName", model: "Market", select: "marketName", strictPopulate: false },
-          // { path: "address.streetAddress", model: "Market", select: "streetAddress", strictPopulate: false },
-          { path: "address.landMark", model: "Market", select: "landmark", strictPopulate: false },
-          { path: "address.area", model: "Market", select: "area", strictPopulate: false },
-          { path: "address.pincode", model: "Market", select: "pincode", strictPopulate: false },
-        ],
-      })
-      .populate("assignedTo", "firstName lastName email")
-      .populate("originalLeadId", "date createdAt")
-      .sort({ createdAt: -1 })
-      .lean();
+    // Add match stage if there are conditions
+    if (Object.keys(matchConditions).length > 0) {
+      pipeline.push({ $match: matchConditions });
+    }
 
-        const populatedLeads = await Promise.all(
-      leads.map(async (lead) => {  // ✅ Use 'leads' instead of 'validLeads'
+    // If getDatesOnly is true, return only dates with counts
+    if (getDatesOnly) {
+      pipeline.push({
+        $group: {
+          _id: {
+            $dateToString: {
+              format: "%d/%m/%Y",
+              date: "$date"
+            }
+          },
+          count: { $sum: 1 }
+        }
+      });
+      pipeline.push({ $sort: { _id: -1 } });
+
+      const dateGroups = await Lead.aggregate(pipeline);
+
+      // Format the response
+      const formattedDates = dateGroups.map(item => ({
+        date: item._id,
+        count: item.count
+      }));
+
+      return res.status(200).json({
+        success: true,
+        dates: formattedDates
+      });
+    }
+
+    // For regular data fetching with pagination
+    const skip = (page - 1) * limit;
+
+    // Get total count
+    const countPipeline = [...pipeline, { $count: "total" }];
+    const countResult = await Lead.aggregate(countPipeline);
+    const total = countResult.length > 0 ? countResult[0].total : 0;
+
+    // Add pagination
+    pipeline.push({ $sort: { createdAt: -1 } });
+    pipeline.push({ $skip: skip });
+    pipeline.push({ $limit: parseInt(limit) });
+
+    // Lookup originalLeadId
+    pipeline.push({
+      $lookup: {
+        from: "leads",
+        localField: "originalLeadId",
+        foreignField: "_id",
+        as: "originalLeadData"
+      }
+    });
+
+    // Execute aggregation
+    const leads = await Lead.aggregate(pipeline);
+
+    // Populate createdBy from AccountMaster and restructure data
+    const populatedLeads = await Promise.all(
+      leads.map(async (lead) => {
         const accountMaster = await AccountMaster.findOne({
-          party: lead.partyName?._id,  // ✅ Added optional chaining
-          companyName: lead.companyName?._id,  // ✅ Added optional chaining
+          party: lead.partyData?._id,
+          companyName: lead.companyData?._id,
         })
           .populate("createdBy", "firstName lastName")
           .lean();
 
+        // Lookup market data for nested population
+        const marketNameData = lead.marketNameData && lead.marketNameData[0] ? lead.marketNameData[0] : null;
+        const areaData = lead.areaData && lead.areaData[0] ? lead.areaData[0] : null;
+
+        // Lookup other market fields
+        let landMarkData = null;
+        let pincodeData = null;
+        if (lead.partyData?.address?.landMark) {
+          const landMarkDoc = await mongoose.model('Market').findById(lead.partyData.address.landMark).select('landmark').lean();
+          landMarkData = landMarkDoc;
+        }
+        if (lead.partyData?.address?.pincode) {
+          const pincodeDoc = await mongoose.model('Market').findById(lead.partyData.address.pincode).select('pincode').lean();
+          pincodeData = pincodeDoc;
+        }
+
+        // Restructure to match original format
         return {
-          ...lead,
-          partyName: {
-            ...lead.partyName,
+          _id: lead._id,
+          companyName: lead.companyData,
+          partyName: lead.partyData ? {
+            ...lead.partyData,
             createdBy: accountMaster ? accountMaster.createdBy : null,
-          },
+            address: lead.partyData.address ? {
+              ...lead.partyData.address,
+              marketName: marketNameData,
+              landMark: landMarkData,
+              area: areaData,
+              pincode: pincodeData
+            } : undefined
+          } : null,
+          assignedTo: lead.assignedToData ? {
+            _id: lead.assignedToData._id,
+            firstName: lead.assignedToData.firstName,
+            lastName: lead.assignedToData.lastName,
+            email: lead.assignedToData.email
+          } : null,
+          originalLeadId: lead.originalLeadData && lead.originalLeadData[0] ? {
+            _id: lead.originalLeadData[0]._id,
+            date: lead.originalLeadData[0].date,
+            createdAt: lead.originalLeadData[0].createdAt
+          } : null,
+          reason: lead.reason,
+          customReason: lead.customReason,
+          status: lead.status,
+          date: lead.date,
+          time: lead.time,
+          callFeedback: lead.callFeedback,
+          rescheduleDate: lead.rescheduleDate,
+          isRescheduledCall: lead.isRescheduledCall,
+          callHistory: lead.callHistory,
+          createdAt: lead.createdAt,
+          updatedAt: lead.updatedAt
         };
       })
     );
 
     return res.status(200).json({
       success: true,
-      count: populatedLeads.length,  // ✅ Now shows all leads count
       data: populatedLeads,
+      count: total,
+      pagination: {
+        total,
+        page: parseInt(page),
+        limit: parseInt(limit),
+        totalPages: Math.ceil(total / limit)
+      }
     });
   } catch (error) {
     console.error("Error fetching leads:", error);
@@ -264,7 +750,6 @@ exports.getAllLeads = async (req, res) => {
     });
   }
 };
-
 // In lead.controller.js
 exports.bulkCreateLeads = async (req, res) => {
   try {
@@ -726,8 +1211,8 @@ exports.updateLeadById = async (req, res) => {
       ...(reason === "Other" && customReason
         ? { customReason }
         : reason !== "Other"
-        ? { customReason: undefined }
-        : {}),
+          ? { customReason: undefined }
+          : {}),
       ...(assignedTo && { assignedTo }),
       ...(status && { status }),
       ...(normalizedDate && { date: normalizedDate }),
@@ -1096,6 +1581,207 @@ exports.addLeadCallHistory = async (req, res) => {
       success: false,
       message: "Failed to add call history",
       error: error.message,
+    });
+  }
+};
+
+exports.getPartyFilterOptionsData = async (req, res) => {
+  try {
+    const { field } = req.params;
+    const { search } = req.body || {};
+
+    let uniqueValues = [];
+
+    switch (field) {
+
+      /* ✅ CREATED DATE (FROM LEAD) */
+      case "createdAt": {
+        const leadDates = await mongoose.model("Lead").distinct("createdAt");
+
+        uniqueValues = leadDates
+          .sort((a, b) => new Date(b) - new Date(a))
+          .map(d => moment(d).format("DD-MM-YYYY"))
+          .filter(Boolean);
+
+        break;
+      }
+
+      /* ✅ PARTY NAME (FROM LEAD -> PARTY REF) */
+      case "partyName": {
+        const partyIds = await mongoose.model("Lead").distinct("partyName");
+
+        const parties = await Party.find(
+          { _id: { $in: partyIds } },
+          "partyName"
+        );
+
+        uniqueValues = parties.map(p => p.partyName).filter(Boolean);
+        break;
+      }
+
+      /* ✅ MOBILE NO (ONLY PARTIES IN LEAD) */
+      case "mobile": {
+        const partyIds = await mongoose.model("Lead").distinct("partyName");
+
+        const parties = await Party.find(
+          { _id: { $in: partyIds } },
+          "ownerWhatsAppNo"
+        );
+
+        uniqueValues = [
+          ...new Set(
+            parties.flatMap(party => [
+              party.ownerWhatsAppNo,
+            ]).filter(Boolean)
+          )
+        ];
+
+        break;
+      }
+
+      /* ✅ REASON TO CALL (FROM LEAD) */
+      case "reason": {
+        uniqueValues = await mongoose.model("Lead").distinct("reason");
+        uniqueValues = uniqueValues.filter(Boolean);
+        break;
+      }
+
+      /* ✅ UNIT NO (FROM PARTY ADDRESS) */
+      case "unitNo": {
+        const partyIds = await mongoose.model("Lead").distinct("partyName");
+
+        const parties = await Party.find(
+          { _id: { $in: partyIds } },
+          "address.unitNo"
+        );
+
+        uniqueValues = parties.map(p => p.address?.unitNo).filter(Boolean);
+        break;
+      }
+
+      /* ✅ MARKET (FROM PARTY ADDRESS) */
+      case "marketName": {
+        const partyIds = await mongoose.model("Lead").distinct("partyName");
+
+        const parties = await Party.find(
+          { _id: { $in: partyIds } }
+        ).populate("address.marketName", "marketName");
+
+        uniqueValues = [
+          ...new Set(
+            parties.map(p => p.address?.marketName?.marketName).filter(Boolean)
+          )
+        ];
+
+        break;
+      }
+
+      /* ✅ AREA (FROM PARTY ADDRESS) */
+      case "area": {
+        const partyIds = await mongoose.model("Lead").distinct("partyName");
+
+        const parties = await Party.find(
+          { _id: { $in: partyIds } }
+        ).populate("address.area", "area");
+
+        uniqueValues = [
+          ...new Set(
+            parties.map(p => p.address?.area?.area).filter(Boolean)
+          )
+        ];
+
+        break;
+      }
+
+      /* ✅ PARTY STATUS (FROM PARTY) */
+      case "partyStatus": {
+        const partyIds = await mongoose.model("Lead").distinct("partyName");
+
+        uniqueValues = await Party.distinct(
+          "statusApproval",
+          { _id: { $in: partyIds } }
+        );
+
+        uniqueValues = uniqueValues.filter(Boolean);
+        break;
+      }
+
+      /* ✅ ASSIGN TO (FROM LEAD) */
+      case "assignedTo": {
+        const staffIds = await mongoose.model("Lead").distinct("assignedTo");
+
+        const staff = await mongoose.model("Staff").find(
+          { _id: { $in: staffIds } },
+          "firstName lastName"
+        );
+
+        uniqueValues = staff.map(s => `${s.firstName} ${s.lastName}`).filter(Boolean);
+        break;
+      }
+
+      /* ✅ CREATED BY (FROM LEAD) */
+      case "createdBy": {
+
+        // 1. Get all parties from Lead
+        const parties = await Lead.distinct("partyName");
+
+        // 2. Find createdBy from AccountMaster
+        const accountData = await AccountMaster.find(
+          { party: { $in: parties } },
+          "createdBy"
+        );
+
+        const createdByIds = accountData
+          .map(item => item.createdBy)
+          .filter(Boolean);
+
+        // 3. Get staff names
+        const staff = await Staff.find(
+          { _id: { $in: createdByIds } },
+          "firstName lastName"
+        );
+
+        uniqueValues = [...new Set(
+          staff.map(s => `${s.firstName} ${s.lastName}`)
+        )];
+
+        console.log(uniqueValues, 'uniqueValues')
+
+        break;
+      }
+
+
+      default:
+        return res.status(400).json({
+          success: false,
+          message: "Invalid field parameter",
+        });
+    }
+
+    /* ✅ SEARCH SUPPORT */
+    if (search) {
+      const text = search.toLowerCase();
+      uniqueValues = uniqueValues.filter(val =>
+        val?.toString().toLowerCase().includes(text)
+      );
+    }
+
+    /* ✅ CLEAN + SORT + LIMIT */
+    uniqueValues = [...new Set(uniqueValues)].filter(Boolean).sort();
+    uniqueValues = uniqueValues.slice(0, 100);
+
+    return res.status(200).json({
+      success: true,
+      data: uniqueValues,
+      count: uniqueValues.length
+    });
+
+  } catch (error) {
+    console.error("Filter Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Internal Server Error",
+      error: error.message
     });
   }
 };

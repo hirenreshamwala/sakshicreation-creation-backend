@@ -18,7 +18,7 @@ router.patch("/update/:id", LeadController.updateLeadById);
 
 // Update lead status
 router.patch("/updatestatus/:id", LeadController.updateLeadStatus);
-
+router.post("/get-filter/:field",LeadController.getPartyFilterOptionsData)
 // Delete lead
 router.delete("/delete/:id", LeadController.deleteLead);
 

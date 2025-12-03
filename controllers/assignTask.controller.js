@@ -293,12 +293,9 @@ exports.getAllAssignTasks = async (req, res) => {
     if (partyName) {
       filter.partyName = partyName;
     }
-    console.log("DEBUG : reason:", reason);
 
     if (reason) {
       const cleanedReason = reason.trim().replace(/\s+/g, "\\s*");
-      console.log("DEBUG : cleanedReason:", cleanedReason);
-
       filter.reasonForVisit = new RegExp(cleanedReason, "i");
     }
 
@@ -324,7 +321,6 @@ exports.getAllAssignTasks = async (req, res) => {
       filter.date = { $gte: start, $lte: end };
     }
 
-    console.log("DEBUG : filter:", filter);
     const tasks = await AssignTask.find(filter)
 
       .populate("companyName")
