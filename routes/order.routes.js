@@ -12,6 +12,7 @@ const {
   getBinderById,
   getBookletBinderById,
   getOrdersByStaffId,
+  getFilterOptionsData,
   updateStaffStatus
 } = require("../controllers/order.controller");
 const { authenticateToken } = require("../middleware/auth");
@@ -33,6 +34,8 @@ router.put("/:orderId/status",authenticateToken, updateStaffStatus);
 router.get("/designe", authenticateToken, getDesignerById);
 
 router.get("/:id", getOrderById);
+
+router.post('/filter-options/:field',getFilterOptionsData);
 
 router.put("/update/:id",authenticateToken, updateOrder);
 

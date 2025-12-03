@@ -6,7 +6,8 @@ const AssignTask = require("../models/assignTask.model");
 const Party = require("../models/Party.model");
 const Staff = require("../models/staff.model");
 const Inventory = require("../models/inventory.model");
-
+const ProductItem = require('../models/productItem.model');
+// const Size = require('../models/size.model');
 exports.createOrder = async (req, res) => {
   try {
     console.log("=== CREATE ORDER DEBUG ===");
@@ -251,99 +252,335 @@ exports.createOrder = async (req, res) => {
   }
 };
 
-exports.getAllOrders = async (req, res) => {
+// Add this to your order controller
+exports.getFilterOptionsData = async (req, res) => {
   try {
-    const {
-      status, // array of statuses
-      companyName,
-      party,
-      staffId, // createdBy staff id
-      startDate,
-      endDate,
-    } = req.body;
+    const { field } = req.params;
+    const filters = req.body || {};
+    const { search, ...otherFilters } = filters;
 
-    const filter = {};
-
-    // ✅ Status filter (multiple)
-    if (status && Array.isArray(status) && status.length > 0) {
-      filter.status = { $in: status };
+    if (!field) {
+      return res.status(400).json({ success: false, message: "Field parameter is required" });
     }
+
+    console.log("Order Filter Options - Field:", field, "Filters:", otherFilters);
+
+    // Build main filter query
+    const query = {};
 
     // Company filter
-    if (companyName && mongoose.Types.ObjectId.isValid(companyName)) {
-      filter.companyName = companyName;
+    if (otherFilters.company && otherFilters.company.length > 0) {
+      const companies = await Company.find({
+        companyName: { $in: otherFilters.company }
+      }).select('_id').lean();
+      
+      if (companies.length > 0) {
+        query.companyName = { $in: companies.map(c => c._id) };
+      }
     }
 
-    // Party filter
-    if (party && mongoose.Types.ObjectId.isValid(party)) {
-      filter.party = party;
+    // Staff filter
+    if (otherFilters.staffId) {
+      query.createdBy = otherFilters.staffId;
     }
 
-    // Staff filter → match createdBy
-    if (staffId && mongoose.Types.ObjectId.isValid(staffId)) {
-      filter.createdBy = staffId;
+    // DATE RANGE
+    if (otherFilters.startDate || otherFilters.endDate) {
+      query.createdAt = {};
+      if (otherFilters.startDate) {
+        const start = new Date(otherFilters.startDate);
+        start.setHours(0, 0, 0, 0);
+        query.createdAt.$gte = start;
+      }
+      if (otherFilters.endDate) {
+        const end = new Date(otherFilters.endDate);
+        end.setHours(23, 59, 59, 999);
+        query.createdAt.$lte = end;
+      }
     }
 
-    // Date range filter
-    if (startDate && endDate) {
-      const start = new Date(startDate);
-      start.setHours(0, 0, 0, 0);
-      const end = new Date(endDate);
-      end.setHours(23, 59, 59, 999);
-      filter.createdAt = { $gte: start, $lte: end };
+    let uniqueValues = [];
+
+    // FIELD WISE SOLUTIONS FOR ORDERS
+    switch (field) {
+      case "company":
+        const companyIds = await Order.distinct("companyName", query);
+        const companies = await Company.find(
+          { _id: { $in: companyIds } },
+          "companyName"
+        );
+        uniqueValues = companies.map(c => c.companyName).filter(Boolean);
+        break;
+
+      case "party":
+        const partyIds = await Order.distinct("party", query);
+        const parties = await Party.find({ _id: { $in: partyIds } }, "partyName");
+        uniqueValues = parties.map(p => p.partyName).filter(Boolean);
+        break;
+
+      case "orderNumber":
+        uniqueValues = await Order.distinct("orderNumber", query);
+        uniqueValues = uniqueValues.filter(val => val && val.trim() !== "");
+        break;
+
+      case "item":
+        const productItemIds = await Order.distinct("productItem", query);
+        const productItems = await ProductItem.find({ _id: { $in: productItemIds } }, "itemName");
+        uniqueValues = productItems.map(p => p.itemName).filter(Boolean);
+        break;
+
+      case "size":
+        // FIXED: Assume size is string field, direct distinct
+        uniqueValues = await Order.distinct("size", query);
+        uniqueValues = uniqueValues.filter(val => val && val.trim() !== "");
+        break;
+
+      case "remarks":
+        uniqueValues = await Order.distinct("remarks", query);
+        uniqueValues = uniqueValues.filter(val => val && val.trim() !== "");
+        break;
+
+      case "orderedBy":
+        const createdByIds = await Order.distinct("createdBy", query);
+        const staffUsers = await Staff.find(
+          { _id: { $in: createdByIds } },
+          "firstName lastName"
+        );
+        uniqueValues = staffUsers.map(u => `${u.firstName} ${u.lastName}`).filter(Boolean);
+        break;
+
+      case "orderStatus":
+        uniqueValues = await Order.distinct("status", query);
+        uniqueValues = uniqueValues.filter(val => val && val.trim() !== "");
+        break;
+
+      case "date":
+        const dates = await Order.distinct("createdAt", query);
+        // FIXED: Format to DD-MM-YYYY, sort ascending
+        uniqueValues = dates
+          .map(d => moment(d).format("DD-MM-YYYY"))
+          .filter((v, i, self) => v && self.indexOf(v) === i) // Unique
+          .sort((a, b) => new Date(a).getTime() - new Date(b).getTime());
+        break;
+
+      default:
+        console.log("Invalid field parameter:", field);
+        return res.status(400).json({ success: false, message: "Invalid field parameter" });
     }
 
-    // Fetch orders without pagination
-    const orders = await Order.find(filter)
-      .populate("companyName", "companyName avatar")
-      .populate("bindingType", "name")
-      .populate({
-        path: "party",
-        select: "-__v",
-        populate: [
-          {
-            path: "address.marketName",
-            model: "Market",
-            select: "marketName", // only marketName
-          },
-          // {
-          //   path: "address.streetAddress",
-          //   model: "Market",
-          //   select: "streetAddress", // only streetAddress
-          // },
-          {
-            path: "address.landMark",
-            model: "Market",
-            select: "landmark", // only landMark
-          },
-          {
-            path: "address.area",
-            model: "Market",
-            select: "area", // only area
-          },
-          {
-            path: "address.pincode",
-            model: "Market",
-            select: "pincode", // only pincode
-          },
-        ],
-      })
-      .populate("productItem", "itemName")
-      .populate("createdBy", "firstName lastName")
-      .populate("designer", "firstName lastName")
-      .populate("printer", "firstName lastName")
-      .populate("binder", "firstName lastName")
-      .populate("bookletBinder", "firstName lastName")
-      .populate("deliveryStaff", "firstName lastName")
-      .sort({ createdAt: -1 });
+    // SEARCH FILTER
+    if (search) {
+      const searchText = search.toLowerCase();
+      uniqueValues = uniqueValues.filter(v =>
+        v?.toString().toLowerCase().includes(searchText)
+      );
+    }
+
+    // REMOVE DUPLICATES + SORT
+    uniqueValues = [...new Set(uniqueValues)].filter(Boolean).sort();
+
+    // LIMIT FOR SAFETY
+    uniqueValues = uniqueValues.slice(0, 100);
+
+    console.log(`Filter options for ${field}:`, uniqueValues.length, "items");
 
     res.status(200).json({
       success: true,
-      count: orders.length,
+      data: uniqueValues,
+      count: uniqueValues.length
+    });
+
+  } catch (err) {
+    console.error("Error loading order filter options:", err);
+    res.status(500).json({
+      success: false,
+      message: "Error loading filter options",
+      error: err.message
+    });
+  }
+};
+// In your order controller, update getAllOrders method:
+exports.getAllOrders = async (req, res) => {
+  try {
+    const {
+      filters = {},
+      search = "",
+      startDate,
+      endDate,
+      isPagination = true,
+      page = 1,
+      pageSize = 10,
+      includeCounts = true
+    } = req.body;
+
+    // Build query object
+    const query = {};
+
+    // Search functionality
+    if (search) {
+      query.$or = [
+        { "orderNumber": { $regex: search, $options: "i" } },
+        { "companyName.companyName": { $regex: search, $options: "i" } },
+        { "party.partyName": { $regex: search, $options: "i" } },
+        { "productItem.itemName": { $regex: search, $options: "i" } },
+        { "remarks": { $regex: search, $options: "i" } },
+      ];
+    }
+
+    // Date range filter
+    if (startDate || endDate) {
+      query.createdAt = {};
+      if (startDate) {
+        const start = new Date(startDate);
+        start.setHours(0, 0, 0, 0);
+        query.createdAt.$gte = start;
+      }
+      if (endDate) {
+        const end = new Date(endDate);
+        end.setHours(23, 59, 59, 999);
+        query.createdAt.$lte = end;
+      }
+    }
+
+    // FIXED: Apply additional filters for all fields
+    // Company filter
+    if (filters.company && filters.company.length > 0) {
+      const companies = await Company.find({
+        companyName: { $in: filters.company }
+      }).select('_id').lean();
+      
+      if (companies.length > 0) {
+        query.companyName = { $in: companies.map(c => c._id) };
+      }
+    }
+
+    // Party filter
+    if (filters.party && filters.party.length > 0) {
+      const parties = await Party.find({
+        partyName: { $in: filters.party }
+      }).select('_id').lean();
+      
+      if (parties.length > 0) {
+        query.party = { $in: parties.map(p => p._id) };
+      }
+    }
+
+    // Order Status filter
+    if (filters.orderStatus && filters.orderStatus.length > 0) {
+      query.status = { $in: filters.orderStatus };
+    }
+
+    // FIXED: Item filter
+    if (filters.item && filters.item.length > 0) {
+      const itemDocs = await ProductItem.find({
+        itemName: { $in: filters.item }
+      }).select('_id').lean();
+      
+      if (itemDocs.length > 0) {
+        query.productItem = { $in: itemDocs.map(i => i._id) };
+      }
+    }
+
+    // FIXED: Size filter (assuming string)
+    if (filters.size && filters.size.length > 0) {
+      query.size = { $in: filters.size };
+    }
+
+    // FIXED: Order Number filter
+    if (filters.orderNumber && filters.orderNumber.length > 0) {
+      query.orderNumber = { $in: filters.orderNumber };
+    }
+
+    // FIXED: Remarks filter
+    if (filters.remarks && filters.remarks.length > 0) {
+      query.remarks = { $in: filters.remarks };
+    }
+
+    // FIXED: Ordered By filter (approximate by name)
+    if (filters.orderedBy && filters.orderedBy.length > 0) {
+      const staffQuery = {
+        $or: filters.orderedBy.map((name) => ({
+          $or: [
+            { firstName: { $regex: `^${name.split(' ')[0] || ''}`, $options: 'i' } },
+            { lastName: { $regex: (name.split(' ')[1] || ''), $options: 'i' } }
+          ]
+        }))
+      };
+      const staffDocs = await Staff.find(staffQuery).select('_id').lean();
+      
+      if (staffDocs.length > 0) {
+        query.createdBy = { $in: staffDocs.map(s => s._id) };
+      }
+    }
+
+    // Get total count
+    const totalCount = await Order.countDocuments(query);
+
+    // Apply pagination
+    let orders = [];
+    if (isPagination) {
+      const skip = (page - 1) * pageSize;
+      orders = await Order.find(query)
+        .skip(skip)
+        .limit(pageSize)
+        .populate('companyName', 'companyName avatar')
+        .populate({
+          path: 'party',
+          select: '-__v',
+          populate: [
+            { path: 'address.marketName', model: 'Market', select: 'marketName' },
+            { path: 'address.landMark', model: 'Market', select: 'landmark' },
+            { path: 'address.area', model: 'Market', select: 'area' },
+            { path: 'address.pincode', model: 'Market', select: 'pincode' },
+          ],
+        })
+      .populate('productItem', 'itemName')
+      .populate('createdBy', 'firstName lastName')
+      .populate('designer', 'firstName lastName')
+      .populate('printer', 'firstName lastName')
+      .populate('binder', 'firstName lastName')
+      .populate('bookletBinder', 'firstName lastName')
+        .sort({ createdAt: -1 });
+    } else {
+      orders = await Order.find(query)
+        .populate('companyName', 'companyName avatar')
+        .populate({
+          path: 'party',
+          select: '-__v',
+          populate: [
+            { path: 'address.marketName', model: 'Market', select: 'marketName' },
+            { path: 'address.landMark', model: 'Market', select: 'landmark' },
+            { path: 'address.area', model: 'Market', select: 'area' },
+            { path: 'address.pincode', model: 'Market', select: 'pincode' },
+          ],
+        })
+        .populate('productItem', 'itemName')
+        .populate('createdBy', 'firstName lastName')
+        .populate('designer', 'firstName lastName')
+        .populate('printer', 'firstName lastName')
+        .populate('binder', 'firstName lastName')
+        .populate('bookletBinder', 'firstName lastName')
+        .sort({ createdAt: -1 });
+    }
+
+    // Prepare pagination information
+    const pagination = isPagination ? {
+      currentPage: parseInt(page),
+      pageSize: parseInt(pageSize),
+      totalCount: totalCount,
+      totalPages: Math.ceil(totalCount / pageSize),
+      hasNext: page < Math.ceil(totalCount / pageSize),
+      hasPrev: page > 1,
+    } : null;
+
+    res.status(200).json({
+      success: true,
       data: orders,
+      pagination: pagination,
+      totalCount: totalCount,
     });
   } catch (error) {
-    console.error("❌ Get all orders error:", error);
+    console.error("Error getting orders:", error);
     res.status(500).json({
       success: false,
       message: "Failed to fetch orders",
@@ -1356,8 +1593,113 @@ exports.getOrdersByStaffId = async (req, res) => {
       });
     }
 
-    // 3. Fetch orders created by the staff member
-    const orders = await Order.find({ createdBy: id })
+    const {
+      filters = {},
+      search = "",
+      startDate,
+      endDate,
+      isPagination = true,
+      page = 1,
+      pageSize = 10,
+      includeCounts = true
+    } = req.body;
+
+    // Build query object - FIXED: Add createdBy = id
+    const query = { createdBy: id };
+
+    // Search functionality
+    if (search) {
+      query.$or = [
+        { "orderNumber": { $regex: search, $options: "i" } },
+        { "companyName.companyName": { $regex: search, $options: "i" } },
+        { "party.partyName": { $regex: search, $options: "i" } },
+        { "productItem.itemName": { $regex: search, $options: "i" } },
+        { "remarks": { $regex: search, $options: "i" } },
+      ];
+    }
+
+    // Date range filter
+    if (startDate || endDate) {
+      query.createdAt = {};
+      if (startDate) {
+        const start = new Date(startDate);
+        start.setHours(0, 0, 0, 0);
+        query.createdAt.$gte = start;
+      }
+      if (endDate) {
+        const end = new Date(endDate);
+        end.setHours(23, 59, 59, 999);
+        query.createdAt.$lte = end;
+      }
+    }
+
+    // FIXED: Apply filters same as getAllOrders
+    // Company filter
+    if (filters.company && filters.company.length > 0) {
+      const companies = await Company.find({
+        companyName: { $in: filters.company }
+      }).select('_id').lean();
+      
+      if (companies.length > 0) {
+        query.companyName = { $in: companies.map(c => c._id) };
+      }
+    }
+
+    // Party filter
+    if (filters.party && filters.party.length > 0) {
+      const parties = await Party.find({
+        partyName: { $in: filters.party }
+      }).select('_id').lean();
+      
+      if (parties.length > 0) {
+        query.party = { $in: parties.map(p => p._id) };
+      }
+    }
+
+    // Order Status filter
+    if (filters.orderStatus && filters.orderStatus.length > 0) {
+      query.status = { $in: filters.orderStatus };
+    }
+
+    // Item filter
+    if (filters.item && filters.item.length > 0) {
+      const itemDocs = await ProductItem.find({
+        itemName: { $in: filters.item }
+      }).select('_id').lean();
+      
+      if (itemDocs.length > 0) {
+        query.productItem = { $in: itemDocs.map(i => i._id) };
+      }
+    }
+
+    // Size filter
+    if (filters.size && filters.size.length > 0) {
+      query.size = { $in: filters.size };
+    }
+
+    // Order Number filter
+    if (filters.orderNumber && filters.orderNumber.length > 0) {
+      query.orderNumber = { $in: filters.orderNumber };
+    }
+
+    // Remarks filter
+    if (filters.remarks && filters.remarks.length > 0) {
+      query.remarks = { $in: filters.remarks };
+    }
+
+    // Ordered By filter (but since createdBy fixed, skip or adjust)
+    // ... (similar, but may not apply since createdBy is fixed)
+
+    // Get total count
+    const totalCount = await Order.countDocuments(query);
+
+    // Apply pagination
+    let orders = [];
+    if (isPagination) {
+      const skip = (page - 1) * pageSize;
+      orders = await Order.find(query)
+        .skip(skip)
+        .limit(pageSize)
       .populate({
         path: "companyName",
         select: "companyName",
@@ -1423,6 +1765,22 @@ exports.getOrdersByStaffId = async (req, res) => {
       })
       .populate("bindingType", "name")
       .sort({ createdAt: -1 });
+    } else {
+      // Similar populate for non-paginated
+      orders = await Order.find(query)
+        // ... same populate logic
+        .sort({ createdAt: -1 });
+    }
+
+    // Prepare pagination information
+    const pagination = isPagination ? {
+      currentPage: parseInt(page),
+      pageSize: parseInt(pageSize),
+      totalCount: totalCount,
+      totalPages: Math.ceil(totalCount / pageSize),
+      hasNext: page < Math.ceil(totalCount / pageSize),
+      hasPrev: page > 1,
+    } : null;
 
     // 4. If no orders found, return an empty array with a message
     if (!orders || orders.length === 0) {
@@ -1430,7 +1788,9 @@ exports.getOrdersByStaffId = async (req, res) => {
         success: true,
         message: "No orders found for this staff member",
         count: 0,
+        totalCount: 0,
         data: [],
+        pagination: pagination,
       });
     }
 
@@ -1439,7 +1799,9 @@ exports.getOrdersByStaffId = async (req, res) => {
       success: true,
       message: "Orders retrieved successfully",
       count: orders.length,
+      totalCount: totalCount, // FIXED: Add totalCount
       data: orders,
+      pagination: pagination,
     });
   } catch (error) {
     console.error("Error fetching orders by staff ID:", error);
