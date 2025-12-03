@@ -152,221 +152,6 @@ exports.createLead = async (req, res) => {
 };
 
 // Get all Leads
-// exports.getAllLeads = async (req, res) => {
-//   try {
-//     const {
-//       status,
-//       partyName,
-//       companyName,
-//       startDate,
-//       endDate,
-//       assignedTo,
-//       staffId,
-//       page = 1,
-//       limit = 10,
-//       date,
-//       getDatesOnly = false // New parameter to get only dates
-//     } = req.body;
-
-//     let filter = {};
-
-//     // Status filter (multiple allowed)
-//     if (status && Array.isArray(status) && status.length > 0) {
-//       filter.status = { $in: status };
-//     }
-
-//     // Party filter
-//     if (partyName) {
-//       if (!mongoose.Types.ObjectId.isValid(partyName)) {
-//         return res.status(400).json({
-//           success: false,
-//           message: "Invalid partyName ID format",
-//         });
-//       }
-//       filter.partyName = partyName;
-//     }
-
-//     // Company filter
-//     if (companyName) {
-//       if (!mongoose.Types.ObjectId.isValid(companyName)) {
-//         return res.status(400).json({
-//           success: false,
-//           message: "Invalid companyName ID format",
-//         });
-//       }
-//       filter.companyName = companyName;
-//     }
-
-//     // AssignedTo filter
-//     if (staffId) {
-//       if (!mongoose.Types.ObjectId.isValid(staffId)) {
-//         return res.status(400).json({
-//           success: false,
-//           message: "Invalid assignedTo ID format",
-//         });
-//       }
-//       filter.assignedTo = staffId;
-//     }
-
-//     // Date filter
-//     if (date) {
-//       // Format: DD/MM/YYYY
-//       const [day, month, year] = date.split('/');
-//       const startOfDay = new Date(`${year}-${month}-${day}`);
-//       startOfDay.setHours(0, 0, 0, 0);
-//       const endOfDay = new Date(`${year}-${month}-${day}`);
-//       endOfDay.setHours(23, 59, 59, 999);
-//       filter.date = { $gte: startOfDay, $lte: endOfDay };
-//     } else if (startDate && endDate) {
-//       const start = new Date(startDate);
-//       start.setHours(0, 0, 0, 0);
-//       const end = new Date(endDate);
-//       end.setHours(23, 59, 59, 999);
-//       filter.date = { $gte: start, $lte: end };
-//     }
-
-//     // If getDatesOnly is true, return only dates with counts
-//     if (getDatesOnly) {
-//       const datePipeline = [
-//         { $match: filter },
-//         {
-//           $group: {
-//             _id: {
-//               $dateToString: {
-//                 format: "%d/%m/%Y",
-//                 date: "$date"
-//               }
-//             },
-//             count: { $sum: 1 }
-//           }
-//         },
-//         { $sort: { _id: -1 } }
-//       ];
-
-//       const dateGroups = await Lead.aggregate(datePipeline);
-
-//       // Format the response
-//       const formattedDates = dateGroups.map(item => ({
-//         date: item._id,
-//         count: item.count
-//       }));
-
-//       return res.status(200).json({
-//         success: true,
-//         dates: formattedDates
-//       });
-//     }
-//     // If date is provided, we're fetching paginated data for that specific date
-//     else if (date) {
-//       const skip = (page - 1) * limit;
-
-//       const leads = await Lead.find(filter)
-//         .populate("companyName")
-//         .populate("partyName")
-//         .populate({
-//           path: "partyName",
-//           select: "-__v",
-//           populate: [
-//             { path: "address.marketName", model: "Market", select: "marketName", strictPopulate: false },
-//             { path: "address.landMark", model: "Market", select: "landmark", strictPopulate: false },
-//             { path: "address.area", model: "Market", select: "area", strictPopulate: false },
-//             { path: "address.pincode", model: "Market", select: "pincode", strictPopulate: false },
-//           ],
-//         })
-//         .populate("assignedTo", "firstName lastName email")
-//         .populate("originalLeadId", "date createdAt")
-//         .sort({ createdAt: -1 })
-//         .skip(skip)
-//         .limit(limit)
-//         .lean();
-
-//       const populatedLeads = await Promise.all(
-//         leads.map(async (lead) => {
-//           const accountMaster = await AccountMaster.findOne({
-//             party: lead.partyName?._id,
-//             companyName: lead.companyName?._id,
-//           })
-//             .populate("createdBy", "firstName lastName")
-//             .lean();
-
-//           return {
-//             ...lead,
-//             partyName: {
-//               ...lead.partyName,
-//               createdBy: accountMaster ? accountMaster.createdBy : null,
-//             },
-//           };
-//         })
-//       );
-
-//       const total = await Lead.countDocuments(filter);
-
-//       return res.status(200).json({
-//         success: true,
-//         data: populatedLeads,
-//         count: total,
-//         pagination: {
-//           total,
-//           page: parseInt(page),
-//           limit: parseInt(limit),
-//           totalPages: Math.ceil(total / limit)
-//         }
-//       });
-//     }
-//     // If no specific date is provided, return all leads (for backward compatibility)
-//     else {
-//       const leads = await Lead.find(filter)
-//         .populate("companyName")
-//         .populate("partyName")
-//         .populate({
-//           path: "partyName",
-//           select: "-__v",
-//           populate: [
-//             { path: "address.marketName", model: "Market", select: "marketName", strictPopulate: false },
-//             { path: "address.landMark", model: "Market", select: "landmark", strictPopulate: false },
-//             { path: "address.area", model: "Market", select: "area", strictPopulate: false },
-//             { path: "address.pincode", model: "Market", select: "pincode", strictPopulate: false },
-//           ],
-//         })
-//         .populate("assignedTo", "firstName lastName email")
-//         .populate("originalLeadId", "date createdAt")
-//         .sort({ createdAt: -1 })
-//         .lean();
-
-//       const populatedLeads = await Promise.all(
-//         leads.map(async (lead) => {
-//           const accountMaster = await AccountMaster.findOne({
-//             party: lead.partyName?._id,
-//             companyName: lead.companyName?._id,
-//           })
-//             .populate("createdBy", "firstName lastName")
-//             .lean();
-
-//           return {
-//             ...lead,
-//             partyName: {
-//               ...lead.partyName,
-//               createdBy: accountMaster ? accountMaster.createdBy : null,
-//             },
-//           };
-//         })
-//       );
-
-//       return res.status(200).json({
-//         success: true,
-//         data: populatedLeads,
-//         count: populatedLeads.length,
-//       });
-//     }
-//   } catch (error) {
-//     console.error("Error fetching leads:", error);
-//     return res.status(500).json({
-//       success: false,
-//       message: "Server error while fetching leads",
-//       error: error.message,
-//     });
-//   }
-// };
 exports.getAllLeads = async (req, res) => {
   try {
     const {
@@ -446,6 +231,66 @@ exports.getAllLeads = async (req, res) => {
       }
     });
 
+    // 1. Party lookup
+    pipeline.push({
+      $lookup: {
+        from: "parties",
+        localField: "partyName",
+        foreignField: "_id",
+        as: "partyData"
+      }
+    });
+    pipeline.push({ $unwind: "$partyData" });
+
+    // 2. Company lookup
+    pipeline.push({
+      $lookup: {
+        from: "companynames",
+        localField: "companyName",
+        foreignField: "_id",
+        as: "companyData"
+      }
+    });
+    pipeline.push({ $unwind: "$companyData" });
+
+    // ✅ 3. ACCOUNT MASTER LOOKUP (for createdBy)
+    pipeline.push({
+      $lookup: {
+        from: "accountmasters",
+        let: { partyId: "$partyName", companyId: "$companyName" },
+        pipeline: [
+          {
+            $match: {
+              $expr: {
+                $and: [
+                  { $eq: ["$party", "$$partyId"] },
+                  { $eq: ["$companyName", "$$companyId"] }
+                ]
+              }
+            }
+          },
+          {
+            $lookup: {
+              from: "staffs",
+              localField: "createdBy",
+              foreignField: "_id",
+              as: "createdByData"
+            }
+          },
+          { $unwind: "$createdByData" }
+        ],
+        as: "accountData"
+      }
+    });
+
+    pipeline.push({
+      $unwind: {
+        path: "$accountData",
+        preserveNullAndEmptyArrays: true
+      }
+    });
+
+
     // Step 5: Build match conditions
     const matchConditions = {};
 
@@ -480,6 +325,16 @@ exports.getAllLeads = async (req, res) => {
         matchConditions['partyData.address.unitNo'] = unitNo;
       }
     }
+
+    if (createdBy) {
+      matchConditions.$or = matchConditions.$or || [];
+
+      matchConditions.$or.push(
+        { "accountData.createdByData.firstName": { $regex: createdBy.split(' ')[0], $options: "i" } },
+        { "accountData.createdByData.lastName": { $regex: createdBy.split(' ')[1], $options: "i" } },
+      );
+    }
+
 
     // Market Name filter - handle comma-separated values
     if (marketName) {
@@ -525,9 +380,8 @@ exports.getAllLeads = async (req, res) => {
       } else {
         matchConditions.$or = matchConditions.$or || [];
         matchConditions.$or.push(
-          { 'assignedToData.firstName': { $regex: assignedToFilter, $options: 'i' } },
-          { 'assignedToData.lastName': { $regex: assignedToFilter, $options: 'i' } },
-          { 'assignedToData.email': { $regex: assignedToFilter, $options: 'i' } }
+          { 'assignedToData.firstName': { $regex: assignedToFilter.split(' ')[0], $options: 'i' } },
+          { 'assignedToData.lastName': { $regex: assignedToFilter.split(' ')[1], $options: 'i' } },
         );
       }
     }

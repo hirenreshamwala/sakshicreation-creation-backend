@@ -243,10 +243,10 @@ exports.getAllAccountMasters = async (req, res) => {
       search = "",
       startDate,
       endDate,
-      isPagination = true,
+      isPagination = false,
       page = 1,
       pageSize = 10,
-      includeCounts = true
+      includeCounts = false
     } = req.body;
 
     // Base query object
@@ -1547,10 +1547,10 @@ exports.getAccountMasterByStaffId = async (req, res) => {
       search = "",
       startDate,
       endDate,
-      isPagination = true,
+      isPagination = false,
       page = 1,
       pageSize = 10,
-      includeCounts = true
+      includeCounts = false
     } = req.body;
 
     // Base query object

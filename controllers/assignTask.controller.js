@@ -5,6 +5,7 @@ const Staff = require("../models/staff.model");
 const CompanyName = require("../models/companyName.model");
 const Party = require("../models/Party.model");
 const AssignTask = require("../models/assignTask.model");
+const moment = require("moment");
 
 exports.createAssignTask = async (req, res) => {
   try {
@@ -274,104 +275,471 @@ exports.bulkCreateTasks = async (req, res) => {
 
 exports.getAllAssignTasks = async (req, res) => {
   try {
-    const { staffId, startDate, endDate, status, companyName, partyName, reason } = req.body;
+    const {
+      page = 1,
+      limit = 10,
+      status,
+      companyName,
+      assignedTo,
+      priority,
+      getDatesOnly = false,
+      startDate,
+      endDate,
+    } = req.body;
 
+    const skip = (page - 1) * limit;
+    const matchConditions = {};
 
-    let filter = {};
-
-    // Staff filter
-    if (staffId) {
-      filter.assignTo = staffId;
-    }
-
-    // Company filter
+    /* ================================
+       COMPANY FILTER
+    ================================ */
     if (companyName) {
-      filter.companyName = companyName;
+      if (mongoose.Types.ObjectId.isValid(companyName)) {
+        matchConditions.companyName = new mongoose.Types.ObjectId(companyName);
+      } else {
+        matchConditions["companyData.companyName"] = {
+          $regex: companyName,
+          $options: "i",
+        };
+      }
     }
 
-    // Party filter
-    if (partyName) {
-      filter.partyName = partyName;
-    }
-
-    if (reason) {
-      const cleanedReason = reason.trim().replace(/\s+/g, "\\s*");
-      filter.reasonForVisit = new RegExp(cleanedReason, "i");
-    }
-
-
-
-    // ✅ Status filter (multiple status allowed)
-    // ✅ Status filter (multiple status allowed, case-insensitive)
-    if (status && Array.isArray(status) && status.length > 0) {
-      filter.status = {
-        $in: status.map((s) => new RegExp(`^${s}$`, "i"))
+    /* ================================
+       STATUS FILTER
+    ================================ */
+    if (status && status.length > 0) {
+      const statusArray = Array.isArray(status) ? status : status.split(",");
+      matchConditions.status = {
+        $in: statusArray.map((s) => new RegExp(`^${s}$`, "i")),
       };
     }
 
-
-    // Date filter (date field of AssignTask)
-    if (startDate && endDate) {
-      const start = new Date(startDate);
-      start.setHours(0, 0, 0, 0);
-
-      const end = new Date(endDate);
-      end.setHours(23, 59, 59, 999);
-
-      filter.date = { $gte: start, $lte: end };
+    /* ================================
+       PRIORITY FILTER
+    ================================ */
+    if (priority) {
+      matchConditions.priority = new RegExp(`^${priority}$`, "i");
     }
 
-    const tasks = await AssignTask.find(filter)
+    /* ================================
+       DATE RANGE FILTER
+    ================================ */
+    if (startDate && endDate) {
+      matchConditions.createdAt = {
+        $gte: new Date(startDate),
+        $lte: new Date(endDate),
+      };
+    }
 
-      .populate("companyName")
-      .populate("partyName")
-      .populate({
-        path: "assignTo",
-        populate: {
-          path: "role",
-          select: "roleName" // yaha jitne fields chahiye wo add kar sakte ho
+    /* ================================
+       ASSIGNED TO FILTER (SAFE)
+    ================================ */
+    if (assignedTo) {
+      matchConditions.$or = [];
+
+      const parts = assignedTo.trim().split(" ").filter(Boolean);
+      const firstName = parts[0] || "";
+      const lastName = parts.slice(1).join(" ");
+
+      if (firstName) {
+        matchConditions.$or.push({
+          "assignedToData.firstName": { $regex: firstName, $options: "i" },
+        });
+      }
+
+      if (lastName) {
+        matchConditions.$or.push({
+          "assignedToData.lastName": { $regex: lastName, $options: "i" },
+        });
+      }
+
+      matchConditions.$or.push({
+        $expr: {
+          $regexMatch: {
+            input: {
+              $concat: [
+                "$assignedToData.firstName",
+                " ",
+                "$assignedToData.lastName",
+              ],
+            },
+            regex: assignedTo,
+            options: "i",
+          },
+        },
+      });
+    }
+
+    /* ================================
+       BASE PIPELINE WITH SUB POPULATE
+    ================================ */
+    const basePipeline = [
+      // 1. TASK → USER
+      {
+        $lookup: {
+          from: "users",
+          localField: "assignedTo",
+          foreignField: "_id",
+          as: "assignedToData",
+        },
+      },
+      { $unwind: { path: "$assignedToData", preserveNullAndEmptyArrays: true } },
+
+      // 2. SUB POPULATE → USER → DEPARTMENT
+      {
+        $lookup: {
+          from: "departments",
+          localField: "assignedToData.department",
+          foreignField: "_id",
+          as: "assignedToData.departmentData",
+        },
+      },
+      { $unwind: { path: "$assignedToData.departmentData", preserveNullAndEmptyArrays: true } },
+
+      // 3. SUB POPULATE → USER → ROLE
+      {
+        $lookup: {
+          from: "roles",
+          localField: "assignedToData.role",
+          foreignField: "_id",
+          as: "assignedToData.roleData",
+        },
+      },
+      { $unwind: { path: "$assignedToData.roleData", preserveNullAndEmptyArrays: true } },
+
+      // 4. TASK → COMPANY
+      {
+        $lookup: {
+          from: "companynames",
+          localField: "companyName",
+          foreignField: "_id",
+          as: "companyData"
+        },
+      },
+      { $unwind: { path: "$companyData", preserveNullAndEmptyArrays: true } },
+
+      // 5. SUB POPULATE → COMPANY → OWNER
+      {
+        $lookup: {
+          from: "users",
+          localField: "companyData.owner",
+          foreignField: "_id",
+          as: "companyData.ownerData",
+        },
+      },
+      { $unwind: { path: "$companyData.ownerData", preserveNullAndEmptyArrays: true } },
+
+      { $match: matchConditions },
+      { $sort: { createdAt: -1 } },
+    ];
+
+    /* ================================
+       ONLY DATES
+    ================================ */
+    if (getDatesOnly) {
+      const dates = await AssignTask.aggregate([
+        ...basePipeline,
+        {
+          $project: {
+            _id: 0,
+            date: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } },
+          },
+        },
+        { $group: { _id: "$date" } },
+        { $project: { _id: 0, date: "$_id" } },
+      ]);
+
+      return res.status(200).json({
+        success: true,
+        total: dates.length,
+        data: dates,
+      });
+    }
+
+    /* ================================
+       FINAL DATA
+    ================================ */
+    const tasks = await AssignTask.aggregate([
+      // Step 1: Lookup companyName with owner
+      {
+        $lookup: {
+          from: "companynames",
+          localField: "companyName",
+          foreignField: "_id",
+          as: "companyData"
         }
-      })
-      .populate("originalTaskId")
-      .populate({
-        path: "partyName",
-        select: "-__v",
-        populate: [
-          { path: "address.marketName", model: "Market", select: "marketName" },
-          // { path: "address.streetAddress", model: "Market", select: "streetAddress" },
-          { path: "address.landMark", model: "Market", select: "landmark" },
-          { path: "address.area", model: "Market", select: "area" },
-          { path: "address.pincode", model: "Market", select: "pincode" },
-        ],
-      })
-      .sort({ createdAt: -1 });
+      },
+      { $unwind: "$companyData" },
 
-    // Fetch AccountMaster for each task to get createdBy
-    const tasksWithCreatedBy = await Promise.all(
-      tasks.map(async (task) => {
-        const accountMaster = await AccountMaster.findOne({
-          companyName: task.companyName,
-          party: task.partyName,
-        })
-          .populate("createdBy", "firstName lastName")
-          .lean();
+      // Step 2: Lookup company owner from Staff
+      {
+        $lookup: {
+          from: "staffs",
+          localField: "companyData.owner",
+          foreignField: "_id",
+          as: "companyOwnerData"
+        }
+      },
+      { $unwind: { path: "$companyOwnerData", preserveNullAndEmptyArrays: true } },
 
-        return {
-          ...task.toObject(),
-          createdBy: accountMaster ? accountMaster.createdBy : null,
-        };
-      })
-    );
+      // Step 3: Lookup partyName
+      {
+        $lookup: {
+          from: "parties",
+          localField: "partyName",
+          foreignField: "_id",
+          as: "partyData"
+        }
+      },
+      { $unwind: "$partyData" },
 
-    res.status(200).json({
+      // Step 4: Lookup party address fields - marketName
+      {
+        $lookup: {
+          from: "markets",
+          localField: "partyData.address.marketName",
+          foreignField: "_id",
+          as: "marketNameData"
+        }
+      },
+
+      // Step 5: Lookup party address fields - area
+      {
+        $lookup: {
+          from: "markets",
+          localField: "partyData.address.area",
+          foreignField: "_id",
+          as: "areaData"
+        }
+      },
+
+      // Step 6: Lookup party address fields - landMark
+      {
+        $lookup: {
+          from: "markets",
+          localField: "partyData.address.landMark",
+          foreignField: "_id",
+          as: "landMarkData"
+        }
+      },
+
+      // Step 7: Lookup party address fields - pincode
+      {
+        $lookup: {
+          from: "markets",
+          localField: "partyData.address.pincode",
+          foreignField: "_id",
+          as: "pincodeData"
+        }
+      },
+
+      // Step 8: Lookup assignTo (Staff) with role and department
+      {
+        $lookup: {
+          from: "staffs",
+          localField: "assignTo",
+          foreignField: "_id",
+          as: "assignToData"
+        }
+      },
+      { $unwind: "$assignToData" },
+
+      // Step 9: Lookup staff's role
+      {
+        $lookup: {
+          from: "roles",
+          localField: "assignToData.role",
+          foreignField: "_id",
+          as: "roleData"
+        }
+      },
+      { $unwind: { path: "$roleData", preserveNullAndEmptyArrays: true } },
+
+      // Step 10: Lookup staff's department
+      {
+        $lookup: {
+          from: "departments",
+          localField: "assignToData.department",
+          foreignField: "_id",
+          as: "departmentData"
+        }
+      },
+      { $unwind: { path: "$departmentData", preserveNullAndEmptyArrays: true } },
+
+      // Step 11: Lookup originalTaskId
+      {
+        $lookup: {
+          from: "assigntasks",
+          localField: "originalTaskId",
+          foreignField: "_id",
+          as: "originalTaskData"
+        }
+      },
+      { $unwind: { path: "$originalTaskData", preserveNullAndEmptyArrays: true } },
+
+      // Step 12: Lookup AccountMaster for createdBy information
+      {
+        $lookup: {
+          from: "accountmasters",
+          let: { partyId: "$partyName", companyId: "$companyName" },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $and: [
+                    { $eq: ["$party", "$$partyId"] },
+                    { $eq: ["$companyName", "$$companyId"] }
+                  ]
+                }
+              }
+            },
+            {
+              $lookup: {
+                from: "staffs",
+                localField: "createdBy",
+                foreignField: "_id",
+                as: "createdByData"
+              }
+            },
+            { $unwind: "$createdByData" }
+          ],
+          as: "accountData"
+        }
+      },
+      { $unwind: { path: "$accountData", preserveNullAndEmptyArrays: true } },
+
+      // Step 13: Apply match conditions if any (from basePipeline)
+      ...basePipeline,
+
+      // Step 14: Pagination
+      { $skip: parseInt(skip) },
+      { $limit: parseInt(limit) },
+
+      // Step 15: Final projection with all populated fields
+      {
+        $project: {
+          // AssignTask fields
+          _id: 1,
+          date: 1,
+          time: 1,
+          reasonForVisit: 1,
+          remarks: 1,
+          status: 1,
+          visitDate: 1,
+          visitTime: 1,
+          feedback: 1,
+          rescheduleDate: 1,
+          isRescheduledTask: 1,
+          createdAt: 1,
+          updatedAt: 1,
+
+          // Company with owner
+          companyName: "$companyData",
+
+          // Party with all details
+          partyName: {
+            _id: "$partyData._id",
+            partyName: "$partyData.partyName",
+            ownerName: "$partyData.ownerName",
+            ownerMobileNo: "$partyData.ownerMobileNo",
+            ownerWhatsAppNo: "$partyData.ownerWhatsAppNo",
+            contactPerson: "$partyData.contactPerson",
+            personMobileNo: "$partyData.personMobileNo",
+            personWhatsAppNo: "$partyData.personWhatsAppNo",
+            contactForPayment: "$partyData.contactForPayment",
+            contactMobileNo: "$partyData.contactMobileNo",
+            contactWhatsAppNo: "$partyData.contactWhatsAppNo",
+            GSTNo: "$partyData.GSTNo",
+            partyTag: "$partyData.partyTag",
+            createdAt: "$partyData.createdAt",
+            updatedAt: "$partyData.updatedAt",
+
+            // Address with all market lookups
+            address: {
+              unitNo: "$partyData.address.unitNo",
+              marketName: {
+                _id: { $arrayElemAt: ["$marketNameData._id", 0] },
+                marketName: { $arrayElemAt: ["$marketNameData.marketName", 0] }
+              },
+              landMark: {
+                _id: { $arrayElemAt: ["$landMarkData._id", 0] },
+                landmark: { $arrayElemAt: ["$landMarkData.landmark", 0] }
+              },
+              area: {
+                _id: { $arrayElemAt: ["$areaData._id", 0] },
+                area: { $arrayElemAt: ["$areaData.area", 0] }
+              },
+              pincode: {
+                _id: { $arrayElemAt: ["$pincodeData._id", 0] },
+                pincode: { $arrayElemAt: ["$pincodeData.pincode", 0] }
+              }
+            },
+
+            // Created by from AccountMaster
+            createdBy: {
+              _id: "$accountData.createdByData._id",
+              firstName: "$accountData.createdByData.firstName",
+              lastName: "$accountData.createdByData.lastName",
+              email: "$accountData.createdByData.email"
+            }
+          },
+
+          // Assigned To (Staff) with role and department
+          assignTo: {
+            _id: "$assignToData._id",
+            firstName: "$assignToData.firstName",
+            lastName: "$assignToData.lastName",
+            email: "$assignToData.email",
+            phone: "$assignToData.phone",
+            designation: "$assignToData.designation",
+            employeeId: "$assignToData.employeeId",
+            profileImage: "$assignToData.profileImage",
+            isActive: "$assignToData.isActive",
+            createdAt: "$assignToData.createdAt",
+            updatedAt: "$assignToData.updatedAt",
+
+            role: {
+              _id: "$roleData._id",
+              roleName: "$roleData.roleName",
+              description: "$roleData.description",
+              permissions: "$roleData.permissions"
+            },
+
+            department: {
+              _id: "$departmentData._id",
+              name: "$departmentData.name",
+              description: "$departmentData.description"
+            }
+          },
+
+          // Original task if rescheduled
+          originalTaskId: {
+            _id: "$originalTaskData._id",
+            date: "$originalTaskData.date",
+            time: "$originalTaskData.time",
+            reasonForVisit: "$originalTaskData.reasonForVisit",
+            status: "$originalTaskData.status",
+            createdAt: "$originalTaskData.createdAt"
+          }
+        }
+      }
+    ]);
+
+    const total = await AssignTask.countDocuments(matchConditions);
+
+    return res.status(200).json({
       success: true,
-      count: tasksWithCreatedBy.length,
-      data: tasksWithCreatedBy,
+      total,
+      page: parseInt(page),
+      limit: parseInt(limit),
+      data: tasks,
     });
+
   } catch (error) {
-    res.status(500).json({
+    console.error("getAllAssignTasks Error:", error);
+    return res.status(500).json({
       success: false,
-      message: "Failed to fetch tasks",
+      message: "Something went wrong",
       error: error.message,
     });
   }
@@ -1070,6 +1438,131 @@ exports.getTasksByStaffId = async (req, res) => {
       success: false,
       message: "Failed to fetch tasks",
       error: error.message,
+    });
+  }
+};
+
+
+
+exports.getAssignTaskFilterOptionsData = async (req, res) => {
+  try {
+    const { field } = req.params;
+    const { search } = req.body || {};
+
+    let uniqueValues = [];
+
+    switch (field) {
+
+      /* ✅ CREATED DATE */
+      case "createdAt": {
+        const dates = await AssignTask.distinct("createdAt");
+        uniqueValues = dates
+          .sort((a, b) => new Date(b) - new Date(a))
+          .map(d => moment(d).format("DD-MM-YYYY"))
+          .filter(Boolean);
+        break;
+      }
+
+      /* ✅ COMPANY NAME */
+      case "companyName": {
+        const companyIds = await AssignTask.distinct("companyName");
+        const companies = await CompanyName.find(
+          { _id: { $in: companyIds } },
+          "companyName"
+        );
+        uniqueValues = companies.map(c => c.companyName).filter(Boolean);
+        break;
+      }
+
+      /* ✅ PARTY NAME */
+      case "partyName": {
+        const partyIds = await AssignTask.distinct("partyName");
+        const parties = await Party.find(
+          { _id: { $in: partyIds } },
+          "partyName"
+        );
+        uniqueValues = parties.map(p => p.partyName).filter(Boolean);
+        break;
+      }
+
+      /* ✅ ASSIGNED TO (STAFF) */
+      case "assignedTo": {
+        const staffIds = await AssignTask.distinct("assignTo");
+        const staff = await Staff.find(
+          { _id: { $in: staffIds } },
+          "firstName lastName"
+        );
+        uniqueValues = staff.map(s => `${s.firstName} ${s.lastName}`).filter(Boolean);
+        break;
+      }
+
+      /* ✅ STATUS */
+      case "status": {
+        uniqueValues = await AssignTask.distinct("status");
+        uniqueValues = uniqueValues.filter(Boolean);
+        break;
+      }
+
+      /* ✅ PRIORITY */
+      case "priority": {
+        uniqueValues = await AssignTask.distinct("priority");
+        uniqueValues = uniqueValues.filter(Boolean);
+        break;
+      }
+
+      /* ✅ CREATED BY (FROM ACCOUNTMASTER) */
+      case "createdBy": {
+        const taskIds = await AssignTask.distinct("_id");
+        const accountData = await AccountMaster.find(
+          { taskId: { $in: taskIds } },
+          "createdBy"
+        );
+
+        const createdByIds = accountData.map(a => a.createdBy).filter(Boolean);
+        const staff = await Staff.find(
+          { _id: { $in: createdByIds } },
+          "firstName lastName"
+        );
+
+        uniqueValues = [...new Set(staff.map(s => `${s.firstName} ${s.lastName}`))];
+        break;
+      }
+
+      default:
+        return res.status(400).json({
+          success: false,
+          message: "Invalid field parameter",
+        });
+    }
+
+    /* ================================
+       SEARCH SUPPORT
+    ================================ */
+    if (search) {
+      const text = search.toLowerCase();
+      uniqueValues = uniqueValues.filter(val =>
+        val?.toString().toLowerCase().includes(text)
+      );
+    }
+
+    /* ================================
+       CLEAN + SORT + LIMIT
+    ================================ */
+    uniqueValues = [...new Set(uniqueValues)].filter(Boolean).sort();
+    uniqueValues = uniqueValues.slice(0, 100);
+
+    return res.status(200).json({
+      success: true,
+      data: uniqueValues,
+      count: uniqueValues.length
+    });
+
+  } catch (error) {
+    console.error("AssignTask Filter Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Internal Server Error",
+      error: error.message
     });
   }
 };
