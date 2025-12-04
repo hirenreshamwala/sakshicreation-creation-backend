@@ -8,7 +8,7 @@ router.post("/create", CompanyNameController.createCompanyName);
 
 // Get all company names
 router.get("/getall", CompanyNameController.getCompanyNames);
-
+router.get('/filters', CompanyNameController.getCompanyNameFilters);
 router.get("/getallCompany", CompanyNameController.getAllCompanyNames);
 
 // Get a single company name by ID

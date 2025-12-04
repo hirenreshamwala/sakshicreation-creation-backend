@@ -10,7 +10,7 @@ router.post("/create", binderTypeController.createBinderType);
 
 // Get all BinderTypes
 router.get("/getall", binderTypeController.getAllBinderTypes);
-
+router.get('/filters', binderTypeController.getBinderTypeFilters);
 // Get BinderType by ID
 router.get("/getbyid/:id", binderTypeController.getBinderTypeById);
 
