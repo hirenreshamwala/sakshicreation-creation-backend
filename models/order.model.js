@@ -395,7 +395,7 @@ const orderSchema = new mongoose.Schema(
         ratePerUnit: {
           type: String,
           trim: true,
-          required: true,
+          // required: true,
         },
         wastage: {
           type: String,
@@ -547,6 +547,9 @@ const orderSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    punchingType:{
+      type: String,
+    },
     validproof: [
       {
         path: {
@@ -649,6 +652,34 @@ const orderSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "Staff",
       required: true,
+    },
+    unitPrice: {
+      type: Number,
+      min: 0,
+    },
+    total: {
+      type: Number,
+      default: 0,
+    },
+    applyGST: {
+      type: Boolean,
+      default: false,
+    },
+    gstPercentage: {
+      type: String,
+      default: 0
+    },
+    paymentDate: {
+      type: Number,
+    },
+    finalAmount: {
+      type: Number,
+      default: 0,
+    },
+    daysAfterConfirmation: {
+      type: Number,
+      min: 0,
+      default: undefined,
     },
     quotation: [quotationHistory],
 
