@@ -706,6 +706,8 @@ exports.updateOrder = async (req, res) => {
       color2,
       ...updateData
     } = req.body;
+    console.log("DEBUG : req.body:", req.body);
+
 
     const orderData = await Order.findById(id);
     if (!orderData) {

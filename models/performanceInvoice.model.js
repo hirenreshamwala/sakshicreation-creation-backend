@@ -90,7 +90,6 @@ const performanceInvoiceSchema = new mongoose.Schema(
       type: Number,
       required: false
     },
-
     finalAmount: {
       type: Number,
       default: 0,
