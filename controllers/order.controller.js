@@ -418,16 +418,60 @@ exports.getAllOrders = async (req, res) => {
 
     // Search functionality
     if (search) {
-      query.$or = [
+      const directOr = [
         { "orderNumber": { $regex: search, $options: "i" } },
-        { "companyName.companyName": { $regex: search, $options: "i" } },
-        { "party.partyName": { $regex: search, $options: "i" } },
-        { "productItem.itemName": { $regex: search, $options: "i" } },
         { "remarks": { $regex: search, $options: "i" } },
+        { "size": { $regex: search, $options: "i" } },
+        { "status": { $regex: search, $options: "i" } },
       ];
-    }
 
-    // Date range filter
+      // For populated fields: Fetch matching IDs first, then add $in conditions
+      // Company
+      const matchingCompanies = await Company.find({
+        companyName: { $regex: search, $options: "i" }
+      }).select('_id').lean();
+      const companyIds = matchingCompanies.map(c => c._id);
+      if (companyIds.length > 0) {
+        directOr.push({ companyName: { $in: companyIds } });
+      }
+
+      // Party
+      const matchingParties = await Party.find({
+        partyName: { $regex: search, $options: "i" }
+      }).select('_id').lean();
+      const partyIds = matchingParties.map(p => p._id);
+      if (partyIds.length > 0) {
+        directOr.push({ party: { $in: partyIds } });
+      }
+
+      // Item (productItem)
+      const matchingItems = await ProductItem.find({
+        itemName: { $regex: search, $options: "i" }
+      }).select('_id').lean();
+      const itemIds = matchingItems.map(i => i._id);
+      if (itemIds.length > 0) {
+        directOr.push({ productItem: { $in: itemIds } });
+      }
+
+      // Ordered By (createdBy name)
+      const nameRegex = new RegExp(search, 'i');
+      const matchingStaff = await Staff.find({
+        $or: [
+          { firstName: nameRegex },
+          { lastName: nameRegex },
+          // Add if you have a full 'name' field: { name: nameRegex }
+        ]
+      }).select('_id').lean();
+      const creatorIds = matchingStaff.map(s => s._id);
+      if (creatorIds.length > 0) {
+        directOr.push({ createdBy: { $in: creatorIds } });
+      }
+
+      // Apply $or if multiple conditions
+      if (directOr.length > 0) {
+        query.$or = directOr;
+      }
+    }
     if (startDate || endDate) {
       query.createdAt = {};
       if (startDate) {
@@ -450,10 +494,14 @@ exports.getAllOrders = async (req, res) => {
       }).select('_id').lean();
       
       if (companies.length > 0) {
-        query.companyName = { $in: companies.map(c => c._id) };
+        if (query.companyName) {
+          // Combine with existing if any
+          query.companyName.$in = [...(query.companyName.$in || []), ...companies.map(c => c._id)];
+        } else {
+          query.companyName = { $in: companies.map(c => c._id) };
+        }
       }
     }
-
     // Party filter
     if (filters.party && filters.party.length > 0) {
       const parties = await Party.find({
@@ -461,42 +509,60 @@ exports.getAllOrders = async (req, res) => {
       }).select('_id').lean();
       
       if (parties.length > 0) {
-        query.party = { $in: parties.map(p => p._id) };
+        if (query.party) {
+          query.party.$in = [...(query.party.$in || []), ...parties.map(p => p._id)];
+        } else {
+          query.party = { $in: parties.map(p => p._id) };
+        }
       }
     }
-
     // Order Status filter
     if (filters.orderStatus && filters.orderStatus.length > 0) {
-      query.status = { $in: filters.orderStatus };
+      if (query.status) {
+        query.status.$in = [...(query.status.$in || []), ...filters.orderStatus];
+      } else {
+        query.status = { $in: filters.orderStatus };
+      }
     }
-
-    // FIXED: Item filter
+    // Item filter
     if (filters.item && filters.item.length > 0) {
       const itemDocs = await ProductItem.find({
         itemName: { $in: filters.item }
       }).select('_id').lean();
       
       if (itemDocs.length > 0) {
-        query.productItem = { $in: itemDocs.map(i => i._id) };
+        if (query.productItem) {
+          query.productItem.$in = [...(query.productItem.$in || []), ...itemDocs.map(i => i._id)];
+        } else {
+          query.productItem = { $in: itemDocs.map(i => i._id) };
+        }
       }
     }
-
-    // FIXED: Size filter (assuming string)
+    // Size filter
     if (filters.size && filters.size.length > 0) {
-      query.size = { $in: filters.size };
+      if (query.size) {
+        query.size.$in = [...(query.size.$in || []), ...filters.size];
+      } else {
+        query.size = { $in: filters.size };
+      }
     }
-
-    // FIXED: Order Number filter
+    // Order Number filter
     if (filters.orderNumber && filters.orderNumber.length > 0) {
-      query.orderNumber = { $in: filters.orderNumber };
+      if (query.orderNumber) {
+        query.orderNumber.$in = [...(query.orderNumber.$in || []), ...filters.orderNumber];
+      } else {
+        query.orderNumber = { $in: filters.orderNumber };
+      }
     }
-
-    // FIXED: Remarks filter
+    // Remarks filter
     if (filters.remarks && filters.remarks.length > 0) {
-      query.remarks = { $in: filters.remarks };
+      if (query.remarks) {
+        query.remarks.$in = [...(query.remarks.$in || []), ...filters.remarks];
+      } else {
+        query.remarks = { $in: filters.remarks };
+      }
     }
-
-    // FIXED: Ordered By filter (approximate by name)
+    // Ordered By filter (unchanged, but now combines with search)
     if (filters.orderedBy && filters.orderedBy.length > 0) {
       const staffQuery = {
         $or: filters.orderedBy.map((name) => ({
@@ -509,7 +575,11 @@ exports.getAllOrders = async (req, res) => {
       const staffDocs = await Staff.find(staffQuery).select('_id').lean();
       
       if (staffDocs.length > 0) {
-        query.createdBy = { $in: staffDocs.map(s => s._id) };
+        if (query.createdBy) {
+          query.createdBy.$in = [...(query.createdBy.$in || []), ...staffDocs.map(s => s._id)];
+        } else {
+          query.createdBy = { $in: staffDocs.map(s => s._id) };
+        }
       }
     }
 
@@ -1611,18 +1681,54 @@ exports.getOrdersByStaffId = async (req, res) => {
 
     // Search functionality
     if (search) {
-      query.$or = [
+      const directOr = [
         { "orderNumber": { $regex: search, $options: "i" } },
-        { "companyName.companyName": { $regex: search, $options: "i" } },
-        { "party.partyName": { $regex: search, $options: "i" } },
-        { "productItem.itemName": { $regex: search, $options: "i" } },
         { "remarks": { $regex: search, $options: "i" } },
+        { "size": { $regex: search, $options: "i" } },
+        { "status": { $regex: search, $options: "i" } },
       ];
+
+      // For populated fields: Fetch matching IDs first
+      // Company
+      const matchingCompanies = await Company.find({
+        companyName: { $regex: search, $options: "i" }
+      }).select('_id').lean();
+      const companyIds = matchingCompanies.map(c => c._id);
+      if (companyIds.length > 0) {
+        directOr.push({ companyName: { $in: companyIds } });
+      }
+
+      // Party
+      const matchingParties = await Party.find({
+        partyName: { $regex: search, $options: "i" }
+      }).select('_id').lean();
+      const partyIds = matchingParties.map(p => p._id);
+      if (partyIds.length > 0) {
+        directOr.push({ party: { $in: partyIds } });
+      }
+
+      // Item
+      const matchingItems = await ProductItem.find({
+        itemName: { $regex: search, $options: "i" }
+      }).select('_id').lean();
+      const itemIds = matchingItems.map(i => i._id);
+      if (itemIds.length > 0) {
+        directOr.push({ productItem: { $in: itemIds } });
+      }
+
+      // Ordered By (but since createdBy is fixed to id, skip or add if search matches the fixed staff's name - but for now, skip as it's single)
+
+      // Apply $or if multiple
+      if (directOr.length > 0) {
+        query.$or = directOr;
+      }
+
+      console.log("🔍 Built search conditions for staff:", JSON.stringify(query.$or, null, 2)); // Debug log
     }
 
-    // Date range filter
+    // Date range filter (unchanged)
     if (startDate || endDate) {
-      query.createdAt = {};
+      if (!query.createdAt) query.createdAt = {};
       if (startDate) {
         const start = new Date(startDate);
         start.setHours(0, 0, 0, 0);
@@ -1643,10 +1749,13 @@ exports.getOrdersByStaffId = async (req, res) => {
       }).select('_id').lean();
       
       if (companies.length > 0) {
-        query.companyName = { $in: companies.map(c => c._id) };
+        if (query.companyName) {
+          query.companyName.$in = [...(query.companyName.$in || []), ...companies.map(c => c._id)];
+        } else {
+          query.companyName = { $in: companies.map(c => c._id) };
+        }
       }
     }
-
     // Party filter
     if (filters.party && filters.party.length > 0) {
       const parties = await Party.find({
@@ -1689,8 +1798,6 @@ exports.getOrdersByStaffId = async (req, res) => {
       query.remarks = { $in: filters.remarks };
     }
 
-    // Ordered By filter (but since createdBy fixed, skip or adjust)
-    // ... (similar, but may not apply since createdBy is fixed)
 
     // Get total count
     const totalCount = await Order.countDocuments(query);
@@ -1768,9 +1875,26 @@ exports.getOrdersByStaffId = async (req, res) => {
       .populate("bindingType", "name")
       .sort({ createdAt: -1 });
     } else {
-      // Similar populate for non-paginated
       orders = await Order.find(query)
-        // ... same populate logic
+        .populate('companyName', 'companyName avatar')
+        .populate({
+          path: 'party',
+          select: '-__v',
+          populate: [
+            { path: 'address.marketName', model: 'Market', select: 'marketName' },
+            { path: 'address.landMark', model: 'Market', select: 'landmark' },
+            { path: 'address.area', model: 'Market', select: 'area' },
+            { path: 'address.pincode', model: 'Market', select: 'pincode' },
+          ],
+        })
+        .populate('productItem', 'itemName')
+        .populate('createdBy', 'firstName lastName')
+        .populate('designer', 'name')
+        .populate('printer', 'name')
+        .populate('binder', 'name')
+        .populate('bookletBinder', 'name')
+        .populate('reworkHistory.createdBy', 'name')
+        .populate("bindingType", "name")
         .sort({ createdAt: -1 });
     }
 
