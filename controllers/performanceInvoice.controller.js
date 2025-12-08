@@ -24,6 +24,8 @@ exports.createPerformanceInvoice = async (req, res) => {
       partyAddress,
       servicePerformance,
       daysAfterConfirmation,
+      paymentDate, // Add this
+      gstPercentage
     } = req.body;
 
     if (
@@ -72,7 +74,7 @@ exports.createPerformanceInvoice = async (req, res) => {
 
     const calculatedTotal = quantity * (unitPrice || 0);
     const calculatedFinalAmount = applyGST
-      ? calculatedTotal * 1.18
+      ? calculatedTotal + (calculatedTotal * (gstPercentage || 18) / 100) // Use gstPercentage
       : calculatedTotal;
 
     const performanceInvoiceData = {
@@ -94,6 +96,8 @@ exports.createPerformanceInvoice = async (req, res) => {
       servicePerformance:
         servicePerformance || order.productItem?.itemName || "",
       daysAfterConfirmation,
+      paymentDate, // Add this
+      gstPercentage: gstPercentage || 0 // Add this
     };
 
     const newPerformanceInvoice = await PerformanceInvoice.create(
@@ -215,6 +219,8 @@ exports.getPerformanceInvoiceById = async (req, res) => {
       assignedTo: performanceInvoice.assignedTo,
       companyNameObj: performanceInvoice.companyName,
       partyObj: performanceInvoice.party,
+      paymentDate: performanceInvoice.paymentDate,
+      gstPercentage: performanceInvoice.gstPercentage || 0,
     };
 
     res.status(200).json({
@@ -248,9 +254,11 @@ exports.updatePerformanceInvoice = async (req, res) => {
       applyGST,
       finalAmount,
       GSTNo,
+      gstPercentage,
       partyAddress,
       servicePerformance,
       daysAfterConfirmation,
+      paymentDate
     } = req.body;
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
@@ -308,7 +316,7 @@ exports.updatePerformanceInvoice = async (req, res) => {
 
     const calculatedTotal = quantity * (unitPrice || 0);
     const calculatedFinalAmount = applyGST
-      ? calculatedTotal * 1.18
+      ? calculatedTotal + (calculatedTotal * (gstPercentage || 18) / 100) // Use gstPercentage
       : calculatedTotal;
 
     const updatedPerformanceInvoice =
@@ -332,6 +340,8 @@ exports.updatePerformanceInvoice = async (req, res) => {
           partyAddress: partyAddress || order.party?.address || {},
           servicePerformance,
           daysAfterConfirmation,
+          gstPercentage,
+          paymentDate,
         },
         { new: true, runValidators: true }
       )

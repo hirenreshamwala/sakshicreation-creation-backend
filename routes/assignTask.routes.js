@@ -27,4 +27,6 @@ router.post("/bulkdelete", AssignTaskController.bulkDeleteAssignTasks);
 // Get party names by company name for dropdown
 router.get("/party-names", AssignTaskController.getPartyNamesByCompany);
 
+router.post("/get-filter/:field",AssignTaskController.getAssignTaskFilterOptionsData)
+
 module.exports = router;

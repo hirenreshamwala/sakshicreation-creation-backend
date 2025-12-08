@@ -347,16 +347,13 @@ exports.getPartywithCompany = async (req, res) => {
     }
 
     const user = req.user;
-    console.log("DEBUG : user:", user);
 
     let query = { companyName: id };
-    console.log("DEBUG : query:", query);
 
 
 
     if (!["admin", "manager","factory manager","godown manager", "driver"].includes(user.role?.toLowerCase())) {
       query.createdBy = user.id;
-      console.log("DEBUG : query.createdBy:", query.createdBy);
 
     }
 
