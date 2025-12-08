@@ -1,19 +1,39 @@
 const mongoose = require("mongoose");
 const Inventory = require("../models/inventory.model");
+const Vendor = require("../models/vendor.model"); // Add missing import
+const Kantan = require("../models/kantan.model"); // Add missing import (assume model exists)
 
 exports.getInventoryByCategory = async (req, res) => {
   try {
     const { category } = req.params;
-    if (
-      !["printer", "binder", "booklet", "factory", "godown"].includes(category)
-    ) {
+    const { 
+      type, // Optional: inward/outward
+      page = 1, 
+      pageSize = 10, 
+      isPagination = true 
+    } = req.body; // From POST body
+
+    if (!["printer", "binder", "booklet", "factory", "godown"].includes(category)) {
       return res.status(400).json({
         success: false,
         message: "Invalid category",
       });
     }
 
-    const inventory = await Inventory.find({ category })
+    let query = { category };
+    if (type) query.type = type; // Filter by type if provided
+
+    // Get total count
+    const totalCount = await Inventory.countDocuments(query);
+
+    let data = [];
+    let pagination = null;
+
+    if (isPagination) {
+      const skip = (page - 1) * pageSize;
+      data = await Inventory.find(query)
+        .skip(skip)
+        .limit(pageSize)
       .populate("material", "materialName materialSize materialGSM")
       .populate("vendor", "name")
       .populate("companyName", "companyName")
@@ -22,12 +42,36 @@ exports.getInventoryByCategory = async (req, res) => {
       .populate("forCompany", "firstName lastName")
       .sort({ date: -1 });
 
+      pagination = {
+        currentPage: parseInt(page),
+        pageSize: parseInt(pageSize),
+        totalCount,
+        totalPages: Math.ceil(totalCount / pageSize),
+        hasNext: page < Math.ceil(totalCount / pageSize),
+        hasPrev: page > 1,
+      };
+    } else {
+      // Fetch all for aggregation
+      data = await Inventory.find(query)
+        .populate("material", "materialName materialSize materialGSM")
+        .populate("vendor", "name")
+        .populate("companyName", "companyName")
+        .populate("for", "roleName")
+        .populate("kantan", "kantanName")
+        .populate("forCompany", "firstName lastName")
+        .sort({ date: -1 });
+    }
+
     res.status(200).json({
       success: true,
-      count: inventory.length,
-      data: inventory,
+      data,
+      totalCount,
+      pagination,
+      count: data.length,
+      message: "Inventory fetched successfully",
     });
   } catch (error) {
+    console.error("Error fetching inventory:", error);
     res.status(500).json({
       success: false,
       message: "Error fetching inventory: " + error.message,
@@ -93,6 +137,392 @@ exports.getAllInventory = async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Error fetching inventory: " + error.message,
+    });
+  }
+};
+exports.getAllInventoryForQuality = async (req, res) => {
+  try {
+    const {
+      filters = {},
+      search = "",
+      startDate,
+      endDate,
+      isPagination = true,
+      page = 1,
+      pageSize = 10,
+      includeCounts = true
+    } = req.body;
+    console.log("📊 Inventory API - Request:", { filters, search, startDate, endDate, page, pageSize, isPagination });
+   
+    // Build query object - similar to payment folders
+    const query = {};
+    let exprConditions = []; // Collect $expr conditions for derived fields
+    
+    // Search functionality - adapt for inventory fields
+    if (search && search.trim()) {
+      const directOr = [
+        { 'material.materialName': { $regex: search, $options: "i" } },
+        { 'vendor.name': { $regex: search, $options: "i" } },
+        // Add more fields as needed
+      ];
+      query.$or = directOr;
+    }
+
+    // Date range filter on createdAt or date
+    if (startDate || endDate) {
+      query.date = {}; // or createdAt
+      if (startDate) {
+        const start = new Date(startDate);
+        start.setHours(0, 0, 0, 0);
+        query.date.$gte = start;
+      }
+      if (endDate) {
+        const end = new Date(endDate);
+        end.setHours(23, 59, 59, 999);
+        query.date.$lte = end;
+      }
+    }
+
+    // Category filter
+    if (filters.category && filters.category.length > 0) {
+      query.category = { $in: filters.category };
+    }
+    
+    // Type filter (inward/outward)
+    if (filters.type && filters.type.length > 0) {
+      query.type = { $in: filters.type };
+    }
+
+    // Vendor filter
+    if (filters.vendor && filters.vendor.length > 0) {
+      const vendors = await Vendor.find({ name: { $in: filters.vendor } }).select('_id').lean();
+      if (vendors.length > 0) {
+        query.vendor = { $in: vendors.map(v => v._id) };
+      }
+    }
+
+    // Fixed: Add inventory-specific filters (direct fields)
+    if (filters.deckal && filters.deckal.length > 0) {
+      // Normalize 'no' to handle null/empty in DB
+      const normalizedDeckals = filters.deckal.map(val => val === 'no' ? { $in: [null, '', 'no'] } : val).flat();
+      query.deckal = { $in: normalizedDeckals };
+    }
+
+    if (filters.ply && filters.ply.length > 0) {
+      query.ply = { $in: filters.ply };
+    }
+
+    if (filters.gsm && filters.gsm.length > 0) {
+      query.gsm = { $in: filters.gsm };
+    }
+
+    if (filters.bf && filters.bf.length > 0) {
+      query.bf = { $in: filters.bf };
+    }
+
+    if (filters.color && filters.color.length > 0) {
+      query.color = { $in: filters.color };
+    }
+
+    if (filters.isKantan !== undefined && filters.isKantan.length > 0) {
+      query.isKantan = { $in: filters.isKantan.map(v => v === 'yes' ? true : false) };
+    }
+
+    // Fixed: Handle derived fields for box (using $expr)
+    if (filters.boxSize && filters.boxSize.length > 0) {
+      const sizeExpr = {
+        $in: [
+          {
+            $concat: [
+              { $toString: { $ifNull: ["$boxLength", ""] } },
+              " x ",
+              { $toString: { $ifNull: ["$boxWidth", ""] } },
+              " x ",
+              { $toString: { $ifNull: ["$boxHeight", ""] } }
+            ]
+          },
+          filters.boxSize
+        ]
+      };
+      exprConditions.push(sizeExpr);
+    }
+
+    if (filters.boxGSM && filters.boxGSM.length > 0) {
+      const gsmExpr = {
+        $in: [
+          {
+            $concat: [
+              { $toString: { $ifNull: ["$paper1GSM", ""] } },
+              " - ",
+              { $toString: { $ifNull: ["$paper2GSM", ""] } },
+              " - ",
+              { $toString: { $ifNull: ["$paper3GSM", ""] } }
+            ]
+          },
+          filters.boxGSM
+        ]
+      };
+      exprConditions.push(gsmExpr);
+    }
+
+    // Apply $expr if any conditions
+    if (exprConditions.length > 0) {
+      query.$expr = exprConditions.length === 1 ? exprConditions[0] : { $and: exprConditions };
+    }
+
+    // Add more filters as needed (e.g., material, quantity range)
+
+    console.log("📊 Inventory - Final query:", JSON.stringify(query, null, 2));
+
+    // Get total count
+    const totalCount = await Inventory.countDocuments(query);
+    console.log("📊 Inventory - Total count:", totalCount);
+
+    // Populate options
+    const populateFields = [
+      { path: "material", select: "materialName materialSize materialGSM" },
+      { path: "vendor", select: "name" },
+      { path: "companyName", select: "companyName" },
+      { path: "for", select: "roleName" },
+      { path: "kantan", select: "kantanName" },
+      { path: "forCompany", select: "firstName lastName" },
+    ];
+
+    let data = [];
+    let pagination = null;
+    if (isPagination) {
+      const skip = (page - 1) * pageSize;
+      data = await Inventory.find(query)
+        .skip(skip)
+        .limit(pageSize)
+        .populate(populateFields)
+        .sort({ createdAt: -1 });
+      pagination = {
+        currentPage: parseInt(page),
+        pageSize: parseInt(pageSize),
+        totalCount: totalCount,
+        totalPages: Math.ceil(totalCount / pageSize),
+        hasNext: page < Math.ceil(totalCount / pageSize),
+        hasPrev: page > 1,
+      };
+    } else {
+      data = await Inventory.find(query)
+        .populate(populateFields)
+        .sort({ createdAt: -1 });
+    }
+
+    res.status(200).json({
+      success: true,
+      data: data,
+      pagination: pagination,
+      totalCount: totalCount,
+      message: "Inventory fetched successfully"
+    });
+  } catch (error) {
+    console.error("❌ Error fetching inventory:", error);
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching inventory: ' + error.message,
+    });
+  }
+};
+
+// Fixed: Enhanced filter options with aggregation for derived fields (boxSize, boxGSM)
+exports.getInventoryFilterOptions = async (req, res) => {
+  try {
+    const { field } = req.params;
+    const filters = req.body || {};
+    const { search = "", ...otherFilters } = filters;
+    if (!field) {
+      return res.status(400).json({
+        success: false,
+        message: "Field parameter is required"
+      });
+    }
+    console.log("Inventory Filter Options - Field:", field, "Filters:", otherFilters);
+    // Extended validFields for inventory-specific fields
+    const validFields = [
+      'category', 'type', 'vendor', 'date', 
+      'deckal', 'ply', 'gsm', 'bf', 'color', 
+      'kantanName', 'reel', 'boxType', 'boxSize', 'boxGSM', 'isKantan'
+    ]; // Add more as needed based on your schema
+    
+    if (!validFields.includes(field)) {
+      return res.status(400).json({
+        success: false,
+        message: `Invalid field. Valid: ${validFields.join(', ')}`
+      });
+    }
+
+    // Build main query from other filters (similar to getAllInventory) - reuse logic if possible
+    let query = {};
+
+    // Category filter
+    if (otherFilters.category && otherFilters.category.length > 0) {
+      query.category = { $in: otherFilters.category };
+    }
+
+    // Type filter (inward/outward)
+    if (otherFilters.type && otherFilters.type.length > 0) {
+      query.type = { $in: otherFilters.type };
+    }
+
+    // Date range filter
+    if (otherFilters.startDate || otherFilters.endDate) {
+      query.date = {};
+      if (otherFilters.startDate) {
+        const start = new Date(otherFilters.startDate);
+        start.setHours(0, 0, 0, 0);
+        query.date.$gte = start;
+      }
+      if (otherFilters.endDate) {
+        const end = new Date(otherFilters.endDate);
+        end.setHours(23, 59, 59, 999);
+        query.date.$lte = end;
+      }
+    }
+
+    // Vendor filter (if field is not vendor, but otherFilters has it)
+    if (otherFilters.vendor && otherFilters.vendor.length > 0) {
+      const vendors = await Vendor.find({ name: { $in: otherFilters.vendor } }).select('_id').lean();
+      if (vendors.length > 0) {
+        query.vendor = { $in: vendors.map(v => v._id) };
+      }
+    }
+
+    // Add more filter building as needed
+
+    let uniqueValues = [];
+    switch (field) {
+      case "category":
+        uniqueValues = await Inventory.distinct("category", query);
+        break;
+      case "type":
+        uniqueValues = await Inventory.distinct("type", query);
+        break;
+      case "vendor":
+        const vendorIds = await Inventory.distinct("vendor", query);
+        const vendors = await Vendor.find({ _id: { $in: vendorIds } }, "name").lean();
+        uniqueValues = vendors.map(v => v.name).filter(Boolean);
+        break;
+      case "date":
+        const dateValues = await Inventory.distinct("date", query);
+        uniqueValues = dateValues
+          .filter(d => d && new Date(d).getTime() > 0)
+          .map(d => new Date(d).toISOString().split('T')[0])
+          .filter((v, i, self) => self.indexOf(v) === i)
+          .sort();
+        break;
+      case "deckal":
+        uniqueValues = await Inventory.distinct("deckal", query);
+        uniqueValues = uniqueValues.filter(val => val && String(val).trim() !== "").sort();
+        break;
+      case "ply":
+        uniqueValues = await Inventory.distinct("ply", query);
+        uniqueValues = uniqueValues.filter(val => val && String(val).trim() !== "").sort((a, b) => a - b);
+        break;
+      case "gsm":
+        uniqueValues = await Inventory.distinct("gsm", query);
+        uniqueValues = uniqueValues.filter(val => val !== null && val !== undefined).sort((a, b) => a - b);
+        break;
+      case "bf":
+        uniqueValues = await Inventory.distinct("bf", query);
+        uniqueValues = uniqueValues.filter(val => val && String(val).trim() !== "").sort();
+        break;
+      case "color":
+        uniqueValues = await Inventory.distinct("color", query);
+        uniqueValues = uniqueValues.filter(val => val && String(val).trim() !== "").sort();
+        break;
+      case "kantanName":
+        const kantanIds = await Inventory.distinct("kantan", query);
+        const kantans = await Kantan.find({ _id: { $in: kantanIds } }, "kantanName").lean();
+        uniqueValues = kantans.map(k => k.kantanName).filter(Boolean).sort();
+        break;
+      case "reel":
+        uniqueValues = await Inventory.distinct("reel", query);
+        uniqueValues = uniqueValues.filter(val => val && String(val).trim() !== "").sort();
+        break;
+      case "boxType":
+        uniqueValues = await Inventory.distinct("boxType", query);
+        uniqueValues = uniqueValues.filter(val => val && String(val).trim() !== "").sort();
+        break;
+      // Fixed: Derived boxSize via aggregation
+      case "boxSize":
+        const sizeResult = await Inventory.aggregate([
+          { $match: query },
+          {
+            $project: {
+              sizeStr: {
+                $concat: [
+                  { $toString: { $ifNull: ["$boxLength", ""] } },
+                  " x ",
+                  { $toString: { $ifNull: ["$boxWidth", ""] } },
+                  " x ",
+                  { $toString: { $ifNull: ["$boxHeight", ""] } }
+                ]
+              }
+            }
+          },
+          { $group: { _id: "$sizeStr" } },
+          { $match: { _id: { $ne: " x  x " } } }, // Exclude empty
+          { $sort: { _id: 1 } }
+        ]);
+        uniqueValues = sizeResult.map(r => r._id).filter(Boolean);
+        break;
+      // Fixed: Derived boxGSM via aggregation
+      case "boxGSM":
+        const gsmResult = await Inventory.aggregate([
+          { $match: query },
+          {
+            $project: {
+              gsmStr: {
+                $concat: [
+                  { $toString: { $ifNull: ["$paper1GSM", ""] } },
+                  " - ",
+                  { $toString: { $ifNull: ["$paper2GSM", ""] } },
+                  " - ",
+                  { $toString: { $ifNull: ["$paper3GSM", ""] } }
+                ]
+              }
+            }
+          },
+          { $group: { _id: "$gsmStr" } },
+          { $match: { _id: { $ne: " -  - " } } }, // Exclude empty
+          { $sort: { _id: 1 } }
+        ]);
+        uniqueValues = gsmResult.map(r => r._id).filter(Boolean);
+        break;
+      case "isKantan":
+        uniqueValues = await Inventory.distinct("isKantan", query);
+        uniqueValues = uniqueValues.filter(val => val !== null && val !== undefined)
+          .map(val => val ? 'yes' : 'no') // Map to display values
+          .sort();
+        break;
+      // Add more cases as needed
+      default:
+        uniqueValues = [];
+    }
+
+    // Apply search
+    if (search && search.trim()) {
+      const regex = new RegExp(search, 'i');
+      uniqueValues = uniqueValues.filter(val => regex.test(String(val)));
+    }
+
+    uniqueValues = uniqueValues.slice(0, 100); // Limit
+
+    console.log(`✅ Inventory Filter options for ${field}:`, uniqueValues.length, "items");
+    res.status(200).json({
+      success: true,
+      data: uniqueValues,
+      count: uniqueValues.length
+    });
+  } catch (err) {
+    console.error("❌ Error loading inventory filter options:", err);
+    res.status(500).json({
+      success: false,
+      message: "Error loading filter options",
+      error: err.message
     });
   }
 };

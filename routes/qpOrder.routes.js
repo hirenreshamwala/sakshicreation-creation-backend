@@ -15,4 +15,6 @@ router.post("/bulkupdatestatus", QpOrderController.bulkUpdateQPOrderStatus);
 router.post('/sendboxfromgodownorfactory/:id',QpOrderController.sendBoxFromGodownOrFactory)
 router.post('/driverselection/:id',QpOrderController.driverSelectionAndInventoryManage)
 router.post('/mark-urgent/:id',QpOrderController.updateMarkUrgent)
+router.post('/filter-options/:field',QpOrderController.getQpFilterOptionsData);
+router.post('/getalldriver',QpOrderController.getAllQpOrdersForDriver);
 module.exports = router;
