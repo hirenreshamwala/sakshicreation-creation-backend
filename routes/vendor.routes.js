@@ -9,7 +9,7 @@ const upload = multer({ storage });
 router.post("/create", VendorController.createVendor);
 
 router.get("/getall", VendorController.getVendors);
-
+router.get("/filters", VendorController.getVendorFilters);
 router.get("/getbyid/:id", VendorController.getVendorById);
 
 router.patch("/update/:id", VendorController.updateVendor);
