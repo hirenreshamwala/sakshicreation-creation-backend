@@ -8,19 +8,30 @@ const path = require('path');
 // Get all vendors
 exports.getVendors = async (req, res) => {
   try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
+
     const vendors = await Vendor.find()
       .populate('companyName', 'companyName')
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit);
+
+    const totalItems = await Vendor.countDocuments();
+
     res.status(200).json({
       success: true,
-      count: vendors.length,
       data: vendors,
+      pagination: {
+        currentPage: page,
+        totalPages: Math.ceil(totalItems / limit),
+        totalItems,
+        limit,
+      },
     });
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Error fetching vendors: ' + error.message,
-    });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
