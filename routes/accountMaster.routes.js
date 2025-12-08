@@ -1,5 +1,6 @@
 const express = require("express");
 const AccountMasterController = require("../controllers/accountMaster.controller");
+const ExcelDownloadController = require("../controllers/exccelDownload.controller");
 const multer = require("multer");
 const { authenticateToken } = require("../middleware/auth");
 const upload = multer({ storage: multer.memoryStorage() });
@@ -10,6 +11,7 @@ router.post("/create",authenticateToken, AccountMasterController.createAccountMa
 
 // Get all account masters
 router.post("/getall",authenticateToken, AccountMasterController.getAllAccountMasters);
+router.post("/download-excel",authenticateToken, ExcelDownloadController.exportAccountMastersToExcel);
 router.get("/getqp",authenticateToken, AccountMasterController.getQualityPackingParties);
 
 router.put("/party/:id/approve",authenticateToken, AccountMasterController.approveParty);
