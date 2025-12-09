@@ -46,7 +46,5 @@ const assignTaskSchema = new mongoose.Schema({
   
 }, { timestamps: true });
 
-assignTaskSchema.index({ assignTo: 1, createdAt: -1 });
-assignTaskSchema.index({ assignTo: 1, status: 1 });
 
 module.exports = mongoose.model("AssignTask", assignTaskSchema);

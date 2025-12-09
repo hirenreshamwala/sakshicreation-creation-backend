@@ -276,6 +276,7 @@ exports.getAllAssignTasks = async (req, res) => {
   try {
     const { staffId, startDate, endDate, status, companyName, partyName, reason } = req.body;
 
+
     let filter = {};
 
     // Staff filter
@@ -292,21 +293,27 @@ exports.getAllAssignTasks = async (req, res) => {
     if (partyName) {
       filter.partyName = partyName;
     }
+    console.log("DEBUG : reason:", reason);
 
-    // Reason filter
     if (reason) {
       const cleanedReason = reason.trim().replace(/\s+/g, "\\s*");
+      console.log("DEBUG : cleanedReason:", cleanedReason);
+
       filter.reasonForVisit = new RegExp(cleanedReason, "i");
     }
 
-    // Status filter (multiple status allowed, case-insensitive)
+
+
+    // ✅ Status filter (multiple status allowed)
+    // ✅ Status filter (multiple status allowed, case-insensitive)
     if (status && Array.isArray(status) && status.length > 0) {
       filter.status = {
         $in: status.map((s) => new RegExp(`^${s}$`, "i"))
       };
     }
 
-    // Date filter
+
+    // Date filter (date field of AssignTask)
     if (startDate && endDate) {
       const start = new Date(startDate);
       start.setHours(0, 0, 0, 0);
@@ -317,132 +324,48 @@ exports.getAllAssignTasks = async (req, res) => {
       filter.date = { $gte: start, $lte: end };
     }
 
-    // Fetch all tasks with necessary populations
+    console.log("DEBUG : filter:", filter);
     const tasks = await AssignTask.find(filter)
-      .populate("companyName", "companyName avatar _id")
+
+      .populate("companyName")
+      .populate("partyName")
       .populate({
         path: "assignTo",
-        select: "firstName lastName email role",
         populate: {
           path: "role",
-          select: "roleName"
+          select: "roleName" // yaha jitne fields chahiye wo add kar sakte ho
         }
       })
-      .populate("originalTaskId", "_id reasonToVisit")
+      .populate("originalTaskId")
       .populate({
         path: "partyName",
         select: "-__v",
         populate: [
           { path: "address.marketName", model: "Market", select: "marketName" },
+          // { path: "address.streetAddress", model: "Market", select: "streetAddress" },
           { path: "address.landMark", model: "Market", select: "landmark" },
           { path: "address.area", model: "Market", select: "area" },
           { path: "address.pincode", model: "Market", select: "pincode" },
         ],
       })
-      .sort({ createdAt: -1 })
-      .lean(); // Use lean() for better performance
+      .sort({ createdAt: -1 });
 
-    // If no tasks found, return early
-    if (tasks.length === 0) {
-      return res.status(200).json({
-        success: true,
-        count: 0,
-        data: [],
-      });
-    }
+    // Fetch AccountMaster for each task to get createdBy
+    const tasksWithCreatedBy = await Promise.all(
+      tasks.map(async (task) => {
+        const accountMaster = await AccountMaster.findOne({
+          companyName: task.companyName,
+          party: task.partyName,
+        })
+          .populate("createdBy", "firstName lastName")
+          .lean();
 
-    // Collect all unique company-party combinations for batch query
-    const companyPartyCombinations = [];
-    const combinationsMap = new Map(); // For quick lookup
-
-    tasks.forEach(task => {
-      if (task.companyName && task.partyName) {
-        const key = `${task.companyName._id}_${task.partyName._id}`;
-        if (!combinationsMap.has(key)) {
-          combinationsMap.set(key, true);
-          companyPartyCombinations.push({
-            companyName: task.companyName._id,
-            party: task.partyName._id
-          });
-        }
-      }
-    });
-
-    // Single batch query to fetch all AccountMasters
-    let accountMastersMap = new Map();
-    
-    if (companyPartyCombinations.length > 0) {
-      const accountMasters = await AccountMaster.find({
-        $or: companyPartyCombinations
+        return {
+          ...task.toObject(),
+          createdBy: accountMaster ? accountMaster.createdBy : null,
+        };
       })
-      .populate("createdBy", "firstName lastName email")
-      .lean();
-
-      // Create map for quick lookup
-      accountMasters.forEach(account => {
-        const key = `${account.companyName}_${account.party}`;
-        accountMastersMap.set(key, account);
-      });
-    }
-
-    // Process tasks sequentially without Promise.all
-    const tasksWithCreatedBy = [];
-    
-    for (const task of tasks) {
-      let createdBy = null;
-      
-      // Lookup createdBy from the map
-      if (task.companyName && task.partyName) {
-        const key = `${task.companyName._id}_${task.partyName._id}`;
-        const accountMaster = accountMastersMap.get(key);
-        if (accountMaster && accountMaster.createdBy) {
-          createdBy = accountMaster.createdBy;
-        }
-      }
-
-      // Transform task object
-      const transformedTask = {
-        ...task,
-        companyName: task.companyName ? {
-          _id: task.companyName._id,
-          companyName: task.companyName.companyName,
-          avatar: task.companyName.avatar
-        } : null,
-        assignTo: task.assignTo ? {
-          _id: task.assignTo._id,
-          firstName: task.assignTo.firstName,
-          lastName: task.assignTo.lastName,
-          email: task.assignTo.email,
-          role: task.assignTo.role
-        } : null,
-        partyName: task.partyName ? {
-          _id: task.partyName._id,
-          partyName: task.partyName.partyName,
-          ownerName: task.partyName.ownerName,
-          ownerMobileNo: task.partyName.ownerMobileNo,
-          ownerWhatsAppNo: task.partyName.ownerWhatsAppNo,
-          ownerEmail: task.partyName.ownerEmail || "N/A",
-          contactPerson: task.partyName.contactPerson,
-          personMobileNo: task.partyName.personMobileNo,
-          personWhatsAppNo: task.partyName.personWhatsAppNo,
-          contactPersonEmail: task.partyName.contactPersonEmail || "N/A",
-          contactForPayment: task.partyName.contactForPayment,
-          contactMobileNo: task.partyName.contactMobileNo,
-          contactWhatsAppNo: task.partyName.contactWhatsAppNo,
-          contactForPaymentEmail: task.partyName.contactForPaymentEmail || "N/A",
-          GSTNo: task.partyName.GSTNo,
-          address: task.partyName.address,
-          partyTag: task.partyName.partyTag,
-          statusApproval: task.partyName.statusApproval,
-          createdAt: task.partyName.createdAt,
-          updatedAt: task.partyName.updatedAt
-        } : null,
-        originalTaskId: task.originalTaskId || null,
-        createdBy: createdBy
-      };
-
-      tasksWithCreatedBy.push(transformedTask);
-    }
+    );
 
     res.status(200).json({
       success: true,
@@ -450,7 +373,6 @@ exports.getAllAssignTasks = async (req, res) => {
       data: tasksWithCreatedBy,
     });
   } catch (error) {
-    console.error("Error fetching tasks:", error);
     res.status(500).json({
       success: false,
       message: "Failed to fetch tasks",
@@ -1050,7 +972,7 @@ exports.getTasksByStaffId = async (req, res) => {
     }
 
     // 2. Check if staff exists
-    const staff = await Staff.findById(id).select("_id firstName lastName");
+    const staff = await Staff.findById(id);
     if (!staff) {
       return res.status(404).json({
         success: false,
@@ -1062,48 +984,55 @@ exports.getTasksByStaffId = async (req, res) => {
     const tasks = await AssignTask.find({ assignTo: id })
       .populate({
         path: "companyName",
-        select: "companyName avatar _id",
+        select: "companyName",
+      })
+      .populate({
+        path: "partyName",
+        select: "partyName address ownerName personMobileNo",
       })
       .populate({
         path: "assignTo",
-        select: "firstName lastName email role",
         populate: {
           path: "role",
-          select: "roleName"
+          select: "roleName" // yaha jitne fields chahiye wo add kar sakte ho
         }
       })
       .populate({
         path: "originalTaskId",
-        select: "date status reasonToVisit",
+        select: "date status",
       })
       .populate({
         path: "partyName",
-        select: "partyName ownerName ownerMobileNo ownerWhatsAppNo ownerEmail contactPerson personMobileNo personWhatsAppNo contactPersonEmail contactForPayment contactMobileNo contactWhatsAppNo contactForPaymentEmail GSTNo address partyTag statusApproval createdAt updatedAt",
+        select: "-__v",
         populate: [
           {
             path: "address.marketName",
             model: "Market",
-            select: "marketName",
+            select: "marketName", // only marketName
           },
+          // {
+          //   path: "address.streetAddress",
+          //   model: "Market",
+          //   select: "streetAddress", // only streetAddress
+          // },
           {
             path: "address.landMark",
             model: "Market",
-            select: "landmark",
+            select: "landmark", // only landMark
           },
           {
             path: "address.area",
             model: "Market",
-            select: "area",
+            select: "area", // only area
           },
           {
             path: "address.pincode",
             model: "Market",
-            select: "pincode",
+            select: "pincode", // only pincode
           },
         ],
       })
-      .sort({ createdAt: -1 })
-      .lean(); // Use lean() for better performance
+      .sort({ createdAt: -1 });
 
     // 4. If no tasks found, return an empty array with a message
     if (!tasks || tasks.length === 0) {
@@ -1115,145 +1044,27 @@ exports.getTasksByStaffId = async (req, res) => {
       });
     }
 
-    // 5. Collect all unique company-party combinations for batch query
-    const companyPartyCombinations = [];
-    const combinationsMap = new Map();
+    // 5. Fetch AccountMaster for each task to get createdBy
+    const tasksWithCreatedBy = await Promise.all(
+      tasks.map(async (task) => {
+        const accountMaster = await AccountMaster.findOne({
+          companyName: task.companyName,
+          party: task.partyName,
+        })
+          .populate("createdBy", "firstName lastName")
+          .lean();
 
-    tasks.forEach(task => {
-      if (task.companyName && task.partyName) {
-        const key = `${task.companyName._id}_${task.partyName._id}`;
-        if (!combinationsMap.has(key)) {
-          combinationsMap.set(key, true);
-          companyPartyCombinations.push({
-            companyName: task.companyName._id,
-            party: task.partyName._id
-          });
-        }
-      }
-    });
-
-    // 6. Single batch query to fetch all AccountMasters
-    let accountMastersMap = new Map();
-    
-    if (companyPartyCombinations.length > 0) {
-      const accountMasters = await AccountMaster.find({
-        $or: companyPartyCombinations
+        return {
+          ...task.toObject(),
+          createdBy: accountMaster ? accountMaster.createdBy : null,
+        };
       })
-      .populate("createdBy", "firstName lastName email")
-      .lean();
+    );
 
-      // Create map for quick lookup
-      accountMasters.forEach(account => {
-        const key = `${account.companyName}_${account.party}`;
-        accountMastersMap.set(key, {
-          createdBy: account.createdBy || null
-        });
-      });
-    }
-
-    // 7. Process tasks sequentially without Promise.all
-    const tasksWithCreatedBy = [];
-    
-    for (const task of tasks) {
-      let createdBy = null;
-      
-      // Lookup createdBy from the map
-      if (task.companyName && task.partyName) {
-        const key = `${task.companyName._id}_${task.partyName._id}`;
-        const accountMaster = accountMastersMap.get(key);
-        if (accountMaster && accountMaster.createdBy) {
-          createdBy = accountMaster.createdBy;
-        }
-      }
-
-      // Transform task object with only necessary fields
-      const transformedTask = {
-        _id: task._id,
-        assignTo: task.assignTo ? {
-          _id: task.assignTo._id,
-          firstName: task.assignTo.firstName,
-          lastName: task.assignTo.lastName,
-          email: task.assignTo.email,
-          role: task.assignTo.role ? {
-            _id: task.assignTo.role._id,
-            roleName: task.assignTo.role.roleName
-          } : null
-        } : null,
-        companyName: task.companyName ? {
-          _id: task.companyName._id,
-          companyName: task.companyName.companyName,
-          avatar: task.companyName.avatar
-        } : null,
-        partyName: task.partyName ? {
-          _id: task.partyName._id,
-          partyName: task.partyName.partyName,
-          ownerName: task.partyName.ownerName,
-          ownerMobileNo: task.partyName.ownerMobileNo,
-          ownerWhatsAppNo: task.partyName.ownerWhatsAppNo,
-          ownerEmail: task.partyName.ownerEmail || "N/A",
-          contactPerson: task.partyName.contactPerson,
-          personMobileNo: task.partyName.personMobileNo,
-          personWhatsAppNo: task.partyName.personWhatsAppNo,
-          contactPersonEmail: task.partyName.contactPersonEmail || "N/A",
-          contactForPayment: task.partyName.contactForPayment,
-          contactMobileNo: task.partyName.contactMobileNo,
-          contactWhatsAppNo: task.partyName.contactWhatsAppNo,
-          contactForPaymentEmail: task.partyName.contactForPaymentEmail || "N/A",
-          GSTNo: task.partyName.GSTNo,
-          address: task.partyName.address ? {
-            streetAddress: task.partyName.address.streetAddress,
-            marketName: task.partyName.address.marketName ? {
-              _id: task.partyName.address.marketName._id,
-              marketName: task.partyName.address.marketName.marketName
-            } : null,
-            landMark: task.partyName.address.landMark ? {
-              _id: task.partyName.address.landMark._id,
-              landmark: task.partyName.address.landMark.landmark
-            } : null,
-            area: task.partyName.address.area ? {
-              _id: task.partyName.address.area._id,
-              area: task.partyName.address.area.area
-            } : null,
-            pincode: task.partyName.address.pincode ? {
-              _id: task.partyName.address.pincode._id,
-              pincode: task.partyName.address.pincode.pincode
-            } : null,
-            city: task.partyName.address.city,
-            state: task.partyName.address.state,
-            country: task.partyName.address.country
-          } : null,
-          partyTag: task.partyName.partyTag,
-          statusApproval: task.partyName.statusApproval,
-          createdAt: task.partyName.createdAt,
-          updatedAt: task.partyName.updatedAt
-        } : null,
-        originalTaskId: task.originalTaskId ? {
-          _id: task.originalTaskId._id,
-          date: task.originalTaskId.date,
-          status: task.originalTaskId.status,
-          reasonToVisit: task.originalTaskId.reasonToVisit
-        } : null,
-        reasonForVisit: task.reasonForVisit,
-        remarks: task.remarks || "NA",
-        status: task.status,
-        date: task.date,
-        createdAt: task.createdAt,
-        updatedAt: task.updatedAt,
-        createdBy: createdBy
-      };
-
-      tasksWithCreatedBy.push(transformedTask);
-    }
-
-    // 8. Return the tasks
+    // 6. Return the tasks
     res.status(200).json({
       success: true,
       message: "Tasks retrieved successfully",
-      staffDetails: {
-        _id: staff._id,
-        firstName: staff.firstName,
-        lastName: staff.lastName
-      },
       count: tasksWithCreatedBy.length,
       data: tasksWithCreatedBy,
     });
