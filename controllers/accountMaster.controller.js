@@ -238,7 +238,7 @@ exports.createAccountMaster = async (req, res) => {
 exports.getAllAccountMasters = async (req, res) => {
   try {
     const filters = req.body || {};
-
+    
     // Base query object
     const query = {};
 
@@ -257,6 +257,7 @@ exports.getAllAccountMasters = async (req, res) => {
       query.reasonToVisit = { $regex: filters.reasonToVisit, $options: "i" };
     }
 
+    // Date range filter
     if (filters.startDate || filters.endDate) {
       query.createdAt = {};
       if (filters.startDate) {
@@ -271,7 +272,7 @@ exports.getAllAccountMasters = async (req, res) => {
       }
     }
 
-
+    // Party match filters
     let partyMatch = {};
 
     if (filters.partyName) {
@@ -288,15 +289,15 @@ exports.getAllAccountMasters = async (req, res) => {
 
     if (filters.partyTag) {
       if (Array.isArray(filters.partyTag)) {
-        // If it's an array, match any of the tags (case-insensitive)
-        partyMatch.partyTag = { $in: filters.partyTag.map(tag => new RegExp(tag.trim(), "i")) };
+        partyMatch.partyTag = { 
+          $in: filters.partyTag.map(tag => new RegExp(tag.trim(), "i")) 
+        };
       } else {
-        // Single value
         partyMatch.partyTag = new RegExp(filters.partyTag.trim(), "i");
       }
     }
 
-
+    // Fetch account masters with party populated and filtered
     const accountMasters = await AccountMaster.find(query)
       .populate("createdBy", "firstName lastName email")
       .populate("companyName", "companyName avatar _id")
@@ -306,7 +307,6 @@ exports.getAllAccountMasters = async (req, res) => {
         match: partyMatch,
         populate: [
           { path: "address.marketName", model: "Market", select: "marketName" },
-          // { path: "address.streetAddress", model: "Market", select: "streetAddress" },
           { path: "address.landMark", model: "Market", select: "landmark" },
           { path: "address.area", model: "Market", select: "area" },
           { path: "address.pincode", model: "Market", select: "pincode" },
@@ -314,100 +314,130 @@ exports.getAllAccountMasters = async (req, res) => {
       })
       .sort({ createdAt: -1 });
 
+    // Filter out accounts with null party
     const filteredAccountMasters = accountMasters.filter(
       (account) => account.party !== null
     );
 
-    // AssignTask logic same रहेगा
-    const assignTasks = await AssignTask.aggregate([
-      { $sort: { createdAt: -1 } },
-      {
-        $group: {
-          _id: { partyName: "$partyName", companyName: "$companyName" },
-          latestTask: { $first: "$$ROOT" },
-        },
-      },
-    ]);
-
-    const taskMap = {};
-    assignTasks.forEach((task) => {
-      const key = `${task._id.partyName}_${task._id.companyName}`;
-      taskMap[key] = task.latestTask;
+    // Collect all party-company combinations for batch task query
+    const partyCompanyCombinations = [];
+    filteredAccountMasters.forEach(account => {
+      if (account.party && account.companyName) {
+        partyCompanyCombinations.push({
+          partyName: account.party._id,
+          companyName: account.companyName._id
+        });
+      }
     });
 
-    const enrichedAccountMasters = await Promise.all(
-      filteredAccountMasters.map(async (account) => {
+    // Single optimized query for latest tasks
+    let taskMap = {};
+    if (partyCompanyCombinations.length > 0) {
+      const latestTasks = await AssignTask.aggregate([
+        {
+          $match: {
+            $or: partyCompanyCombinations.map(combo => ({
+              partyName: combo.partyName,
+              companyName: combo.companyName
+            }))
+          }
+        },
+        { $sort: { createdAt: -1 } },
+        {
+          $group: {
+            _id: { partyName: "$partyName", companyName: "$companyName" },
+            latestTask: { $first: "$$ROOT" }
+          }
+        }
+      ]);
+
+      // Populate assignTo for all tasks in one go
+      if (latestTasks.length > 0) {
+        const taskIds = latestTasks.map(task => task.latestTask._id);
+        const populatedTasks = await AssignTask.find({
+          _id: { $in: taskIds }
+        }).populate("assignTo", "firstName lastName email");
+
+        // Create map for quick lookup
+        populatedTasks.forEach(task => {
+          const key = `${task.partyName}_${task.companyName}`;
+          taskMap[key] = task;
+        });
+      }
+    }
+
+    // Build response without Promise.all
+    const enrichedAccountMasters = [];
+    
+    for (const account of filteredAccountMasters) {
+      let taskDetails = {
+        assignedTo: account.createdBy,
+        remarks: "NA",
+        status: "Not Started"
+      };
+
+      if (account.party && account.companyName) {
         const taskKey = `${account.party._id}_${account.companyName._id}`;
         const latestTask = taskMap[taskKey];
 
-        let taskDetails = {
-          assignedTo: account.createdBy,
-          remarks: "NA",
-          status: "Not Started",
-        };
-
         if (latestTask) {
-          const populatedTask = await AssignTask.populate(latestTask, {
-            path: "assignTo",
-            select: "firstName lastName email",
-          });
-
           taskDetails = {
-            assignedTo: populatedTask.assignTo || account.createdBy,
-            remarks: populatedTask.remarks || "NA",
-            status: populatedTask.status || "Not Started",
+            assignedTo: latestTask.assignTo || account.createdBy,
+            remarks: latestTask.remarks || "NA",
+            status: latestTask.status || "Not Started"
           };
         }
+      }
 
-        return {
-          _id: account._id,
-          companyName: {
-            _id: account.companyName?._id,
-            name: account.companyName?.companyName,
-            avatar: account.companyName?.avatar,
-          },
-          reasonToVisit: account.reasonToVisit,
-          createdAt: account.createdAt,
-          updatedAt: account.updatedAt,
-          createdBy: account.createdBy,
-          party: {
-            _id: account.party._id,
-            partyName: account.party.partyName,
-            ownerName: account.party.ownerName,
-            ownerMobileNo: account.party.ownerMobileNo,
-            ownerWhatsAppNo: account.party.ownerWhatsAppNo,
-            ownerEmail: account.party.ownerEmail || "N/A",
-            contactPerson: account.party.contactPerson,
-            personMobileNo: account.party.personMobileNo,
-            personWhatsAppNo: account.party.personWhatsAppNo,
-            contactPersonEmail: account.party.contactPersonEmail || "N/A",
-            contactForPayment: account.party.contactForPayment,
-            contactMobileNo: account.party.contactMobileNo,
-            contactWhatsAppNo: account.party.contactWhatsAppNo,
-            contactForPaymentEmail: account.party.contactForPaymentEmail || "N/A",
-            GSTNo: account.party.GSTNo,
-            address: account.party.address,
-            partyTag: account.party.partyTag,
-            statusApproval: account.party.statusApproval,
-            createdAt: account.party.createdAt,
-            updatedAt: account.party.updatedAt,
-          },
-          assignment: taskDetails,
-        };
-      })
-    );
+      enrichedAccountMasters.push({
+        _id: account._id,
+        companyName: {
+          _id: account.companyName?._id,
+          name: account.companyName?.companyName,
+          avatar: account.companyName?.avatar
+        },
+        reasonToVisit: account.reasonToVisit,
+        createdAt: account.createdAt,
+        updatedAt: account.updatedAt,
+        createdBy: account.createdBy,
+        party: {
+          _id: account.party._id,
+          partyName: account.party.partyName,
+          ownerName: account.party.ownerName,
+          ownerMobileNo: account.party.ownerMobileNo,
+          ownerWhatsAppNo: account.party.ownerWhatsAppNo,
+          ownerEmail: account.party.ownerEmail || "N/A",
+          contactPerson: account.party.contactPerson,
+          personMobileNo: account.party.personMobileNo,
+          personWhatsAppNo: account.party.personWhatsAppNo,
+          contactPersonEmail: account.party.contactPersonEmail || "N/A",
+          contactForPayment: account.party.contactForPayment,
+          contactMobileNo: account.party.contactMobileNo,
+          contactWhatsAppNo: account.party.contactWhatsAppNo,
+          contactForPaymentEmail: account.party.contactForPaymentEmail || "N/A",
+          GSTNo: account.party.GSTNo,
+          address: account.party.address,
+          partyTag: account.party.partyTag,
+          statusApproval: account.party.statusApproval,
+          createdAt: account.party.createdAt,
+          updatedAt: account.party.updatedAt
+        },
+        assignment: taskDetails
+      });
+    }
 
     res.status(200).json({
       success: true,
       count: enrichedAccountMasters.length,
-      data: enrichedAccountMasters,
+      data: enrichedAccountMasters
     });
+
   } catch (error) {
     console.error("Error getting account masters:", error);
     res.status(500).json({
       success: false,
       message: "Failed to fetch account masters",
-      error: error.message,
+      error: error.message
     });
   }
 };
@@ -1571,8 +1601,8 @@ exports.getAccountMasterByStaffId = async (req, res) => {
       });
     }
 
-    // Check if staff exists
-    const staff = await Staff.findById(id);
+    // Check if staff exists (only basic info)
+    const staff = await Staff.findById(id).select("firstName lastName email _id");
     if (!staff) {
       return res.status(404).json({
         success: false,
@@ -1583,132 +1613,208 @@ exports.getAccountMasterByStaffId = async (req, res) => {
     // Find account masters created by this staff
     const accountMasters = await AccountMaster.find({ createdBy: id })
       .populate("companyName", "_id companyName avatar")
-      .populate("party", "-__v")
       .populate("createdBy", "_id firstName lastName email")
       .populate({
         path: "party",
-        select: "-__v",
+        select: "partyName ownerName ownerMobileNo ownerWhatsAppNo ownerEmail contactPerson personMobileNo personWhatsAppNo contactPersonEmail contactForPayment contactMobileNo contactWhatsAppNo contactForPaymentEmail GSTNo address partyTag partyType statusApproval createdAt updatedAt",
         populate: [
           {
             path: "address.marketName",
             model: "Market",
-            select: "marketName", // only marketName
+            select: "marketName _id",
           },
-          // {
-          //   path: "address.streetAddress",
-          //   model: "Market",
-          //   select: "streetAddress", // only streetAddress
-          // },
           {
             path: "address.landMark",
             model: "Market",
-            select: "landmark", // only landMark
+            select: "landmark _id",
           },
           {
             path: "address.area",
             model: "Market",
-            select: "area", // only area
+            select: "area _id",
           },
           {
             path: "address.pincode",
             model: "Market",
-            select: "pincode", // only pincode
+            select: "pincode _id",
           },
         ],
       })
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 })
+      .lean();
 
-    // if (!accountMasters.length) {
-    //   return res.status(404).json({
-    //     success: false,
-    //     message: "No account masters found for this staff member",
-    //   });
-    // }
-
-    // Fetch latest tasks for each party and company combination
-    const assignTasks = await AssignTask.aggregate([
-      {
-        $sort: { createdAt: -1 },
-      },
-      {
-        $group: {
-          _id: {
-            partyName: "$partyName",
-            companyName: "$companyName",
-          },
-          latestTask: { $first: "$$ROOT" },
+    // Early return if no account masters
+    if (!accountMasters || accountMasters.length === 0) {
+      return res.status(200).json({
+        success: true,
+        message: "No account masters found for this staff member",
+        staffDetails: {
+          _id: staff._id,
+          firstName: staff.firstName,
+          lastName: staff.lastName,
+          email: staff.email
         },
-      },
-    ]);
+        count: 0,
+        data: [],
+      });
+    }
 
-    const taskMap = {};
-    assignTasks.forEach((task) => {
-      const key = `${task._id.partyName}_${task._id.companyName}`;
-      taskMap[key] = task.latestTask;
+    // Collect all unique party-company combinations for batch task query
+    const partyCompanyCombinations = [];
+    const combinationsMap = new Map();
+
+    accountMasters.forEach(account => {
+      if (account.party && account.companyName) {
+        const key = `${account.party._id}_${account.companyName._id}`;
+        if (!combinationsMap.has(key)) {
+          combinationsMap.set(key, true);
+          partyCompanyCombinations.push({
+            partyName: account.party._id,
+            companyName: account.companyName._id
+          });
+        }
+      }
     });
 
-    // Enrich account masters with task details
-    const enrichedAccountMasters = await Promise.all(
-      accountMasters.map(async (account) => {
-        const taskKey = `${account?.party?._id}_${account?.companyName?._id}`;
-        const latestTask = taskMap[taskKey];
+    // Single optimized query for latest tasks
+    let taskMap = new Map();
+    if (partyCompanyCombinations.length > 0) {
+      const latestTasks = await AssignTask.aggregate([
+        {
+          $match: {
+            $or: partyCompanyCombinations.map(combo => ({
+              partyName: combo.partyName,
+              companyName: combo.companyName
+            }))
+          }
+        },
+        { $sort: { createdAt: -1 } },
+        {
+          $group: {
+            _id: { partyName: "$partyName", companyName: "$companyName" },
+            latestTask: { $first: "$$ROOT" }
+          }
+        }
+      ]);
 
-        let taskDetails = {
-          assignedTo: account.createdBy,
-          remarks: "NA",
-          status: "Not Started",
-        };
+      // Collect all assignTo IDs for batch population
+      if (latestTasks.length > 0) {
+        const taskIds = latestTasks.map(task => task.latestTask._id);
+        
+        // Batch populate assignTo for all tasks
+        const populatedTasks = await AssignTask.find({
+          _id: { $in: taskIds }
+        })
+        .populate("assignTo", "firstName lastName email _id")
+        .lean();
+
+        // Create map for quick lookup
+        populatedTasks.forEach(task => {
+          const key = `${task.partyName}_${task.companyName}`;
+          taskMap.set(key, task);
+        });
+      }
+    }
+
+    // Process account masters sequentially without Promise.all
+    const enrichedAccountMasters = [];
+    
+    for (const account of accountMasters) {
+      let taskDetails = {
+        assignedTo: account.createdBy,
+        remarks: "NA",
+        status: "Not Started"
+      };
+
+      // Lookup task from map
+      if (account.party && account.companyName) {
+        const taskKey = `${account.party._id}_${account.companyName._id}`;
+        const latestTask = taskMap.get(taskKey);
 
         if (latestTask) {
-          const populatedTask = await AssignTask.populate(latestTask, {
-            path: "assignTo",
-            select: "firstName lastName email",
-          });
-
           taskDetails = {
-            assignedTo: populatedTask.assignTo || account.createdBy,
-            remarks: populatedTask.remarks || "NA",
-            status: populatedTask.status || "Not Started",
+            assignedTo: latestTask.assignTo || account.createdBy,
+            remarks: latestTask.remarks || "NA",
+            status: latestTask.status || "Not Started"
           };
         }
+      }
 
-        return {
-          _id: account._id,
-          companyName: {
-            _id: account.companyName?._id,
-            name: account.companyName?.companyName,
-          },
-          reasonToVisit: account.reasonToVisit,
-          createdAt: account.createdAt,
-          updatedAt: account.updatedAt,
-          createdBy: account.createdBy,
-          party: {
-            _id: account?.party?._id,
-            partyName: account.party?.partyName,
-            ownerName: account.party?.ownerName,
-            ownerMobileNo: account.party?.ownerMobileNo,
-            ownerWhatsAppNo: account.party?.ownerWhatsAppNo,
-            contactPerson: account.party?.contactPerson,
-            personMobileNo: account.party?.personMobileNo,
-            personWhatsAppNo: account.party?.personWhatsAppNo,
-            contactForPayment: account.party?.contactForPayment,
-            contactMobileNo: account.party?.contactMobileNo,
-            contactWhatsAppNo: account.party?.contactWhatsAppNo,
-            GSTNo: account.party?.GSTNo,
-            address: account.party?.address,
-            partyTag: account.party?.partyTag,
-             partyType: account.party.partyType || "",
-            statusApproval: account.party?.statusApproval,
-            createdAt: account.party?.createdAt,
-            updatedAt: account.party?.updatedAt,
-          },
-          assignment: taskDetails,
-        };
-      })
-    );
+      // Transform account with structured response
+      const transformedAccount = {
+        _id: account._id,
+        companyName: account.companyName ? {
+          _id: account.companyName._id,
+          name: account.companyName.companyName,
+          avatar: account.companyName.avatar
+        } : null,
+        reasonToVisit: account.reasonToVisit,
+        createdAt: account.createdAt,
+        updatedAt: account.updatedAt,
+        createdBy: account.createdBy ? {
+          _id: account.createdBy._id,
+          firstName: account.createdBy.firstName,
+          lastName: account.createdBy.lastName,
+          email: account.createdBy.email
+        } : null,
+        party: account.party ? {
+          _id: account.party._id,
+          partyName: account.party.partyName,
+          ownerName: account.party.ownerName,
+          ownerMobileNo: account.party.ownerMobileNo,
+          ownerWhatsAppNo: account.party.ownerWhatsAppNo,
+          ownerEmail: account.party.ownerEmail || "N/A",
+          contactPerson: account.party.contactPerson,
+          personMobileNo: account.party.personMobileNo,
+          personWhatsAppNo: account.party.personWhatsAppNo,
+          contactPersonEmail: account.party.contactPersonEmail || "N/A",
+          contactForPayment: account.party.contactForPayment,
+          contactMobileNo: account.party.contactMobileNo,
+          contactWhatsAppNo: account.party.contactWhatsAppNo,
+          contactForPaymentEmail: account.party.contactForPaymentEmail || "N/A",
+          GSTNo: account.party.GSTNo,
+          address: account.party.address ? {
+            streetAddress: account.party.address.streetAddress,
+            marketName: account.party.address.marketName ? {
+              _id: account.party.address.marketName._id,
+              marketName: account.party.address.marketName.marketName
+            } : null,
+            landMark: account.party.address.landMark ? {
+              _id: account.party.address.landMark._id,
+              landmark: account.party.address.landMark.landmark
+            } : null,
+            area: account.party.address.area ? {
+              _id: account.party.address.area._id,
+              area: account.party.address.area.area
+            } : null,
+            pincode: account.party.address.pincode ? {
+              _id: account.party.address.pincode._id,
+              pincode: account.party.address.pincode.pincode
+            } : null,
+            city: account.party.address.city,
+            state: account.party.address.state,
+            country: account.party.address.country
+          } : null,
+          partyTag: account.party.partyTag,
+          partyType: account.party.partyType || "",
+          statusApproval: account.party.statusApproval,
+          createdAt: account.party.createdAt,
+          updatedAt: account.party.updatedAt
+        } : null,
+        assignment: taskDetails
+      };
+
+      enrichedAccountMasters.push(transformedAccount);
+    }
 
     res.status(200).json({
       success: true,
+      staffDetails: {
+        _id: staff._id,
+        firstName: staff.firstName,
+        lastName: staff.lastName,
+        email: staff.email
+      },
       count: enrichedAccountMasters.length,
       data: enrichedAccountMasters,
     });

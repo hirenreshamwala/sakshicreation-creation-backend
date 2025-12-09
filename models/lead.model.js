@@ -64,5 +64,10 @@ leadSchema.pre('save', function (next) {
   next();
 });
 
+leadSchema.index({ assignedTo: 1, createdAt: -1 });
+leadSchema.index({ companyName: 1, partyName: 1 });
+leadSchema.index({ status: 1 });
+leadSchema.index({ date: 1 });
+
 const Lead = mongoose.model("Lead", leadSchema);
 module.exports = Lead;

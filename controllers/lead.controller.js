@@ -153,10 +153,7 @@ exports.createLead = async (req, res) => {
 // Get all Leads
 exports.getAllLeads = async (req, res) => {
   try {
-    const { status, partyName, companyName, startDate, endDate, assignedTo,staffId } = req.body; 
-    console.log("DEBUG :  req.body:",  req.body);
-
-    console.log("DEBUG : staffId:", staffId);
+    const { status, partyName, companyName, startDate, endDate, assignedTo, staffId } = req.body;
 
     let filter = {};
 
@@ -187,7 +184,7 @@ exports.getAllLeads = async (req, res) => {
       filter.companyName = companyName;
     }
 
-    // AssignedTo filter
+    // AssignedTo filter (using staffId from request body)
     if (staffId) {
       if (!mongoose.Types.ObjectId.isValid(staffId)) {
         return res.status(400).json({
@@ -196,8 +193,6 @@ exports.getAllLeads = async (req, res) => {
         });
       }
       filter.assignedTo = staffId;
-      console.log("DEBUG : staffId:", staffId);
-
     }
 
     // ✅ Date filter
@@ -211,48 +206,180 @@ exports.getAllLeads = async (req, res) => {
       filter.date = { $gte: start, $lte: end };
     }
 
-    // Fetch leads
+    // Fetch leads with optimized population
     const leads = await Lead.find(filter)
-      .populate("companyName")
-      .populate("partyName")
+      .populate("companyName", "companyName avatar _id")
+      .populate("assignedTo", "firstName lastName email _id")
+      .populate("originalLeadId", "date createdAt _id")
       .populate({
         path: "partyName",
-        select: "-__v",
+        select: "partyName ownerName ownerMobileNo ownerWhatsAppNo ownerEmail contactPerson personMobileNo personWhatsAppNo contactPersonEmail contactForPayment contactMobileNo contactWhatsAppNo contactForPaymentEmail GSTNo address partyTag statusApproval createdAt updatedAt",
         populate: [
-          { path: "address.marketName", model: "Market", select: "marketName", strictPopulate: false },
-          // { path: "address.streetAddress", model: "Market", select: "streetAddress", strictPopulate: false },
-          { path: "address.landMark", model: "Market", select: "landmark", strictPopulate: false },
-          { path: "address.area", model: "Market", select: "area", strictPopulate: false },
-          { path: "address.pincode", model: "Market", select: "pincode", strictPopulate: false },
+          { 
+            path: "address.marketName", 
+            model: "Market", 
+            select: "marketName _id",
+            strictPopulate: false 
+          },
+          { 
+            path: "address.landMark", 
+            model: "Market", 
+            select: "landmark _id",
+            strictPopulate: false 
+          },
+          { 
+            path: "address.area", 
+            model: "Market", 
+            select: "area _id",
+            strictPopulate: false 
+          },
+          { 
+            path: "address.pincode", 
+            model: "Market", 
+            select: "pincode _id",
+            strictPopulate: false 
+          },
         ],
       })
-      .populate("assignedTo", "firstName lastName email")
-      .populate("originalLeadId", "date createdAt")
       .sort({ createdAt: -1 })
       .lean();
 
-        const populatedLeads = await Promise.all(
-      leads.map(async (lead) => {  // ✅ Use 'leads' instead of 'validLeads'
-        const accountMaster = await AccountMaster.findOne({
-          party: lead.partyName?._id,  // ✅ Added optional chaining
-          companyName: lead.companyName?._id,  // ✅ Added optional chaining
-        })
-          .populate("createdBy", "firstName lastName")
-          .lean();
+    // If no leads found, return early
+    if (!leads || leads.length === 0) {
+      return res.status(200).json({
+        success: true,
+        count: 0,
+        data: [],
+      });
+    }
 
-        return {
-          ...lead,
-          partyName: {
-            ...lead.partyName,
-            createdBy: accountMaster ? accountMaster.createdBy : null,
-          },
-        };
+    // Collect all unique party-company combinations for batch query
+    const partyCompanyCombinations = [];
+    const combinationsMap = new Map();
+
+    leads.forEach(lead => {
+      if (lead.partyName && lead.companyName) {
+        const key = `${lead.partyName._id}_${lead.companyName._id}`;
+        if (!combinationsMap.has(key)) {
+          combinationsMap.set(key, true);
+          partyCompanyCombinations.push({
+            party: lead.partyName._id,
+            companyName: lead.companyName._id
+          });
+        }
+      }
+    });
+
+    // Single batch query to fetch all AccountMasters
+    let accountMastersMap = new Map();
+    
+    if (partyCompanyCombinations.length > 0) {
+      const accountMasters = await AccountMaster.find({
+        $or: partyCompanyCombinations
       })
-    );
+      .populate("createdBy", "firstName lastName email _id")
+      .lean();
+
+      // Create map for quick lookup
+      accountMasters.forEach(account => {
+        const key = `${account.party}_${account.companyName}`;
+        accountMastersMap.set(key, account);
+      });
+    }
+
+    // Process leads sequentially without Promise.all
+    const populatedLeads = [];
+    
+    for (const lead of leads) {
+      let createdBy = null;
+      
+      // Lookup createdBy from the map
+      if (lead.partyName && lead.companyName) {
+        const key = `${lead.partyName._id}_${lead.companyName._id}`;
+        const accountMaster = accountMastersMap.get(key);
+        if (accountMaster && accountMaster.createdBy) {
+          createdBy = accountMaster.createdBy;
+        }
+      }
+
+      // Transform lead with structured response
+      const transformedLead = {
+        _id: lead._id,
+        companyName: lead.companyName ? {
+          _id: lead.companyName._id,
+          companyName: lead.companyName.companyName,
+          avatar: lead.companyName.avatar
+        } : null,
+        partyName: lead.partyName ? {
+          _id: lead.partyName._id,
+          partyName: lead.partyName.partyName,
+          ownerName: lead.partyName.ownerName,
+          ownerMobileNo: lead.partyName.ownerMobileNo,
+          ownerWhatsAppNo: lead.partyName.ownerWhatsAppNo,
+          ownerEmail: lead.partyName.ownerEmail || "N/A",
+          contactPerson: lead.partyName.contactPerson,
+          personMobileNo: lead.partyName.personMobileNo,
+          personWhatsAppNo: lead.partyName.personWhatsAppNo,
+          contactPersonEmail: lead.partyName.contactPersonEmail || "N/A",
+          contactForPayment: lead.partyName.contactForPayment,
+          contactMobileNo: lead.partyName.contactMobileNo,
+          contactWhatsAppNo: lead.partyName.contactWhatsAppNo,
+          contactForPaymentEmail: lead.partyName.contactForPaymentEmail || "N/A",
+          GSTNo: lead.partyName.GSTNo,
+          address: lead.partyName.address ? {
+            streetAddress: lead.partyName.address.streetAddress,
+            marketName: lead.partyName.address.marketName ? {
+              _id: lead.partyName.address.marketName._id,
+              marketName: lead.partyName.address.marketName.marketName
+            } : null,
+            landMark: lead.partyName.address.landMark ? {
+              _id: lead.partyName.address.landMark._id,
+              landmark: lead.partyName.address.landMark.landmark
+            } : null,
+            area: lead.partyName.address.area ? {
+              _id: lead.partyName.address.area._id,
+              area: lead.partyName.address.area.area
+            } : null,
+            pincode: lead.partyName.address.pincode ? {
+              _id: lead.partyName.address.pincode._id,
+              pincode: lead.partyName.address.pincode.pincode
+            } : null,
+            city: lead.partyName.address.city,
+            state: lead.partyName.address.state,
+            country: lead.partyName.address.country
+          } : null,
+          partyTag: lead.partyName.partyTag,
+          statusApproval: lead.partyName.statusApproval,
+          createdAt: lead.partyName.createdAt,
+          updatedAt: lead.partyName.updatedAt,
+          createdBy: createdBy
+        } : null,
+        assignedTo: lead.assignedTo ? {
+          _id: lead.assignedTo._id,
+          firstName: lead.assignedTo.firstName,
+          lastName: lead.assignedTo.lastName,
+          email: lead.assignedTo.email
+        } : null,
+        originalLeadId: lead.originalLeadId ? {
+          _id: lead.originalLeadId._id,
+          date: lead.originalLeadId.date,
+          createdAt: lead.originalLeadId.createdAt
+        } : null,
+        date: lead.date,
+        time: lead.time,
+        status: lead.status,
+        remarks: lead.remarks || "NA",
+        reasonForVisit: lead.reasonForVisit,
+        createdAt: lead.createdAt,
+        updatedAt: lead.updatedAt
+      };
+
+      populatedLeads.push(transformedLead);
+    }
 
     return res.status(200).json({
       success: true,
-      count: populatedLeads.length,  // ✅ Now shows all leads count
+      count: populatedLeads.length,
       data: populatedLeads,
     });
   } catch (error) {
@@ -936,8 +1063,8 @@ exports.getLeadsByStaffId = async (req, res) => {
       });
     }
 
-    // 2. Check if staff exists
-    const staff = await Staff.findById(id);
+    // 2. Check if staff exists (only basic info)
+    const staff = await Staff.findById(id).select("firstName lastName email _id");
     if (!staff) {
       return res.status(404).json({
         success: false,
@@ -949,107 +1076,202 @@ exports.getLeadsByStaffId = async (req, res) => {
     const leads = await Lead.find({ assignedTo: id })
       .populate({
         path: "companyName",
-        select: "companyName",
+        select: "companyName avatar _id",
+      })
+      .populate({
+        path: "assignedTo",
+        select: "firstName lastName email _id",
+      })
+      .populate({
+        path: "originalLeadId",
+        select: "date createdAt _id",
       })
       .populate({
         path: "partyName",
-        select:
-          "partyName address ownerName ownerMobileNo ownerWhatsAppNo contactPerson personMobileNo personWhatsAppNo contactForPayment contactMobileNo contactWhatsAppNo GSTNo partyTag",
-      })
-      .populate({
-        path: "partyName",
-        select: "-__v",
+        select: "partyName ownerName ownerMobileNo ownerWhatsAppNo ownerEmail contactPerson personMobileNo personWhatsAppNo contactPersonEmail contactForPayment contactMobileNo contactWhatsAppNo contactForPaymentEmail GSTNo address partyTag statusApproval createdAt updatedAt",
         populate: [
           {
             path: "address.marketName",
             model: "Market",
-            select: "marketName", // only marketName
+            select: "marketName _id",
           },
-          // {
-          //   path: "address.streetAddress",
-          //   model: "Market",
-          //   select: "streetAddress", // only streetAddress
-          // },
           {
             path: "address.landMark",
             model: "Market",
-            select: "landmark", // only landMark
+            select: "landmark _id",
           },
           {
             path: "address.area",
             model: "Market",
-            select: "area", // only area
+            select: "area _id",
           },
           {
             path: "address.pincode",
             model: "Market",
-            select: "pincode", // only pincode
+            select: "pincode _id",
           },
         ],
-      })
-      .populate({
-        path: "assignedTo",
-        select: "firstName lastName email",
-      })
-      .populate({
-        path: "originalLeadId",
-        select: "date createdAt", // Updated
       })
       .sort({ createdAt: -1 })
       .lean();
 
     // 4. Filter out leads with null companyName or partyName
     const validLeads = leads.filter(
-      (lead) =>
-        lead.companyName &&
-        lead.partyName &&
-        lead.companyName._id &&
-        lead.partyName._id
+      (lead) => lead.companyName && lead.partyName
     );
 
+    // Early return if no valid leads
     if (validLeads.length === 0) {
       return res.status(200).json({
         success: true,
         message: "No valid leads found for this staff member",
+        staffDetails: {
+          _id: staff._id,
+          firstName: staff.firstName,
+          lastName: staff.lastName,
+          email: staff.email
+        },
         count: 0,
         data: [],
       });
     }
 
-    // 5. Fetch AccountMaster for each lead to get createdBy
-    const leadsWithCreatedBy = await Promise.all(
-      validLeads.map(async (lead) => {
-        try {
-          const accountMaster = await AccountMaster.findOne({
+    // 5. Collect all unique company-party combinations for batch query
+    const companyPartyCombinations = [];
+    const combinationsMap = new Map();
+
+    validLeads.forEach(lead => {
+      if (lead.companyName && lead.partyName) {
+        const key = `${lead.companyName._id}_${lead.partyName._id}`;
+        if (!combinationsMap.has(key)) {
+          combinationsMap.set(key, true);
+          companyPartyCombinations.push({
             companyName: lead.companyName._id,
-            party: lead.partyName._id,
-          })
-            .populate("createdBy", "firstName lastName")
-            .lean();
-
-          return {
-            ...lead,
-            partyName: {
-              ...lead.partyName,
-              createdBy: accountMaster ? accountMaster.createdBy : null,
-            },
-          };
-        } catch (error) {
-          console.error(`Error processing lead ${lead._id}:`, error);
-          return null;
+            party: lead.partyName._id
+          });
         }
+      }
+    });
+
+    // 6. Single batch query to fetch all AccountMasters
+    let accountMastersMap = new Map();
+    
+    if (companyPartyCombinations.length > 0) {
+      const accountMasters = await AccountMaster.find({
+        $or: companyPartyCombinations
       })
-    );
+      .populate("createdBy", "firstName lastName email _id")
+      .lean();
 
-    // Filter out any null entries from the mapping
-    const filteredLeads = leadsWithCreatedBy.filter((lead) => lead !== null);
+      // Create map for quick lookup
+      accountMasters.forEach(account => {
+        const key = `${account.companyName}_${account.party}`;
+        accountMastersMap.set(key, account);
+      });
+    }
 
-    // 6. Return the leads
+    // 7. Process leads sequentially without Promise.all
+    const leadsWithCreatedBy = [];
+    
+    for (const lead of validLeads) {
+      let createdBy = null;
+      
+      // Lookup createdBy from the map
+      if (lead.companyName && lead.partyName) {
+        const key = `${lead.companyName._id}_${lead.partyName._id}`;
+        const accountMaster = accountMastersMap.get(key);
+        if (accountMaster && accountMaster.createdBy) {
+          createdBy = accountMaster.createdBy;
+        }
+      }
+
+      // Transform lead with structured response
+      const transformedLead = {
+        _id: lead._id,
+        companyName: lead.companyName ? {
+          _id: lead.companyName._id,
+          companyName: lead.companyName.companyName,
+          avatar: lead.companyName.avatar
+        } : null,
+        partyName: {
+          _id: lead.partyName._id,
+          partyName: lead.partyName.partyName,
+          ownerName: lead.partyName.ownerName,
+          ownerMobileNo: lead.partyName.ownerMobileNo,
+          ownerWhatsAppNo: lead.partyName.ownerWhatsAppNo,
+          ownerEmail: lead.partyName.ownerEmail || "N/A",
+          contactPerson: lead.partyName.contactPerson,
+          personMobileNo: lead.partyName.personMobileNo,
+          personWhatsAppNo: lead.partyName.personWhatsAppNo,
+          contactPersonEmail: lead.partyName.contactPersonEmail || "N/A",
+          contactForPayment: lead.partyName.contactForPayment,
+          contactMobileNo: lead.partyName.contactMobileNo,
+          contactWhatsAppNo: lead.partyName.contactWhatsAppNo,
+          contactForPaymentEmail: lead.partyName.contactForPaymentEmail || "N/A",
+          GSTNo: lead.partyName.GSTNo,
+          address: lead.partyName.address ? {
+            streetAddress: lead.partyName.address.streetAddress,
+            marketName: lead.partyName.address.marketName ? {
+              _id: lead.partyName.address.marketName._id,
+              marketName: lead.partyName.address.marketName.marketName
+            } : null,
+            landMark: lead.partyName.address.landMark ? {
+              _id: lead.partyName.address.landMark._id,
+              landmark: lead.partyName.address.landMark.landmark
+            } : null,
+            area: lead.partyName.address.area ? {
+              _id: lead.partyName.address.area._id,
+              area: lead.partyName.address.area.area
+            } : null,
+            pincode: lead.partyName.address.pincode ? {
+              _id: lead.partyName.address.pincode._id,
+              pincode: lead.partyName.address.pincode.pincode
+            } : null,
+            city: lead.partyName.address.city,
+            state: lead.partyName.address.state,
+            country: lead.partyName.address.country
+          } : null,
+          partyTag: lead.partyName.partyTag,
+          statusApproval: lead.partyName.statusApproval,
+          createdAt: lead.partyName.createdAt,
+          updatedAt: lead.partyName.updatedAt,
+          createdBy: createdBy
+        },
+        assignedTo: lead.assignedTo ? {
+          _id: lead.assignedTo._id,
+          firstName: lead.assignedTo.firstName,
+          lastName: lead.assignedTo.lastName,
+          email: lead.assignedTo.email
+        } : null,
+        originalLeadId: lead.originalLeadId ? {
+          _id: lead.originalLeadId._id,
+          date: lead.originalLeadId.date,
+          createdAt: lead.originalLeadId.createdAt
+        } : null,
+        date: lead.date,
+        time: lead.time,
+        status: lead.status,
+        remarks: lead.remarks || "NA",
+        reasonForVisit: lead.reasonForVisit,
+        createdAt: lead.createdAt,
+        updatedAt: lead.updatedAt
+      };
+
+      leadsWithCreatedBy.push(transformedLead);
+    }
+
+    // 8. Return the leads
     res.status(200).json({
       success: true,
       message: "Leads retrieved successfully",
-      count: filteredLeads.length,
-      data: filteredLeads,
+      staffDetails: {
+        _id: staff._id,
+        firstName: staff.firstName,
+        lastName: staff.lastName,
+        email: staff.email
+      },
+      count: leadsWithCreatedBy.length,
+      data: leadsWithCreatedBy,
     });
   } catch (error) {
     console.error("Error fetching leads by staff ID:", error);
