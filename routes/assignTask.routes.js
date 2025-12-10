@@ -29,5 +29,6 @@ router.get("/party-names", AssignTaskController.getPartyNamesByCompany);
 
 router.post("/get-filter/:field",AssignTaskController.getAssignTaskFilterOptionsData)
 router.post("/get-task-by-party-and-accountmaster", AssignTaskController.getTaskForParty);
+router.post("/get-party-task", AssignTaskController.getPartyTask);
 
 module.exports = router;

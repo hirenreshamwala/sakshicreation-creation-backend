@@ -4837,3 +4837,40 @@ exports.getTaskForParty = async (req, res) => {
     });
   }
 };
+
+exports.getPartyTask = async (req, res) => {
+  try {
+    const { partyId } = req.body;
+
+    // Validation
+    if (!partyId) {
+      return res.status(400).json({
+        success: false,
+        message: "partyId is required",
+      });
+    }
+
+    // Fetch all tasks assigned to the party
+    const tasks = await AssignTask.find({ partyName: partyId })
+      .populate("partyName", "name mobile email address")  // Party details
+      .populate("companyName", "companyName address")       // Company details
+      .populate("assignTo", "name email phone role")        // Staff assigned
+      .populate("originalTaskId")                           // If rescheduled task
+      .sort({ createdAt: -1 });
+
+    return res.status(200).json({
+      success: true,
+      message: "Tasks fetched successfully",
+      data: tasks,
+    });
+
+  } catch (error) {
+    console.error("Error fetching party tasks:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Server error while fetching tasks",
+      error: error.message,
+    });
+  }
+};

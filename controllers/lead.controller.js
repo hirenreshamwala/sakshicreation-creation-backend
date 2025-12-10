@@ -1654,38 +1654,79 @@ exports.getDataByPartyAndAccountMaster = async (req, res) => {
     const result = await AccountMaster.findById(partyId)
 
     // Now get Leads manually (same party + company)
-    const leadsData = await Lead.find({
-      partyName: result.party,
-    }).populate("companyName")
-      .populate("partyName")
-      .populate({
-        path: "partyName",
-        select: "-__v",
-        populate: [
-          {
-            path: "address.marketName",
-            model: "Market",
-            select: "marketName", // only marketName
-          },
-          {
-            path: "address.landMark",
-            model: "Market",
-            select: "landmark", // only landMark
-          },
-          {
-            path: "address.area",
-            model: "Market",
-            select: "area", // only area
-          },
-          {
-            path: "address.pincode",
-            model: "Market",
-            select: "pincode", // only pincode
-          },
-        ],
-      })
-      .populate("assignedTo")
-      .lean();
+    let leadsData;
+
+    if (result) {
+      console.log( 'result in oif')
+      leadsData = await Lead.find({
+        partyName: result?.party,
+      }).populate("companyName")
+        .populate("partyName")
+        .populate({
+          path: "partyName",
+          select: "-__v",
+          populate: [
+            {
+              path: "address.marketName",
+              model: "Market",
+              select: "marketName", // only marketName
+            },
+            {
+              path: "address.landMark",
+              model: "Market",
+              select: "landmark", // only landMark
+            },
+            {
+              path: "address.area",
+              model: "Market",
+              select: "area", // only area
+            },
+            {
+              path: "address.pincode",
+              model: "Market",
+              select: "pincode", // only pincode
+            },
+          ],
+        })
+        .populate("assignedTo")
+        .lean();
+    }
+    else {
+      console.log('result in else')
+      leadsData = await Lead.find({
+        partyName: partyId,
+      }).populate("companyName")
+        .populate("partyName")
+        .populate({
+          path: "partyName",
+          select: "-__v",
+          populate: [
+            {
+              path: "address.marketName",
+              model: "Market",
+              select: "marketName", // only marketName
+            },
+            {
+              path: "address.landMark",
+              model: "Market",
+              select: "landmark", // only landMark
+            },
+            {
+              path: "address.area",
+              model: "Market",
+              select: "area", // only area
+            },
+            {
+              path: "address.pincode",
+              model: "Market",
+              select: "pincode", // only pincode
+            },
+          ],
+        })
+        .populate("assignedTo")
+        .lean();
+    }
+    console.log(leadsData, 'leadsData')
 
     return res.status(200).json({
       success: true,
