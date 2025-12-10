@@ -4743,3 +4743,97 @@ exports.getAssignTaskFilterOptionsData = async (req, res) => {
     });
   }
 }
+
+
+exports.getTaskForParty = async (req, res) => {
+  try {
+    const { partyId, companyNameId, assignedTo, title, description, dueDate, priority, relatedTo, status } = req.body;
+
+    // Validate required fields
+    if (!partyId) {
+      return res.status(400).json({
+        success: false,
+        message: "partyId is required"
+      });
+    }
+
+    if (!assignedTo) {
+      return res.status(400).json({
+        success: false,
+        message: "assignedTo is required"
+      });
+    }
+
+    if (!title) {
+      return res.status(400).json({
+        success: false,
+        message: "Task title is required"
+      });
+    }
+
+    const partyObjectId = new mongoose.Types.ObjectId(partyId);
+    const assignedToObjectId = new mongoose.Types.ObjectId(assignedTo);
+
+    // First verify party exists
+    const partyExists = await AccountMaster.findOne({
+      party: partyObjectId,
+      ...(companyNameId && { companyName: new mongoose.Types.ObjectId(companyNameId) })
+    });
+
+    if (!partyExists) {
+      return res.status(404).json({
+        success: false,
+        message: "Party not found"
+      });
+    }
+
+    // Create task object
+    const taskData = {
+      party: partyObjectId,
+      assignedTo: assignedToObjectId,
+      title,
+      description: description || "",
+      createdBy: req.user._id, // Assuming user is authenticated and user data is in req.user
+      dueDate: dueDate ? new Date(dueDate) : null,
+      priority: priority || "Medium",
+      status: status || "Pending",
+      ...(companyNameId && { companyName: new mongoose.Types.ObjectId(companyNameId) }),
+      ...(relatedTo && { relatedTo: new mongoose.Types.ObjectId(relatedTo) })
+    };
+
+    // Create the task
+    const newTask = await AssignTask.create(taskData);
+
+    // Populate the created task for response
+    const populatedTask = await AssignTask.findById(newTask._id)
+      .populate("party")
+      .populate("assignedTo", "name email")
+      .populate("createdBy", "name email")
+      .populate("companyName")
+      .populate("relatedTo");
+
+    return res.status(201).json({
+      success: true,
+      message: "Task assigned successfully",
+      data: populatedTask
+    });
+
+  } catch (error) {
+    console.error("Error assigning task:", error);
+    
+    // Handle duplicate or validation errors
+    if (error.name === 'ValidationError') {
+      return res.status(400).json({
+        success: false,
+        message: "Validation error",
+        error: error.message
+      });
+    }
+
+    return res.status(500).json({
+      success: false,
+      message: "Server error while assigning task",
+      error: error.message
+    });
+  }
+};

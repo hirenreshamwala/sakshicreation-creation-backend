@@ -1639,3 +1639,65 @@ exports.getPartyFilterOptionsData = async (req, res) => {
     });
   }
 };
+
+exports.getDataByPartyAndAccountMaster = async (req, res) => {
+  try {
+    const { partyId } = req.body;
+
+    if (!partyId) {
+      return res.status(400).json({
+        success: false,
+        message: "partyId is required"
+      });
+    }
+
+    const result = await AccountMaster.findById(partyId)
+
+    // Now get Leads manually (same party + company)
+    const leadsData = await Lead.find({
+      partyName: result.party,
+    }).populate("companyName")
+      .populate("partyName")
+      .populate({
+        path: "partyName",
+        select: "-__v",
+        populate: [
+          {
+            path: "address.marketName",
+            model: "Market",
+            select: "marketName", // only marketName
+          },
+          {
+            path: "address.landMark",
+            model: "Market",
+            select: "landmark", // only landMark
+          },
+          {
+            path: "address.area",
+            model: "Market",
+            select: "area", // only area
+          },
+          {
+            path: "address.pincode",
+            model: "Market",
+            select: "pincode", // only pincode
+          },
+        ],
+      })
+      .populate("assignedTo")
+      .lean();
+
+    return res.status(200).json({
+      success: true,
+      data: leadsData
+    });
+
+  } catch (error) {
+    console.error("Error fetching data:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Server error while fetching data",
+      error: error.message
+    });
+  }
+};

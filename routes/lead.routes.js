@@ -15,6 +15,7 @@ router.get("/getbystaffid/:id", LeadController.getLeadsByStaffId);
 router.post("/create/bulk", LeadController.bulkCreateLeads);
 // Update lead
 router.patch("/update/:id", LeadController.updateLeadById);
+router.post("/get-data-by-party-and-accountmaster", LeadController.getDataByPartyAndAccountMaster);
 
 // Update lead status
 router.patch("/updatestatus/:id", LeadController.updateLeadStatus);
