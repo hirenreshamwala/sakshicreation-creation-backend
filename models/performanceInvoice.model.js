@@ -10,6 +10,35 @@ const quotationHistory = new mongoose.Schema(
     timestamps: true,
   }
 );
+
+const performanceInvoiceHistorySchema = new mongoose.Schema({
+  unitPrice: {
+    type: Number,
+    min: 0
+  },
+  total: {
+    type: Number,
+    default: 0
+  },
+  applyGST: {
+    type: Boolean,
+    default: false
+  },
+  gstPercentage: {
+    type: String,
+    default: "0"
+  },
+  finalAmount: {
+    type: Number,
+    default: 0
+  },
+  createdAt: {
+    type: Date,
+    default: Date.now
+  }
+});
+
+
 const performanceInvoiceSchema = new mongoose.Schema(
   {
     orderNumber: {
@@ -99,7 +128,9 @@ const performanceInvoiceSchema = new mongoose.Schema(
       min: 0,
       default: undefined,
     },
+    description: {type: String},
     quotation: [quotationHistory],
+    proformaHistory: [performanceInvoiceHistorySchema],
   },
   { timestamps: true }
 );

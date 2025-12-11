@@ -479,7 +479,10 @@ const qpDataSchema = new mongoose.Schema(
     operatorCuttingLength: {
       type: String,
     },
-
+    completedBoxCount: {
+      type: Number,
+      default: 0,
+    },
     deductFrom: {
       type: String,
     },

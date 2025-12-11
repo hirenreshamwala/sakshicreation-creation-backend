@@ -60,6 +60,8 @@ exports.createQpOrder = async (req, res) => {
       paper3GSM,
       noOfPieces,
       ratePerPiece,
+      isKantan,
+      kantan
     } = packagingOption || {};
     if (
       !ply ||
@@ -105,6 +107,8 @@ exports.createQpOrder = async (req, res) => {
       paper3GSM,
       noOfPieces,
       ratePerPiece,
+      isKantan: isKantan || false,
+      kantan: isKantan ? kantan : null
     }).session(session);
 
     if (!packaging) {
@@ -121,6 +125,8 @@ exports.createQpOrder = async (req, res) => {
         paper3GSM,
         noOfPieces,
         ratePerPiece,
+        isKantan: isKantan || false,
+        kantan: isKantan ? kantan : null
       });
       await packaging.save({ session });
     } else {
@@ -138,6 +144,11 @@ exports.createQpOrder = async (req, res) => {
       ...orderFields,
     };
 
+    if (isKantan && kantan) {
+      qpOrderData.isKantan = true;
+      qpOrderData.kantan = kantan;
+    }
+
     const qpOrder = new QpData(qpOrderData);
     await qpOrder.save({ session });
 
@@ -153,7 +164,7 @@ exports.createQpOrder = async (req, res) => {
       })
       .populate(
         "orderdata",
-        "party ply uom length width height deckal paper1GSM paper2GSM paper3GSM noOfPieces ratePerPiece"
+        "party ply uom length width height deckal paper1GSM paper2GSM paper3GSM noOfPieces ratePerPiece isKantan kantan"
       )
       .populate("kantan", "kantanName")
       .session(session);
@@ -273,6 +284,14 @@ exports.getAllQpOrders = async (req, res) => {
       })
       .populate({
         path: "binder",
+        select: "firstName lastName", // Add binder name population
+      })
+      .populate({
+        path: "binder",
+        select: "firstName lastName", // Add binder name population
+      })
+      .populate({
+        path: "createdBy",
         select: "firstName lastName", // Add binder name population
       })
       .populate({
@@ -511,6 +530,8 @@ exports.updateQpOrder = async (req, res) => {
         paper3GSM,
         noOfPieces,
         ratePerPiece,
+        isKantan,
+        kantan
       } = req.body.packagingOption;
 
       // if (
@@ -540,6 +561,15 @@ exports.updateQpOrder = async (req, res) => {
         return res.status(400).json({
           success: false,
           message: "Invalid UOM value. Must be inch, cm, or mm",
+        });
+      }
+
+      if (isKantan === true && !kantan) {
+        await session.abortTransaction();
+        session.endSession();
+        return res.status(400).json({
+          success: false,
+          message: "Kantan field is required when isKantan is true",
         });
       }
 
@@ -688,7 +718,8 @@ exports.updateQpOrder = async (req, res) => {
 
     // 7) If status changed to "Completed" (and was not completed before), create outward inventory entries
     const statusChangedToCompleted =
-      req.body.status === "Completed" && currentOrder.status !== "Completed";
+      req?.body?.status?.toLowerCase() === "completed" &&
+      currentOrder?.status?.toLowerCase() !== "completed";
 
     if (statusChangedToCompleted) {
       // createOutwardInventoryEntries must use the same session
@@ -917,9 +948,8 @@ async function createOutwardInventoryEntries(qpOrder, session) {
           orderNo: qpOrder.orderNo,
           companyName: qpOrder.companyName || "Unknown",
           allocatedAt: new Date(),
-          note: `Difference Adjustment ${
-            differenceKg > 0 ? "+" : ""
-          }${differenceKg} KG${extraKg > 0 ? ` + Extras ${extraKg} KG` : ""}`,
+          note: `Difference Adjustment ${differenceKg > 0 ? "+" : ""
+            }${differenceKg} KG${extraKg > 0 ? ` + Extras ${extraKg} KG` : ""}`,
         };
 
         console.log(`📝 New allocation object:`, newAlloc);
@@ -1038,7 +1068,7 @@ async function createOutwardInventoryEntries(qpOrder, session) {
         getOrderdata = await PackagingOption.findById(qpOrder.orderdata);
       }
 
-      console.log(`💾 Creating box inward entry...getOrderdata`,qpOrder, getOrderdata);
+      console.log(`💾 Creating box inward entry...getOrderdata`, qpOrder, getOrderdata);
       const boxInward = {
         category: "factory",
         type: "inward",
@@ -1999,9 +2029,8 @@ exports.updateMarkUrgent = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      message: `Order successfully ${
-        isUrgent ? "marked as urgent" : "unmarked as urgent"
-      }.`,
+      message: `Order successfully ${isUrgent ? "marked as urgent" : "unmarked as urgent"
+        }.`,
       data: updatedOrder,
     });
   } catch (err) {

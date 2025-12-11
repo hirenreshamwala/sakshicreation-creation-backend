@@ -30,6 +30,7 @@ exports.createOrder = async (req, res) => {
       color,
       color1,
       color2,
+      description
     } = req.body;
 
     // Validate required fields
@@ -174,6 +175,7 @@ exports.createOrder = async (req, res) => {
       rateType: rateType || undefined,
       isLamination: isLamination !== undefined ? isLamination : false,
       laminationType: isLamination ? laminationType || "" : "",
+      description: description || "",
     };
 
     if (req.body.number === "Yes") {

@@ -25,7 +25,8 @@ exports.createPerformanceInvoice = async (req, res) => {
       servicePerformance,
       daysAfterConfirmation,
       paymentDate, // Add this
-      gstPercentage
+      gstPercentage,
+      description
     } = req.body;
 
     if (
@@ -97,7 +98,8 @@ exports.createPerformanceInvoice = async (req, res) => {
         servicePerformance || order.productItem?.itemName || "",
       daysAfterConfirmation,
       paymentDate, // Add this
-      gstPercentage: gstPercentage || 0 // Add this
+      gstPercentage: gstPercentage || 0, // Add this
+      description: description || "",
     };
 
     const newPerformanceInvoice = await PerformanceInvoice.create(
@@ -221,6 +223,7 @@ exports.getPerformanceInvoiceById = async (req, res) => {
       partyObj: performanceInvoice.party,
       paymentDate: performanceInvoice.paymentDate,
       gstPercentage: performanceInvoice.gstPercentage || 0,
+      description: performanceInvoice.description || "",
     };
 
     res.status(200).json({
@@ -258,7 +261,8 @@ exports.updatePerformanceInvoice = async (req, res) => {
       partyAddress,
       servicePerformance,
       daysAfterConfirmation,
-      paymentDate
+      paymentDate,
+      description
     } = req.body;
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
@@ -342,6 +346,7 @@ exports.updatePerformanceInvoice = async (req, res) => {
           daysAfterConfirmation,
           gstPercentage,
           paymentDate,
+          description: description || "",
         },
         { new: true, runValidators: true }
       )

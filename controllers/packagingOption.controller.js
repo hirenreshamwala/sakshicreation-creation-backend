@@ -6,11 +6,17 @@ const Party = require("../models/Party.model");
 // Create a new Packaging Option
 exports.createPackagingOption = async (req, res) => {
   try {
-    const { party, ply, length, width, height, deckal, paper1GSM, paper2GSM, paper3GSM, noOfPieces, ratePerPiece } = req.body;
+    const { party, ply, length, width, height, deckal, paper1GSM, paper2GSM, paper3GSM, noOfPieces, ratePerPiece, isKantan, kantan } = req.body;
 
     // Validate all required fields
     if (!ply || !length || !width || !height || !deckal || !paper1GSM || !paper2GSM || !paper3GSM || !noOfPieces || !ratePerPiece) {
       return res.status(400).json({ message: "All fields (ply, length, width, height, deckal, paper1GSM, paper2GSM, paper3GSM, no of pieces, rate per piece) are required" });
+    }
+
+    if (isKantan === true && !kantan) {
+      return res.status(400).json({
+        message: "Kantan field is required when isKantan is true"
+      });
     }
 
     // Check if identical data already exists
@@ -26,6 +32,8 @@ exports.createPackagingOption = async (req, res) => {
       paper3GSM,
       noOfPieces,
       ratePerPiece,
+      isKantan,
+      kantan
     });
 
     if (existingOption) {
@@ -44,10 +52,11 @@ exports.createPackagingOption = async (req, res) => {
       paper3GSM,
       noOfPieces,
       ratePerPiece,
+      isKantan: isKantan || false,
+      kantan: isKantan ? kantan : null
     });
     await newOption.save();
-    await newOption.populate("party"); // Populate party to include partyName in response
-
+    await newOption.populate(["party", "kantan"]);
     return res.status(201).json({
       message: "Packaging option created successfully",
       data: newOption,
@@ -63,7 +72,8 @@ exports.createPackagingOption = async (req, res) => {
 exports.getAllPackagingOptions = async (req, res) => {
   try {
     const options = await PackagingOption.find()
-      .populate("party") // Populate the party reference
+      .populate("party")
+      .populate("kantan", "kantanName") // NEW: populate kantan
       .sort({ createdAt: -1 });
     return res.status(200).json({ data: options });
   } catch (error) {
@@ -77,11 +87,17 @@ exports.getAllPackagingOptions = async (req, res) => {
 exports.updatePackagingOption = async (req, res) => {
   try {
     const { id } = req.params;
-    const { party, ply, length, width, height, deckal, paper1GSM, paper2GSM, paper3GSM, noOfPieces, ratePerPiece } = req.body;
+    const { party, ply, length, width, height, deckal, paper1GSM, paper2GSM, paper3GSM, noOfPieces, ratePerPiece, isKantan, kantan } = req.body;
 
     // Validate all required fields
     if (!ply || !length || !width || !height || !deckal || !paper1GSM || !paper2GSM || !paper3GSM || !noOfPieces || !ratePerPiece) {
       return res.status(400).json({ message: "All fields (ply, length, width, height, deckal, paper1GSM, paper2GSM, paper3GSM, no of pieces, rate per piece) are required" });
+    }
+
+    if (isKantan === true && !kantan) {
+      return res.status(400).json({
+        message: "Kantan field is required when isKantan is true"
+      });
     }
 
     // Check if identical data already exists (excluding the current record)
@@ -97,6 +113,8 @@ exports.updatePackagingOption = async (req, res) => {
       paper3GSM,
       noOfPieces,
       ratePerPiece,
+      isKantan,
+      kantan,
       _id: { $ne: id },
     });
 
@@ -106,7 +124,7 @@ exports.updatePackagingOption = async (req, res) => {
 
     const updatedOption = await PackagingOption.findByIdAndUpdate(
       id,
-      { party, ply, length, width, height, deckal, paper1GSM, paper2GSM, paper3GSM, noOfPieces, ratePerPiece },
+      { party, ply, length, width, height, deckal, paper1GSM, paper2GSM, paper3GSM, noOfPieces, ratePerPiece, isKantan: isKantan || false, kantan: isKantan ? kantan : null },
       { new: true, runValidators: true }
     ).populate("party");
 
@@ -174,6 +192,13 @@ exports.bulkUploadPackagingOptions = async (req, res) => {
     const parsedData = Papa.parse(fileContent, {
       header: true,
       skipEmptyLines: true,
+      transform: (value, field) => {
+        // Trim whitespace from all fields
+        if (typeof value === 'string') {
+          return value.trim();
+        }
+        return value;
+      }
     });
 
     const records = parsedData.data;
@@ -185,10 +210,11 @@ exports.bulkUploadPackagingOptions = async (req, res) => {
         const { 
           party, ply, length, width, height, deckal, 
           paper1GSM, paper2GSM, paper3GSM,
-          noOfPieces, ratePerPiece // Add new fields
+          noOfPieces, ratePerPiece,
+          isKantan, kantan // Kantan will be name, not ID
         } = row;
 
-        // Validate required fields (only existing ones are required)
+        // Validate required fields
         if (!party || !ply || !length || !width || !height || !deckal || !paper1GSM || !paper2GSM || !paper3GSM) {
           skippedRecords.push({
             row: index + 1,
@@ -198,8 +224,33 @@ exports.bulkUploadPackagingOptions = async (req, res) => {
           continue;
         }
 
+        // Parse isKantan (can be "true", "false", "1", "0", "yes", "no", etc.)
+        let parsedIsKantan = false;
+        if (isKantan) {
+          const isKantanStr = isKantan.toString().toLowerCase().trim();
+          parsedIsKantan = (
+            isKantanStr === "true" || 
+            isKantanStr === "1" || 
+            isKantanStr === "yes" || 
+            isKantanStr === "y"
+          );
+        }
+
+        // Validate if isKantan is true, then kantan name must be provided
+        if (parsedIsKantan && (!kantan || kantan.trim() === "")) {
+          skippedRecords.push({
+            row: index + 1,
+            ...row,
+            reason: "Kantan name is required when isKantan is true",
+          });
+          continue;
+        }
+
         // Find party by name in Party model
-        const partyDoc = await Party.findOne({ partyName: party.trim().toUpperCase() }).session(session);
+        const partyDoc = await Party.findOne({ 
+          partyName: { $regex: new RegExp(`^${party.trim()}$`, 'i') }
+        }).session(session);
+        
         if (!partyDoc) {
           skippedRecords.push({
             row: index + 1,
@@ -209,19 +260,39 @@ exports.bulkUploadPackagingOptions = async (req, res) => {
           continue;
         }
 
-        // Check for duplicate
+        // If isKantan is true, find kantan by name
+        let kantanId = null;
+        if (parsedIsKantan && kantan) {
+          const kantanDoc = await mongoose.model("Kantan").findOne({ 
+            kantanName: { $regex: new RegExp(`^${kantan.trim()}$`, 'i') }
+          }).session(session);
+          
+          if (!kantanDoc) {
+            skippedRecords.push({
+              row: index + 1,
+              ...row,
+              reason: `Kantan not found: ${kantan}`,
+            });
+            continue;
+          }
+          kantanId = kantanDoc._id;
+        }
+
+        // Check for duplicate (case-insensitive comparison for strings)
         const existingOption = await PackagingOption.findOne({
           party: partyDoc._id,
-          ply,
-          length,
-          width,
-          height, 
-          deckal,
-          paper1GSM,
-          paper2GSM,
-          paper3GSM,
-          noOfPieces, // Include in duplicate check
-          ratePerPiece, // Include in duplicate check
+          ply: ply.trim(),
+          length: length.trim(),
+          width: width.trim(),
+          height: height.trim(),
+          deckal: deckal.trim(),
+          paper1GSM: paper1GSM.trim(),
+          paper2GSM: paper2GSM.trim(),
+          paper3GSM: paper3GSM.trim(),
+          noOfPieces: noOfPieces ? noOfPieces.trim() : "",
+          ratePerPiece: ratePerPiece ? ratePerPiece.trim() : "",
+          isKantan: parsedIsKantan,
+          kantan: kantanId
         }).session(session);
 
         if (existingOption) {
@@ -236,16 +307,18 @@ exports.bulkUploadPackagingOptions = async (req, res) => {
         // Push with ObjectId
         validRecords.push({
           party: partyDoc._id,
-          ply,
-          length,
-          width,
-          height, 
-          deckal,
-          paper1GSM,
-          paper2GSM,
-          paper3GSM,
-          noOfPieces, // Add new fields
-          ratePerPiece, // Add new fields
+          ply: ply.trim(),
+          length: length.trim(),
+          width: width.trim(),
+          height: height.trim(),
+          deckal: deckal.trim(),
+          paper1GSM: paper1GSM.trim(),
+          paper2GSM: paper2GSM.trim(),
+          paper3GSM: paper3GSM.trim(),
+          noOfPieces: noOfPieces ? noOfPieces.trim() : "",
+          ratePerPiece: ratePerPiece ? ratePerPiece.trim() : "",
+          isKantan: parsedIsKantan,
+          kantan: kantanId
         });
 
       } catch (err) {
@@ -263,10 +336,13 @@ exports.bulkUploadPackagingOptions = async (req, res) => {
       insertedOptions = await PackagingOption.insertMany(validRecords, { session });
     }
 
-    // Populate party for each inserted option
+    // Populate party and kantan for each inserted option
     const populatedOptions = await Promise.all(
       insertedOptions.map(async (opt) => {
-        return await PackagingOption.findById(opt._id).populate("party").session(session);
+        return await PackagingOption.findById(opt._id)
+          .populate("party")
+          .populate("kantan", "kantanName")
+          .session(session);
       })
     );
 
@@ -278,7 +354,7 @@ exports.bulkUploadPackagingOptions = async (req, res) => {
     if (skippedRecords.length > 0) {
       skippedCsv = Papa.unparse([
         {
-          party: "party",
+          party: "party (Party Name)",
           ply: "ply",
           length: "length",
           width: "width",
@@ -287,8 +363,10 @@ exports.bulkUploadPackagingOptions = async (req, res) => {
           paper1GSM: "paper1GSM",
           paper2GSM: "paper2GSM",
           paper3GSM: "paper3GSM",
-          noOfPieces: "noOfPieces", // Add new headers
-          ratePerPiece: "ratePerPiece", // Add new headers
+          noOfPieces: "noOfPieces",
+          ratePerPiece: "ratePerPiece",
+          isKantan: "isKantan (true/false)",
+          kantan: "kantan (Kantan Name if isKantan=true)",
           reason: "reason",
         },
         ...skippedRecords,
@@ -299,20 +377,21 @@ exports.bulkUploadPackagingOptions = async (req, res) => {
     if (skippedCsv) {
       res.setHeader("Content-Disposition", "attachment; filename=skipped_packaging_options.csv");
       res.setHeader("Content-Type", "text/csv");
+      return res.status(201).send(skippedCsv);
     }
 
     return res.status(201).json({
       success: true,
-      message: "Bulk upload processed",
+      message: "Bulk upload processed successfully",
       insertedCount: populatedOptions.length,
       skippedCount: skippedRecords.length,
       skippedRecords,
       data: populatedOptions,
-      skippedCsv: skippedCsv || null,
     });
   } catch (error) {
     await session.abortTransaction();
     session.endSession();
+    console.error("❌ Error in bulk upload:", error);
     return res.status(500).json({
       success: false,
       message: "Server Error",

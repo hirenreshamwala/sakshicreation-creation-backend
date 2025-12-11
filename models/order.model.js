@@ -17,6 +17,22 @@ const quotationHistory = new mongoose.Schema(
   }
 );
 
+const orderProformaHistorySchema = new mongoose.Schema({
+  unitPrice: Number,
+  total: Number,
+  applyGST: Boolean,
+  gstPercentage: String,
+  finalAmount: Number,
+  createdAt: {
+    type: Date,
+    default: Date.now
+  },
+  invoiceId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "PerformanceInvoice"
+  }
+});
+
 const orderSchema = new mongoose.Schema(
   {
     companyName: {
@@ -681,7 +697,9 @@ const orderSchema = new mongoose.Schema(
       min: 0,
       default: undefined,
     },
+    description: {type: String},
     quotation: [quotationHistory],
+    proformaHistory: [orderProformaHistorySchema],
 
     // ✅ LAST STATUS CHANGE DATE FIELD
     lastStatusChangeDate: {

@@ -60,6 +60,15 @@ const packagingOptionSchema = new mongoose.Schema(
       type: String,
       required: false,
       trim: true,
+    },
+    isKantan: {
+      type: Boolean,
+      default: false
+    },
+    kantan: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Kantan",
+      default: null
     }
   },
   { timestamps: true }
