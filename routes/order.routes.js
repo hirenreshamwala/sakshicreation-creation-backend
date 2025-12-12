@@ -13,13 +13,15 @@ const {
   getBookletBinderById,
   getOrdersByStaffId,
   getFilterOptionsData,
-  updateStaffStatus
+  updateStaffStatus,
+  getAllOrdersPagination
 } = require("../controllers/order.controller");
 const { authenticateToken } = require("../middleware/auth");
 
 router.post("/create", authenticateToken, createOrder);
 
 router.post("/all", getAllOrders);
+router.post("/all-pagination", getAllOrdersPagination);
 
 router.post("/getbystaffid/:id", getOrdersByStaffId);
 

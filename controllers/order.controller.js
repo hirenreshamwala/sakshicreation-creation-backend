@@ -401,8 +401,110 @@ exports.getFilterOptionsData = async (req, res) => {
     });
   }
 };
-// In your order controller, update getAllOrders method:
+
 exports.getAllOrders = async (req, res) => {
+  try {
+    const {
+      status, // array of statuses
+      companyName,
+      party,
+      staffId, // createdBy staff id
+      startDate,
+      endDate,
+    } = req.body;
+
+    const filter = {};
+
+    // ✅ Status filter (multiple)
+    if (status && Array.isArray(status) && status.length > 0) {
+      filter.status = { $in: status };
+    }
+
+    // Company filter
+    if (companyName && mongoose.Types.ObjectId.isValid(companyName)) {
+      filter.companyName = companyName;
+    }
+
+    // Party filter
+    if (party && mongoose.Types.ObjectId.isValid(party)) {
+      filter.party = party;
+    }
+
+    // Staff filter → match createdBy
+    if (staffId && mongoose.Types.ObjectId.isValid(staffId)) {
+      filter.createdBy = staffId;
+    }
+
+    // Date range filter
+    if (startDate && endDate) {
+      const start = new Date(startDate);
+      start.setHours(0, 0, 0, 0);
+      const end = new Date(endDate);
+      end.setHours(23, 59, 59, 999);
+      filter.createdAt = { $gte: start, $lte: end };
+    }
+
+    // Fetch orders without pagination
+    const orders = await Order.find(filter)
+      .populate("companyName", "companyName avatar")
+      .populate("bindingType", "name")
+      .populate({
+        path: "party",
+        select: "-__v",
+        populate: [
+          {
+            path: "address.marketName",
+            model: "Market",
+            select: "marketName", // only marketName
+          },
+          // {
+          //   path: "address.streetAddress",
+          //   model: "Market",
+          //   select: "streetAddress", // only streetAddress
+          // },
+          {
+            path: "address.landMark",
+            model: "Market",
+            select: "landmark", // only landMark
+          },
+          {
+            path: "address.area",
+            model: "Market",
+            select: "area", // only area
+          },
+          {
+            path: "address.pincode",
+            model: "Market",
+            select: "pincode", // only pincode
+          },
+        ],
+      })
+      .populate("productItem", "itemName")
+      .populate("createdBy", "firstName lastName")
+      .populate("designer", "firstName lastName")
+      .populate("printer", "firstName lastName")
+      .populate("binder", "firstName lastName")
+      .populate("bookletBinder", "firstName lastName")
+      .populate("deliveryStaff", "firstName lastName")
+      .sort({ createdAt: -1 });
+
+    res.status(200).json({
+      success: true,
+      count: orders.length,
+      data: orders,
+    });
+  } catch (error) {
+    console.error("❌ Get all orders error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch orders",
+      error: error.message,
+    });
+  }
+};
+
+// In your order controller, update getAllOrders method:
+exports.getAllOrdersPagination = async (req, res) => {
   try {
     const {
       filters = {},

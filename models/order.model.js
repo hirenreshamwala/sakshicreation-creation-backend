@@ -18,19 +18,19 @@ const quotationHistory = new mongoose.Schema(
 );
 
 const orderProformaHistorySchema = new mongoose.Schema({
-  unitPrice: Number,
-  total: Number,
+  unitPrice: String,
+  total: String,
   applyGST: Boolean,
   gstPercentage: String,
-  finalAmount: Number,
+  finalAmount: String,
   createdAt: {
     type: Date,
     default: Date.now
   },
-  invoiceId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: "PerformanceInvoice"
-  }
+  // invoiceId: {
+  //   type: mongoose.Schema.Types.ObjectId,
+  //   ref: "PerformanceInvoice"
+  // }
 });
 
 const orderSchema = new mongoose.Schema(
