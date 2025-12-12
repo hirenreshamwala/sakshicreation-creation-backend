@@ -21,7 +21,7 @@ router.post("/create", authenticateToken, createOrder);
 
 router.post("/all", getAllOrders);
 
-router.get("/getbystaffid/:id", getOrdersByStaffId);
+router.post("/getbystaffid/:id", getOrdersByStaffId);
 
 router.get("/printer", authenticateToken, getPrinterById);
 

@@ -329,9 +329,7 @@ exports.getAllQpOrdersForDriver = async (req, res) => {
     } else if (filters.status && filters.status.length > 0) {
       query.status = { $in: filters.status };
     }
-
-    // Search functionality (same as before)
-    if (search) {
+      if (search && search.trim()) {
       const directOr = [
         { "status": { $regex: search, $options: "i" } },
         { "deliveryStatus": { $regex: search, $options: "i" } },
@@ -377,7 +375,59 @@ exports.getAllQpOrdersForDriver = async (req, res) => {
       if (driverIds.length > 0) {
         directOr.push({ driver: { $in: driverIds } });
       }
-      if (directOr.length > 0) {
+      // NEW: Market (nested: party.address.marketName.marketName)
+      const matchingMarketParties = await Party.aggregate([
+        {
+          $match: {
+            "address.marketName.marketName": { $regex: search, $options: "i" }
+          }
+        },
+        { $project: { _id: 1 } }
+      ]);
+      const marketPartyIds = matchingMarketParties.map(p => p._id);
+      if (marketPartyIds.length > 0) {
+        directOr.push({ party: { $in: marketPartyIds } });
+      }
+      // NEW: Area (nested: party.address.area.area)
+      const matchingAreaParties = await Party.aggregate([
+        {
+          $match: {
+            "address.area.area": { $regex: search, $options: "i" }
+          }
+        },
+        { $project: { _id: 1 } }
+      ]);
+      const areaPartyIds = matchingAreaParties.map(p => p._id);
+      if (areaPartyIds.length > 0) {
+        directOr.push({ party: { $in: areaPartyIds } });
+      }
+      // NEW: No of Box (noOfPieces - numeric search)
+      const piecesNum = parseInt(search, 10);
+      if (!isNaN(piecesNum)) {
+        directOr.push({ noOfPieces: piecesNum });
+      } else {
+        directOr.push({
+          $expr: {
+            $regexMatch: {
+              input: { $toString: "$noOfPieces" },
+              regex: search,
+              options: "i"
+            }
+          }
+        });
+      }
+      // FIXED: Date (createdAt - partial regex on ISO date string using $expr)
+      directOr.push({
+        $expr: {
+          $regexMatch: {
+            input: { $toString: "$createdAt" },
+            regex: search,
+            options: "i"
+          }
+        }
+      });
+      
+      if (directOr.length > 1) { // If more than base conditions
         query.$or = directOr;
       }
     }
@@ -2013,7 +2063,8 @@ exports.bulkUpdateQPOrderStatus = async (req, res) => {
     if (billNumber) {
       updateData.billNumber = billNumber;
     } else {
-      console.warn("⚠️ No bill number provided for delivery update");
+      updateData.billNumber = ""; // Set empty string
+      console.log(`ℹ️ No bill number provided - proceeding with empty value`);
     }
 
     // --- STATUS HANDLING ---
@@ -2042,13 +2093,21 @@ exports.bulkUpdateQPOrderStatus = async (req, res) => {
 
         // ---------------- IN TRANSIT ----------------
         case "in_transit": {
-          if (!dispatchPhotos || !dispatchPhotos.length)
-            throw new Error("Dispatch photos required for dispatch");
+          if (dispatchPhotos && dispatchPhotos.length > 0) {
+            updateData.dispatchTime = dispatchTime || currentTime;
+            updateData.dispatchPhoto = dispatchPhotos[0]; // Use first photo if multiple
+            console.log(`📸 Dispatch photos uploaded: ${dispatchPhotos.length} files`);
+          } else {
+            // Proceed without photos
+            updateData.dispatchTime = dispatchTime || currentTime;
+            updateData.dispatchPhoto = ""; // Empty string if no photos
+            console.log(`ℹ️ No dispatch photos provided - proceeding without photos (recommended for records)`);
+          }
           updateData.deliveryStartTime = currentTime;
           updateData.loadingEndDate = currentTime;
           updateData.deliveryStatus = "in_transit";
-          updateData.dispatchTime = dispatchTime || currentTime;
-          updateData.dispatchPhoto = dispatchPhotos[0];
+          //updateData.dispatchTime = dispatchTime || currentTime;
+          //updateData.dispatchPhoto = dispatchPhotos[0];
 
           await Staff.findByIdAndUpdate(
             driverId,
@@ -2060,14 +2119,21 @@ exports.bulkUpdateQPOrderStatus = async (req, res) => {
 
         // ---------------- DELIVERED ----------------
         case "delivered": {
-          if (!billPhotos || !billPhotos.length)
-            throw new Error("Bill photos required for delivery");
-
+          if (billPhotos && billPhotos.length > 0) {
+            updateData.deliveryTime = deliveryTime || currentTime;
+            updateData.billPhoto = billPhotos[0]; // Use first photo if multiple
+            console.log(`📸 Delivery photos uploaded: ${billPhotos.length} files`);
+          } else {
+            // Proceed without photos
+            updateData.deliveryTime = deliveryTime || currentTime;
+            updateData.billPhoto = ""; // Empty string if no photos
+            console.log(`ℹ️ No delivery photos provided - proceeding without photos (recommended for records)`);
+          }
           updateData.deliveryEndTime = currentTime;
           updateData.deliveredAt = currentTime;
           updateData.deliveryStatus = "delivered";
-          updateData.deliveryTime = deliveryTime || currentTime;
-          updateData.billPhoto = billPhotos[0];
+          // updateData.deliveryTime = deliveryTime || currentTime;
+          // updateData.billPhoto = billPhotos[0];
 
           // Fetch delivered orders
           const deliveredOrders = await QpData.find({
