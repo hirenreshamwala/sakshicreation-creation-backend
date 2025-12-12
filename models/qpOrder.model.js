@@ -182,9 +182,9 @@ const qpDataSchema = new mongoose.Schema(
     startDate: {
       type: String,
     },
-    deliveryDate: {
-      type: String,
-    },
+    // deliveryDate: {
+    //   type: String,
+    // },
     rsFor: {
       type: String,
     },
@@ -454,6 +454,22 @@ const qpDataSchema = new mongoose.Schema(
     isPunching: {
       type: Boolean,
       default: false,
+    },
+    noOfSheetCut: {
+    type: String,
+    default: null
+    },
+    cuttingLength: {
+        type: String,
+        default: null
+    },
+    noOfLinear: {
+        type: String,
+        default: null
+    },
+    linear: {
+        type: String,
+        default: null
     },
     step: {
       type: Number,
