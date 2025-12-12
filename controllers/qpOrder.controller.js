@@ -1152,19 +1152,21 @@ async function createOutwardInventoryEntries(qpOrder, session) {
         inventoryType: "Box",
       }).session(session);
 
-      if (changeQty.length > 0) {
-        console.log(`Found ${changeQty.length} matching inward boxes.`);
-        for (const inward of changeQty) {
-          const updated = await Inventory.findByIdAndUpdate(
-            inward._id,
-            { usedBox: qpOrder.noOfPieces },
-            { session, new: true }
-          );
-          console.log("✅ Updated usedBox for:", updated._id);
-        }
-      } else {
-        console.warn("⚠️ No inward box found for qpOrder:", qpOrder._id);
-      }
+      // THIS BELOW CODE IS CMNTED FOR INVENTORY PENDING BOX ISSUE FIX.. 
+
+      // if (changeQty.length > 0) {
+      //   console.log(`Found ${changeQty.length} matching inward boxes.`);
+      //   for (const inward of changeQty) {
+      //     const updated = await Inventory.findByIdAndUpdate(
+      //       inward._id,
+      //       // { usedBox: qpOrder.noOfPieces },
+      //       { session, new: true }
+      //     );
+      //     console.log("✅ Updated usedBox for:", updated._id);
+      //   }
+      // } else {
+      //   console.warn("⚠️ No inward box found for qpOrder:", qpOrder._id);
+      // }
       console.log(`✅ Box outward created: ${qpOrder.noOfPieces} pieces`);
     } else {
       console.log(`⏭️ Skipping box outward - no noOfPieces`);
