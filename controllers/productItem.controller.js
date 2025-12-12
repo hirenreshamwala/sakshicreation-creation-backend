@@ -50,18 +50,37 @@ exports.createProductItem = async (req, res) => {
   }
 };
 
-// Get all product items
 exports.getAllProductItems = async (req, res) => {
   try {
-    // Get all items sorted by newest first
-    const productItems = await ProductItem.find().sort({ createdAt: -1 });
-
-    // Return success response
+    const {
+      page = 1,
+      limit = 10,
+      search = "",
+      itemNames = []
+    } = req.query;
+    const skip = (page - 1) * limit;
+    let filter = {};
+    if (search) {
+      filter.$or = [
+        { itemName: { $regex: search, $options: "i" } }
+      ];
+    }
+    if (itemNames.length) filter.itemName = { $in: itemNames };
+    const total = await ProductItem.countDocuments(filter);
+    const productItems = await ProductItem.find(filter)
+      .skip(Number(skip))
+      .limit(Number(limit))
+      .sort({ createdAt: -1 });
     res.status(200).json({
       success: true,
-      data: productItems
+      data: productItems,
+      pagination: {
+        currentPage: Number(page),
+        totalPages: Math.ceil(total / limit),
+        totalItems: total,
+        itemsPerPage: Number(limit)
+      }
     });
-
   } catch (error) {
     console.error("Error fetching product items:", error);
     res.status(500).json({
@@ -69,6 +88,18 @@ exports.getAllProductItems = async (req, res) => {
       message: "Failed to fetch product items",
       error: error.message
     });
+  }
+};
+
+exports.getProductItemFilters = async (req, res) => {
+  try {
+    const itemNames = await ProductItem.distinct("itemName");
+    res.json({
+      itemNames: itemNames.sort()
+    });
+  } catch (err) {
+    console.error("Error in getProductItemFilters:", err);
+    res.status(500).json({ message: "Internal server error" });
   }
 };
 

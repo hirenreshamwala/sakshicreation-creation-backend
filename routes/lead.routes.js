@@ -15,10 +15,11 @@ router.get("/getbystaffid/:id", LeadController.getLeadsByStaffId);
 router.post("/create/bulk", LeadController.bulkCreateLeads);
 // Update lead
 router.patch("/update/:id", LeadController.updateLeadById);
+router.post("/get-data-by-party-and-accountmaster", LeadController.getDataByPartyAndAccountMaster);
 
 // Update lead status
 router.patch("/updatestatus/:id", LeadController.updateLeadStatus);
-
+router.post("/get-filter/:field",LeadController.getPartyFilterOptionsData)
 // Delete lead
 router.delete("/delete/:id", LeadController.deleteLead);
 

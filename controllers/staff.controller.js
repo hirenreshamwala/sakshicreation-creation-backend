@@ -156,25 +156,253 @@ exports.createStaff = async (req, res) => {
   }
 };
 
-// Get all Staff
 exports.getStaff = async (req, res) => {
   try {
-    const staff = await Staff.find()
+    const {
+      page = 1,
+      limit = 10,
+      search = "",
+      role = "",              // backward compatibility
+      roles = [],
+      staffNames = [],
+      company = "",
+      startDate = "",
+      endDate = "",
+      joiningDates = [],       // NEW: multiple exact joining dates (DD/MM/YYYY)
+      sortBy = "createdAt",
+      sortOrder = "desc"
+    } = req.query;
+
+    const skip = (page - 1) * limit;
+
+    // Build filter object
+    let filter = {};
+
+    // 1. General Search
+    if (search) {
+      filter.$or = [
+        { firstName: { $regex: search, $options: "i" } },
+        { lastName: { $regex: search, $options: "i" } },
+        {
+          $expr: {
+            $regexMatch: {
+              input: { $concat: ["$firstName", " ", "$lastName"] },
+              regex: search,
+              options: "i"
+            }
+          }
+        },
+        { email: { $regex: search, $options: "i" } },
+        { mobileNo: { $regex: search, $options: "i" } },
+        { aadharNo: { $regex: search, $options: "i" } }
+      ];
+    }
+
+    // 2. Role Filter (single + multiple)
+    let roleConditions = [];
+
+    if (role) {
+      const roleDoc = await Role.findOne({
+        roleName: { $regex: `^${role}$`, $options: "i" }
+      });
+      if (roleDoc) roleConditions.push(roleDoc._id);
+    }
+
+    if (roles && roles.length > 0) {
+      const roleNames = Array.isArray(roles) ? roles : [roles];
+      const roleDocs = await Role.find({
+        $or: roleNames.map(name => ({
+          roleName: { $regex: `^${name}$`, $options: "i" }
+        }))
+      });
+      const roleIds = roleDocs.map(doc => doc._id);
+      roleConditions = [...roleConditions, ...roleIds];
+    }
+
+    if (roleConditions.length > 0) {
+      filter.role = { $in: roleConditions };
+    }
+
+    // 3. Staff Name Filter (exact match on first, last, or full name)
+    if (staffNames && staffNames.length > 0) {
+      const names = Array.isArray(staffNames) ? staffNames : [staffNames];
+
+      const nameConditions = names.flatMap(name => [
+        { firstName: { $regex: `^${name}$`, $options: "i" } },
+        { lastName: { $regex: `^${name}$`, $options: "i" } },
+        {
+          $expr: {
+            $regexMatch: {
+              input: { $concat: ["$firstName", " ", "$lastName"] },
+              regex: `^${name}$`,
+              options: "i"
+            }
+          }
+        }
+      ]);
+
+      if (filter.$or) {
+        filter.$and = [
+          { $or: filter.$or },
+          { $or: nameConditions }
+        ];
+        delete filter.$or;
+      } else {
+        filter.$or = nameConditions;
+      }
+    }
+
+    // 4. Company Filter
+    if (company) {
+      filter.CompanyName = company;
+    }
+
+    // 5. Date Range Filter (startDate / endDate)
+    if (startDate || endDate) {
+      filter.joiningDate = {};
+      if (startDate) {
+        filter.joiningDate.$gte = new Date(startDate);
+      }
+      if (endDate) {
+        const end = new Date(endDate);
+        end.setHours(23, 59, 59, 999);
+        filter.joiningDate.$lte = end;
+      }
+    }
+
+    // 6. Multiple Exact Joining Dates Filter (DD/MM/YYYY) - NEW
+    if (joiningDates && joiningDates.length > 0) {
+      const dates = Array.isArray(joiningDates) ? joiningDates : [joiningDates];
+
+      const dateConditions = dates.map(dateStr => {
+        const [day, month, year] = dateStr.split('/');
+        const start = new Date(`${year}-${month}-${day}T00:00:00.000Z`);
+        const end = new Date(`${year}-${month}-${day}T23:59:59.999Z`);
+        return {
+          joiningDate: { $gte: start, $lte: end }
+        };
+      });
+
+      const orCondition = { $or: dateConditions };
+
+      // Combine with existing joiningDate range if present
+      if (filter.joiningDate) {
+        filter.$and = (filter.$and || []).concat([
+          { joiningDate: filter.joiningDate },
+          orCondition
+        ]);
+        delete filter.joiningDate;
+      } else if (filter.$and) {
+        filter.$and.push(orCondition);
+      } else {
+        filter.$and = [orCondition];
+      }
+    }
+
+    console.log('Final MongoDB filter:', JSON.stringify(filter, null, 2));
+
+    // Count total matching documents
+    const total = await Staff.countDocuments(filter);
+
+    // Fetch paginated staff
+    const staff = await Staff.find(filter)
       .populate("role")
       .populate("CompanyName")
-      .select("-password");
+      .select("-password")
+      .sort({ [sortBy]: sortOrder === "desc" ? -1 : 1 })
+      .skip(skip)
+      .limit(parseInt(limit));
+
     res.status(200).json({
       success: true,
       data: staff,
+      pagination: {
+        currentPage: parseInt(page),
+        totalPages: Math.ceil(total / limit),
+        totalItems: total,
+        itemsPerPage: parseInt(limit)
+      }
     });
   } catch (error) {
+    console.error("Error fetching staff:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message || "Internal server error",
+    });
+  }
+};
+
+// In your staffController.js - getStaffFilters
+exports.getStaffFilters = async (req, res) => {
+  try {
+    const roles = await Role.distinct('roleName');
+
+    const companies = await Staff.aggregate([
+      { $match: { CompanyName: { $ne: null } } },
+      {
+        $lookup: {
+          from: 'companies',
+          localField: 'CompanyName',
+          foreignField: '_id',
+          as: 'companyData'
+        }
+      },
+      { $unwind: '$companyData' },
+      { $group: { _id: '$companyData.name' } },
+      { $project: { _id: 0, name: '$_id' } }
+    ]);
+    const companyNames = companies.map(c => c.name);
+
+    const staffNames = await Staff.aggregate([
+      {
+        $project: {
+          fullName: {
+            $cond: {
+              if: { $and: ["$firstName", "$lastName"] },
+              then: { $concat: ["$firstName", " ", "$lastName"] },
+              else: { $or: ["$firstName", "$lastName"] }
+            }
+          }
+        }
+      },
+      { $match: { fullName: { $ne: null, $ne: "" } } },
+      { $group: { _id: "$fullName" } },
+      { $sort: { _id: 1 } }
+    ]);
+    const staffNameList = staffNames.map(s => s._id);
+
+    // ADD JOINING DATES (formatted as DD/MM/YYYY)
+    const joiningDates = await Staff.aggregate([
+      { $match: { joiningDate: { $ne: null } } },
+      {
+        $project: {
+          formattedDate: {
+            $dateToString: { format: "%d/%m/%Y", date: "$joiningDate" }
+          }
+        }
+      },
+      { $group: { _id: "$formattedDate" } },
+      { $sort: { _id: 1 } }
+    ]);
+    const joiningDateList = joiningDates.map(d => d._id);
+
+    res.status(200).json({
+      success: true,
+      data: {
+        roles: roles || [],
+        companies: companyNames || [],
+        staff: staffNameList || [],
+        joiningDates: joiningDateList || [] // NEW: Add joining dates
+      }
+    });
+  } catch (error) {
+    console.error("Error fetching staff filters:", error);
     res.status(500).json({
       success: false,
       message: error.message,
     });
   }
 };
-
 // Get a single Staff by ID
 exports.getStaffById = async (req, res) => {
   try {

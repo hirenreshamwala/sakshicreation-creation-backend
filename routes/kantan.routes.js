@@ -11,7 +11,7 @@ const KantanController = require('../controllers/kantan.controller');
 router.post("/create", KantanController.createKantan);
 
 router.get("/getall", KantanController.getAllKantans);
-
+router.get("/filters", KantanController.getKantanFilters);
 router.patch("/update/:id", KantanController.updateKantan);
 
 router.delete("/delete/:id", KantanController.deleteKantan);

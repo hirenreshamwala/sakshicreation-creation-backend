@@ -11,7 +11,7 @@ const upload = multer({
 router.post("/create",authenticateToken, StaffController.createStaff);
 
 router.get("/getall",authenticateToken, StaffController.getStaff);
-
+router.get('/filters', StaffController.getStaffFilters);
 router.get("/getbyid/:id",authenticateToken, StaffController.getStaffById);
 
 router.patch("/update/:id",authenticateToken, StaffController.updateStaff);

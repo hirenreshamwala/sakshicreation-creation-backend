@@ -11,6 +11,7 @@ const PackagingOrderController = require('../controllers/packagingOption.control
 router.post("/create", PackagingOrderController.createPackagingOption);
 
 router.get("/getall", PackagingOrderController.getAllPackagingOptions);
+router.get("/filters", PackagingOrderController.getPackagingFilters);
 
 router.patch("/update/:id", PackagingOrderController.updatePackagingOption);
 

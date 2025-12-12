@@ -3,6 +3,9 @@ const QpData = require("../models/qpOrder.model"); // Adjust path to your model
 const Staff = require("../models/staff.model");
 const Inventory = require("../models/inventory.model"); // Import Inventory model
 const PackagingOption = require("../models/packagingOption.model");
+const Party = require("../models/Party.model"); 
+const Company = require("../models/companyName.model"); 
+const moment = require("moment");
 const _ = require("lodash");
 
 // Add a new QP Order
@@ -315,6 +318,448 @@ exports.getAllQpOrders = async (req, res) => {
   }
 };
 
+exports.getAllQpOrdersForDriver = async (req, res) => {
+  try {
+    const {
+      filters = {},
+      search = "",
+      startDate,
+      endDate,
+      isPagination = true,  // Default: true (paginated)
+      page = 1,
+      pageSize = 10,
+      includeCounts = true
+    } = req.body;
+    console.log("📊 QP Orders API - Request filters:", {
+      filters,
+      search,
+      startDate,
+      endDate,
+      page,
+      pageSize,
+      isPagination  // Log this for debugging
+    });
+
+    // Build query object (same as before - server-side filtering)
+    const query = {};
+    // Status filter (default to Completed if not specified)
+    if (!filters.status || filters.status.length === 0) {
+      query.status = "Completed";
+    } else if (filters.status && filters.status.length > 0) {
+      query.status = { $in: filters.status };
+    }
+
+    // Search functionality (same as before)
+    if (search) {
+      const directOr = [
+        { "status": { $regex: search, $options: "i" } },
+        { "deliveryStatus": { $regex: search, $options: "i" } },
+      ];
+      const searchNum = parseInt(search, 10);
+      if (!isNaN(searchNum)) {
+        directOr.push({ orderNo: searchNum });
+      } else {
+        directOr.push({
+          $expr: {
+            $regexMatch: {
+              input: { $toString: "$orderNo" },
+              regex: search,
+              options: "i"
+            }
+          }
+        });
+      }
+      // Company, Party, Driver searches (same as before)
+      const matchingCompanies = await Company.find({
+        companyName: { $regex: search, $options: "i" }
+      }).select('_id').lean();
+      const companyIds = matchingCompanies.map(c => c._id);
+      if (companyIds.length > 0) {
+        directOr.push({ companyName: { $in: companyIds } });
+      }
+      const matchingParties = await Party.find({
+        partyName: { $regex: search, $options: "i" }
+      }).select('_id').lean();
+      const partyIds = matchingParties.map(p => p._id);
+      if (partyIds.length > 0) {
+        directOr.push({ party: { $in: partyIds } });
+      }
+      const nameRegex = new RegExp(search, 'i');
+      const matchingDrivers = await Staff.find({
+        $or: [
+          { firstName: nameRegex },
+          { lastName: nameRegex },
+          { email: nameRegex }
+        ]
+      }).select('_id').lean();
+      const driverIds = matchingDrivers.map(s => s._id);
+      if (driverIds.length > 0) {
+        directOr.push({ driver: { $in: driverIds } });
+      }
+      if (directOr.length > 0) {
+        query.$or = directOr;
+      }
+    }
+
+    // Date range filter (same as before)
+    if (startDate || endDate) {
+      query.createdAt = {};
+      if (startDate) {
+        const start = new Date(startDate);
+        start.setHours(0, 0, 0, 0);
+        query.createdAt.$gte = start;
+      }
+      if (endDate) {
+        const end = new Date(endDate);
+        end.setHours(23, 59, 59, 999);
+        query.createdAt.$lte = end;
+      }
+    }
+
+    // Additional filters (Company, Party, DeliveryStatus, Driver, OrderNo) - same as before
+    if (filters.company && filters.company.length > 0) {
+      const companies = await Company.find({
+        companyName: { $in: filters.company }
+      }).select('_id').lean();
+      if (companies.length > 0) {
+        query.companyName = { $in: companies.map(c => c._id) };
+      }
+    }
+    if (filters.party && filters.party.length > 0) {
+      const parties = await Party.find({
+        partyName: { $in: filters.party }
+      }).select('_id').lean();
+      if (parties.length > 0) {
+        query.party = { $in: parties.map(p => p._id) };
+      }
+    }
+    if (filters.deliveryStatus && filters.deliveryStatus.length > 0) {
+      query.deliveryStatus = { $in: filters.deliveryStatus };
+    }
+    if (filters.driver && filters.driver.length > 0) {
+      const drivers = await Staff.find({
+        $or: [
+          { email: { $regex: `^${filters.driver[0]}`, $options: "i" } },
+          {
+            $or: filters.driver.map(name => ({
+              $or: [
+                { firstName: { $regex: `^${name.split(' ')[0] || ''}`, $options: "i" } },
+                { lastName: { $regex: (name.split(' ')[1] || ''), $options: "i" } }
+              ]
+            }))
+          }
+        ]
+      }).select('_id').lean();
+      if (drivers.length > 0) {
+        query.driver = { $in: drivers.map(d => d._id) };
+      }
+    }
+    if (filters.orderNo && filters.orderNo.length > 0) {
+      const orderNos = filters.orderNo
+        .map(no => {
+          if (typeof no === 'number') return no;
+          const parsed = parseInt(no, 10);
+          return isNaN(parsed) ? null : parsed;
+        })
+        .filter(n => n !== null && Number.isInteger(n) && n > 0);
+      if (orderNos.length > 0) {
+        query.orderNo = { $in: orderNos };
+      }
+    }
+
+    console.log("📊 QP Orders - Final query:", JSON.stringify(query, null, 2));
+
+    // Get total count (always, for consistency)
+    const totalCount = await QpData.countDocuments(query);
+    console.log("📊 QP Orders - Total count:", totalCount);
+
+    // Fetch data based on isPagination
+    let qpOrders = [];
+    const populateOptions = {  // Common populate
+      path: "companyName",
+      select: "companyName avatar",
+    };
+    // ... (add all other populate paths as in your original code)
+
+    if (isPagination) {
+      // PAGINATED: Apply skip/limit
+      const skip = (page - 1) * pageSize;
+      qpOrders = await QpData.find(query)
+        .skip(skip)
+        .limit(pageSize)
+        .populate(populateOptions)  // Add all populates here
+        .populate({
+          path: "party",
+          select: "-__v",
+          populate: [
+            { path: "address.marketName", model: "Market", select: "marketName" },
+            { path: "address.landMark", model: "Market", select: "landmark" },
+            { path: "address.area", model: "Market", select: "area" },
+            { path: "address.pincode", model: "Market", select: "pincode" },
+          ],
+        })
+        .populate("driver", "firstName lastName email")
+        .populate("createdBy", "firstName lastName")
+        .sort({ createdAt: -1 });
+    } else {
+      // NON-PAGINATED: Fetch ALL data (no skip/limit)
+      qpOrders = await QpData.find(query)
+        .populate(populateOptions)  // Same populates
+        .populate({
+          path: "party",
+          select: "-__v",
+          populate: [
+            { path: "address.marketName", model: "Market", select: "marketName" },
+            { path: "address.landMark", model: "Market", select: "landmark" },
+            { path: "address.area", model: "Market", select: "area" },
+            { path: "address.pincode", model: "Market", select: "pincode" },
+          ],
+        })
+        .populate("driver", "firstName lastName email")
+        .populate("createdBy", "firstName lastName")
+        .sort({ createdAt: -1 });
+      console.log(`✅ QP Orders fetched ALL: ${qpOrders.length} records (no pagination)`);
+    }
+
+    // Prepare pagination (null if !isPagination)
+    const pagination = isPagination ? {
+      currentPage: parseInt(page),
+      pageSize: parseInt(pageSize),
+      totalCount: totalCount,
+      totalPages: Math.ceil(totalCount / pageSize),
+      hasNext: page < Math.ceil(totalCount / pageSize),
+      hasPrev: page > 1,
+    } : null;
+
+    res.status(200).json({
+      success: true,
+      data: qpOrders,
+      pagination: pagination,
+      totalCount: totalCount,
+    });
+  } catch (error) {
+    console.error("❌ Error getting QP orders:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch QP orders",
+      error: error.message,
+    });
+  }
+};
+
+exports.getQpFilterOptionsData = async (req, res) => {
+  try {
+    const { field } = req.params;
+    const filters = req.body || {};
+    const { search = "", ...otherFilters } = filters;
+    if (!field) {
+      return res.status(400).json({
+        success: false,
+        message: "Field parameter is required"
+      });
+    }
+    console.log("QP Order Filter Options - Field:", field, "Search:", search, "Other Filters:", otherFilters);
+    // Build main filter query
+    const query = {};
+    // Status filter (default to Completed for QP orders)
+    if (!otherFilters.status) {
+      query.status = "Completed";
+    } else if (otherFilters.status && otherFilters.status.length > 0) {
+      query.status = { $in: otherFilters.status };
+    }
+    // Company filter
+    if (otherFilters.company && otherFilters.company.length > 0) {
+      const companies = await Company.find({ // FIXED: Use imported Company model
+        companyName: { $in: otherFilters.company }
+      }).select('_id').lean();
+ 
+      if (companies.length > 0) {
+        query.companyName = { $in: companies.map(c => c._id) };
+      }
+    }
+    // Staff filter
+    if (otherFilters.staffId) {
+      query.createdBy = otherFilters.staffId;
+    }
+    // DATE RANGE
+    if (otherFilters.startDate || otherFilters.endDate) {
+      query.createdAt = {};
+      if (otherFilters.startDate) {
+        const start = new Date(otherFilters.startDate);
+        start.setHours(0, 0, 0, 0);
+        query.createdAt.$gte = start;
+      }
+      if (otherFilters.endDate) {
+        const end = new Date(otherFilters.endDate);
+        end.setHours(23, 59, 59, 999);
+        query.createdAt.$lte = end;
+      }
+    }
+    // Party filter
+    if (otherFilters.party && otherFilters.party.length > 0) {
+      const parties = await Party.find({
+        partyName: { $in: otherFilters.party }
+      }).select('_id').lean();
+ 
+      if (parties.length > 0) {
+        query.party = { $in: parties.map(p => p._id) };
+      }
+    }
+    // Delivery Status filter
+    if (otherFilters.deliveryStatus && otherFilters.deliveryStatus.length > 0) {
+      query.deliveryStatus = { $in: otherFilters.deliveryStatus };
+    }
+    let uniqueValues = [];
+    // FIELD WISE SOLUTIONS FOR QP ORDERS
+    switch (field) {
+      case "company":
+        const companyIds = await QpData.distinct("companyName", query);
+        const companies = await Company.find( // FIXED: Use imported Company
+          { _id: { $in: companyIds } },
+          "companyName"
+        );
+        uniqueValues = companies.map(c => c.companyName).filter(Boolean);
+        break;
+      case "party":
+        const partyIds = await QpData.distinct("party", query);
+        const parties = await Party.find(
+          { _id: { $in: partyIds } },
+          "partyName"
+        );
+        uniqueValues = parties.map(p => p.partyName).filter(Boolean);
+        break;
+      case "orderNo":
+        // FIXED: Convert numbers to strings before filtering, ensure numeric distinct
+        uniqueValues = await QpData.distinct("orderNo", query);
+        uniqueValues = uniqueValues
+          .filter(val => val && Number.isInteger(val) && val > 0) // Only valid positive integers
+          .map(val => String(val)) // Convert to string for frontend
+          .filter(val => val && val.trim() !== "" && val !== "undefined" && val !== "null");
+        break;
+      case "noOfPieces": // NEW: Handle noOfPieces as numeric distinct values
+        uniqueValues = await QpData.distinct("noOfPieces", query);
+        uniqueValues = uniqueValues
+          .filter(val => val && val > 0 && Number.isInteger(val)) // Filter valid positive integers
+          .sort((a, b) => a - b); // Numeric sort
+        break;
+      case "status":
+        uniqueValues = await QpData.distinct("status", query);
+        uniqueValues = uniqueValues.filter(val => val && String(val).trim() !== "");
+        break;
+      case "deliveryStatus":
+        uniqueValues = await QpData.distinct("deliveryStatus", query);
+        uniqueValues = uniqueValues.filter(val => val && String(val).trim() !== "");
+        break;
+      case "driver":
+        const driverIds = await QpData.distinct("driver", query);
+        const drivers = await Staff.find(
+          { _id: { $in: driverIds } },
+          "firstName lastName email"
+        );
+        uniqueValues = drivers.map(d => {
+          if (d.email) return d.email.split("@")[0];
+          if (d.firstName || d.lastName) return `${d.firstName || ""} ${d.lastName || ""}`.trim();
+          return null;
+        }).filter(Boolean);
+        break;
+      case "driverName":
+        const driverIds2 = await QpData.distinct("driver", query);
+        const drivers2 = await Staff.find(
+          { _id: { $in: driverIds2 } },
+          "firstName lastName"
+        );
+        uniqueValues = drivers2.map(d => `${d.firstName || ""} ${d.lastName || ""}`.trim())
+          .filter(name => name !== "");
+        break;
+      case "date":
+        const dates = await QpData.distinct("createdAt", query);
+        uniqueValues = dates
+          .map(d => moment(d).format("DD-MM-YYYY"))
+          .filter((v, i, self) => v && self.indexOf(v) === i)
+          .sort((a, b) => moment(a, "DD-MM-YYYY").toDate().getTime() - moment(b, "DD-MM-YYYY").toDate().getTime());
+        break;
+      case "market":
+        // Get parties first, then their market names
+        const partyIdsForMarket = await QpData.distinct("party", query);
+        if (partyIdsForMarket.length === 0) {
+          uniqueValues = [];
+          break;
+        }
+        const partiesForMarket = await Party.find(
+          { _id: { $in: partyIdsForMarket } }
+        ).populate("address.marketName", "marketName").lean(); // Added .lean() for performance
+    
+        uniqueValues = partiesForMarket
+          .map(p => p.address?.marketName?.marketName)
+          .filter(Boolean)
+          .filter((v, i, self) => self.indexOf(v) === i);
+        break;
+      case "area":
+        // Get parties first, then their area names
+        const partyIdsForArea = await QpData.distinct("party", query);
+        if (partyIdsForArea.length === 0) {
+          uniqueValues = [];
+          break;
+        }
+        const partiesForArea = await Party.find(
+          { _id: { $in: partyIdsForArea } }
+        ).populate("address.area", "area").lean(); // Added .lean() for performance
+    
+        uniqueValues = partiesForArea
+          .map(p => p.address?.area?.area)
+          .filter(Boolean)
+          .filter((v, i, self) => self.indexOf(v) === i);
+        break;
+      default:
+        console.log("Invalid field parameter:", field);
+        return res.status(400).json({
+          success: false,
+          message: "Invalid field parameter"
+        });
+    }
+
+    // NEW: Apply search filter to uniqueValues (case-insensitive partial match on string representation)
+    if (search && search.trim()) {
+      const regex = new RegExp(search, 'i');
+      uniqueValues = uniqueValues.filter(val => regex.test(String(val)));
+      console.log(`Filtered ${field} options by search "${search}": ${uniqueValues.length} remaining`);
+    }
+
+    // FIXED: Removed broken/incomplete SEARCH FILTER block (directOr not defined) - not needed here
+    // REMOVE DUPLICATES + SORT
+    // FIXED: Handle both string and number values properly
+    uniqueValues = uniqueValues
+      .map(v => String(v)) // Convert all to string for consistency
+      .filter(Boolean)
+      .filter((v, i, self) => self.indexOf(v) === i) // Remove duplicates
+      .sort((a, b) => {
+        // Special sorting for order numbers (numeric)
+        if (field === "orderNo" || field === "noOfPieces") {
+          const numA = parseInt(a) || 0;
+          const numB = parseInt(b) || 0;
+          return numA - numB;
+        }
+        // Default string sorting
+        return a.localeCompare(b);
+      });
+    // LIMIT FOR SAFETY
+    uniqueValues = uniqueValues.slice(0, 100);
+    console.log(`QP Filter options for ${field}:`, uniqueValues.length, "items");
+    res.status(200).json({
+      success: true,
+      data: uniqueValues,
+      count: uniqueValues.length
+    });
+  } catch (err) {
+    console.error("Error loading QP order filter options:", err);
+    res.status(500).json({
+      success: false,
+      message: "Error loading QP filter options",
+      error: err.message
+    });
+  }
+};
+// ... (rest of the code remains unchanged - getQpOrderById, updateQpOrder, etc.)
 exports.getQpOrderById = async (req, res) => {
   try {
     const qpOrder = await QpData.findById(req.params.id)

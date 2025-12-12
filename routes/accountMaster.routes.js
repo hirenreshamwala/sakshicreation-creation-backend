@@ -1,5 +1,6 @@
 const express = require("express");
 const AccountMasterController = require("../controllers/accountMaster.controller");
+const ExcelDownloadController = require("../controllers/exccelDownload.controller");
 const multer = require("multer");
 const { authenticateToken } = require("../middleware/auth");
 const upload = multer({ storage: multer.memoryStorage() });
@@ -10,13 +11,14 @@ router.post("/create",authenticateToken, AccountMasterController.createAccountMa
 
 // Get all account masters
 router.post("/getall",authenticateToken, AccountMasterController.getAllAccountMasters);
+router.post("/download-excel",authenticateToken, ExcelDownloadController.exportAccountMastersToExcel);
 router.get("/getqp",authenticateToken, AccountMasterController.getQualityPackingParties);
 
 router.put("/party/:id/approve",authenticateToken, AccountMasterController.approveParty);
 
 // Get a single account master by ID
 router.get("/getbyid/:id",authenticateToken, AccountMasterController.getAccountMasterById);
-router.get("/getbystaffid/:id",authenticateToken, AccountMasterController.getAccountMasterByStaffId);
+router.post("/getbystaffid/:id",authenticateToken, AccountMasterController.getAccountMasterByStaffId);
 
 // Update an account master by ID
 router.patch("/update/:id",authenticateToken, AccountMasterController.updateAccountMaster);
@@ -36,6 +38,6 @@ router.post("/by-company-party",authenticateToken, AccountMasterController.getAc
 
 router.get("/parties/search",authenticateToken, AccountMasterController.searchParties);
 
-
+router.post("/filter-options/:field",authenticateToken, AccountMasterController.getFilterOptionsData);
 
 module.exports = router;

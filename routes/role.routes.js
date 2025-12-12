@@ -6,6 +6,7 @@ router.post("/create",RoleController.createRole
 );
 // Get all roles
 router.get("/getall", RoleController.getAllRoles);
+router.get("/filters", RoleController.getRoleFilters);
 
 // Get role by ID
 router.get("/getbyid/:id", RoleController.getRoleById);
