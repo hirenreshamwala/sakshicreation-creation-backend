@@ -104,10 +104,19 @@ exports.createPurchase = async (req, res) => {
       deckal,
       gsm,
       reel,
-      reelBatchNo, // Added reelBatchNo
-      category, // 👈 pass either "factory" or "godown" from frontend
+      reelBatchNo,
+      category,
       bf,
-      color
+      color,
+      // ✅ Box type ke liye new fields
+      boxLength,
+      boxWidth,
+      boxHeight,
+      ply,
+      paper1GSM,
+      paper2GSM,
+      paper3GSM,
+      noOfBox
     } = req.body;
     console.log("req body", req.body);
 
@@ -119,7 +128,6 @@ exports.createPurchase = async (req, res) => {
       !role ||
       !staff ||
       !type 
-      // !bf
     ) {
       return res.status(400).json({
         success: false,
@@ -159,6 +167,26 @@ exports.createPurchase = async (req, res) => {
       });
     }
 
+    // ✅ Box type validations
+    if (type === "Box") {
+      if (
+        !boxLength ||
+        !boxWidth ||
+        !boxHeight ||
+        !ply ||
+        !paper1GSM ||
+        !paper2GSM ||
+        !paper3GSM ||
+        !noOfBox ||
+        !deckal
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "All Box fields (dimensions, ply, paper GSM, noOfBox, deckal) are required for Box type",
+        });
+      }
+    }
 
     // Validate ObjectIds
     if (
@@ -235,17 +263,26 @@ exports.createPurchase = async (req, res) => {
       reelBatchNo: type === "paper" ? reelBatchNo : undefined,
       color: type === "paper" ? color : undefined, 
       kantan: type === "kantan" ? kantan : undefined,
-      deckal: type === "paper" ? deckal : undefined,
+      deckal: type === "paper" || type === "Box" ? deckal : undefined,
       gsm: type === "paper" ? gsm : undefined,
       category: category,
       bf: type === "paper" ? bf : undefined,
+      // ✅ Box type fields
+      boxLength: type === "Box" ? boxLength : undefined,
+      boxWidth: type === "Box" ? boxWidth : undefined,
+      boxHeight: type === "Box" ? boxHeight : undefined,
+      ply: type === "Box" ? ply : undefined,
+      paper1GSM: type === "Box" ? paper1GSM : undefined,
+      paper2GSM: type === "Box" ? paper2GSM : undefined,
+      paper3GSM: type === "Box" ? paper3GSM : undefined,
+      noOfBox: type === "Box" ? noOfBox : undefined,
     });
 
     const savedPurchase = await newPurchase.save();
 
     // ✅ Save Inventory with only "factory" or "godown"
     const newInventory = new Inventory({
-      category, // 👈 directly from req.body ("factory" | "godown")
+      category,
       type: "inward",
       inventoryType: type,
       quantity: type === "paper" ? 1 : undefined,
@@ -259,11 +296,19 @@ exports.createPurchase = async (req, res) => {
       qpPurchase: savedPurchase._id,
       companyName,
       kantan: type === "kantan" ? kantan : undefined,
-      deckal: type === "paper" ? deckal : undefined,
-      gsm: type === "paper" ? gsm : undefined,
+      deckal: type === "paper" || type === "Box" ? deckal : undefined,
       for: role,
       forCompany: staff,
       bf: type === "paper" ? bf : undefined,
+      // ✅ Box type inventory fields
+      boxLength: type === "Box" ? boxLength : undefined,
+      boxWidth: type === "Box" ? boxWidth : undefined,
+      boxHeight: type === "Box" ? boxHeight : undefined,
+      ply: type === "Box" ? ply : undefined,
+      paper1GSM: type === "Box" ? paper1GSM : undefined,
+      paper2GSM: type === "Box" ? paper2GSM : undefined,
+      paper3GSM: type === "Box" ? paper3GSM : undefined,
+      noOfBox: type === "Box" ? noOfBox : undefined,
     });
 
     await newInventory.save();
@@ -360,7 +405,16 @@ exports.updatePurchase = async (req, res) => {
       paperMil,
       category,
       bf,
-      color
+      color,
+      // ✅ Box type ke liye new fields
+      boxLength,
+      boxWidth,
+      boxHeight,
+      ply,
+      paper1GSM,
+      paper2GSM,
+      paper3GSM,
+      noOfBox
     } = req.body;
 
     // Validate ObjectIds if provided
@@ -489,6 +543,27 @@ exports.updatePurchase = async (req, res) => {
       });
     }
 
+    // ✅ Box type validations
+    if (type === "Box") {
+      if (
+        !boxLength ||
+        !boxWidth ||
+        !boxHeight ||
+        !ply ||
+        !paper1GSM ||
+        !paper2GSM ||
+        !paper3GSM ||
+        !noOfBox ||
+        !deckal
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "All Box fields (dimensions, ply, paper GSM, noOfBox, deckal) are required for Box type",
+        });
+      }
+    }
+
     // Prepare update data
     const updateData = {
       ...(vendorName && { vendorName }),
@@ -500,37 +575,62 @@ exports.updatePurchase = async (req, res) => {
       ...(type && { type }),
       ...(kantan && { kantan }),
       ...(reel !== undefined && { reel }),
-      ...(reelBatchNo && { reelBatchNo }), // Added reelBatchNo
+      ...(reelBatchNo && { reelBatchNo }),
       ...(gsm && { gsm }),
       ...(paperMil && { paperMil }),
       ...(deckal && { deckal }),
-      ...(bf && { bf }), // Added bf
+      ...(bf && { bf }),
       ...(color && { color }),
+      // ✅ Box type update fields
+      ...(boxLength && { boxLength }),
+      ...(boxWidth && { boxWidth }),
+      ...(boxHeight && { boxHeight }),
+      ...(ply && { ply }),
+      ...(paper1GSM && { paper1GSM }),
+      ...(paper2GSM && { paper2GSM }),
+      ...(paper3GSM && { paper3GSM }),
+      ...(noOfBox && { noOfBox }),
     };
 
     // Clear fields not relevant to the type
-    if (type && type !== "kantan") {
-      updateData.kantan = undefined;
-      updateData.reel = undefined;
-    }
-    if (type && type !== "paper") {
-      updateData.deckal = undefined;
-      updateData.gsm = undefined;
-      updateData.paperMil = undefined;
-      updateData.bf = undefined;
-      updateData.color = undefined; // Clear color for non-paper types
-      updateData.reelBatchNo = undefined; // Clear reelBatchNo for non-paper types
-    }
-    if (
-      type &&
-      !(
-        type === "kantan" ||
-        type === "glue" ||
-        type === "wire" ||
-        type === "paper"
-      )
-    ) {
-      updateData.kg = 0;
+    if (type) {
+      if (type !== "kantan") {
+        updateData.kantan = undefined;
+        updateData.reel = undefined;
+      }
+      if (type !== "paper") {
+        updateData.deckal = type === "Box" ? deckal : undefined; // Box ke liye deckal rahega
+        updateData.gsm = undefined;
+        updateData.paperMil = undefined;
+        updateData.bf = undefined;
+        updateData.color = undefined;
+        updateData.reelBatchNo = undefined;
+      }
+      if (type !== "Box") {
+        updateData.boxLength = undefined;
+        updateData.boxWidth = undefined;
+        updateData.boxHeight = undefined;
+        updateData.ply = undefined;
+        updateData.paper1GSM = undefined;
+        updateData.paper2GSM = undefined;
+        updateData.paper3GSM = undefined;
+        updateData.noOfBox = undefined;
+        // Agar Box nahi hai toh deckal bhi clear karo (agar paper bhi nahi hai)
+        if (type !== "paper") {
+          updateData.deckal = undefined;
+        }
+      }
+      if (
+        !(
+          type === "kantan" ||
+          type === "glue" ||
+          type === "wire" ||
+          type === "paper" ||
+          type === "Box"
+        )
+      ) {
+        updateData.kg = 0;
+      }
     }
 
     const updatedPurchase = await Purchase.findByIdAndUpdate(
@@ -548,26 +648,34 @@ exports.updatePurchase = async (req, res) => {
 
     // ======== UPDATE OR CREATE INVENTORY =========
     let inventoryData = {
-      category: category || "factory", // 👈 default if not passed
+      category: category || "factory",
       type: "inward",
       inventoryType: type,
       quantity: type === "paper" ? 1 : undefined,
       gsm: type === "paper" ? gsm : undefined,
       kg: kg || undefined,
       reel: reel || undefined,
-      reelBatchNo: type === "paper" ? reelBatchNo : undefined, // Added reelBatchNo to inventory
+      reelBatchNo: type === "paper" ? reelBatchNo : undefined,
       vendor: vendorName,
       date: new Date(),
       qpPurchase: updatedPurchase._id,
       companyName,
       kantan: type === "kantan" ? kantan : undefined,
-      deckal: type === "paper" ? deckal : undefined,
-      gsm: type === "paper" ? gsm : undefined,
+      deckal: type === "paper" || type === "Box" ? deckal : undefined,
       paperMil: type === "paper" ? paperMil : undefined,
-      bf: type === "paper" ? bf : undefined, // Added bf to inventory
+      bf: type === "paper" ? bf : undefined,
       for: role,
       forCompany: staff,
       color: type === "paper" ? color : undefined,
+      // ✅ Box type inventory fields
+      boxLength: type === "Box" ? boxLength : undefined,
+      boxWidth: type === "Box" ? boxWidth : undefined,
+      boxHeight: type === "Box" ? boxHeight : undefined,
+      ply: type === "Box" ? ply : undefined,
+      paper1GSM: type === "Box" ? paper1GSM : undefined,
+      paper2GSM: type === "Box" ? paper2GSM : undefined,
+      paper3GSM: type === "Box" ? paper3GSM : undefined,
+      noOfBox: type === "Box" ? noOfBox : undefined,
     };
 
     // find if inventory exists for this purchase
