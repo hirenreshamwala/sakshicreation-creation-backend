@@ -68,78 +68,17 @@ exports.createCompanyName = async (req, res) => {
 //   }
 // };
 
-// Backend - controllers/companyName.controller.js (assuming this file)
 exports.getAllCompanyNames = async (req, res) => {
   try {
-    const {
-      page = 1,
-      limit = 10,
-      search = "",
-      companyNames = [],
-      defaults = []
-    } = req.query;
-    
-    const skip = (page - 1) * limit;
-    let filter = {};
-    
-    if (search) {
-      filter.$or = [
-        { companyName: { $regex: search, $options: "i" } }
-      ];
-    }
-    
-    if (companyNames.length) filter.companyName = { $in: companyNames };
-    
-    // FIX: Handle defaults properly (it might come as string, boolean, or array)
-    if (defaults) {
-      let defaultsArray;
-      
-      // If defaults is already an array
-      if (Array.isArray(defaults)) {
-        defaultsArray = defaults;
-      } 
-      // If defaults is a string (e.g., "true", "false", "Yes", "No")
-      else if (typeof defaults === 'string') {
-        // Handle both "Yes"/"No" and "true"/"false" formats
-        if (defaults === "Yes" || defaults === "true") {
-          defaultsArray = [true];
-        } else if (defaults === "No" || defaults === "false") {
-          defaultsArray = [false];
-        } else {
-          defaultsArray = [defaults === "true"];
-        }
-      }
-      // If defaults is a boolean
-      else if (typeof defaults === 'boolean') {
-        defaultsArray = [defaults];
-      }
-      // If it's something else, try to convert
-      else {
-        defaultsArray = [Boolean(defaults)];
-      }
-      
-      if (defaultsArray.length > 0) {
-        filter.default = { $in: defaultsArray };
-      }
-    }
-    
-    const total = await CompanyName.countDocuments(filter);
-    const companyNamesData = await CompanyName.find(filter)
-      .select("companyName avatar default")
-      .skip(Number(skip))
-      .limit(Number(limit))
-      .sort({ createdAt: -1 });
-    
+    // Get all company names sorted by newest first
+    const companyNames = await CompanyName.find().select("companyName avatar default").sort({ createdAt: -1 });
+
+    // Return success response
     res.status(200).json({
       success: true,
-      data: companyNamesData,
-      pagination: {
-        currentPage: Number(page),
-        totalPages: Math.ceil(total / limit),
-        totalItems: total,
-        itemsPerPage: Number(limit)
-      }
+      data: companyNames
     });
+
   } catch (error) {
     console.error("Error fetching company names:", error);
     res.status(500).json({
@@ -147,18 +86,6 @@ exports.getAllCompanyNames = async (req, res) => {
       message: "Failed to fetch company names",
       error: error.message
     });
-  }
-};
-exports.getCompanyNameFilters = async (req, res) => {
-  try {
-    const companyNames = await CompanyName.distinct("companyName");
-    res.json({
-      companyNames: companyNames.sort(),
-      defaults: ["Yes", "No"]
-    });
-  } catch (err) {
-    console.error("Error in getCompanyNameFilters:", err);
-    res.status(500).json({ message: "Internal server error" });
   }
 };
 
@@ -347,13 +274,16 @@ exports.getPartywithCompany = async (req, res) => {
     }
 
     const user = req.user;
+    console.log("DEBUG : user:", user);
 
     let query = { companyName: id };
+    console.log("DEBUG : query:", query);
 
 
 
     if (!["admin", "manager","factory manager","godown manager", "driver"].includes(user.role?.toLowerCase())) {
       query.createdBy = user.id;
+      console.log("DEBUG : query.createdBy:", query.createdBy);
 
     }
 

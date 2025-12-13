@@ -249,6 +249,27 @@ exports.getAllAccountMasters = async (req, res) => {
       includeCounts = false
     } = req.body;
 
+    // Pre-fetch staff IDs for assignedTo filter
+    let assignedToIds = [];
+    if (filters.assignedTo && filters.assignedTo.length > 0) {
+      const assignedToStaff = await Staff.find({
+        $or: [
+          { firstName: { $in: filters.assignedTo } },
+          { lastName: { $in: filters.assignedTo } },
+          {
+            $expr: {
+              $regexMatch: {
+                input: { $concat: ["$firstName", " ", "$lastName"] },
+                regex: new RegExp(filters.assignedTo.join("|"), "i")
+              }
+            }
+          }
+        ]
+      }).select('_id').lean();
+
+      assignedToIds = assignedToStaff.map(s => s._id.toString());
+    }
+
     // Base query object
     const query = {};
 
@@ -305,7 +326,6 @@ exports.getAllAccountMasters = async (req, res) => {
       createdByIds = staffMatched.map(s => s._id);
 
       if (staffMatched.length > 0) {
-        // FIXED: Match on createdBy._id after lookup
         query["createdBy._id"] = { $in: createdByIds };
       }
     }
@@ -486,20 +506,62 @@ exports.getAllAccountMasters = async (req, res) => {
           preserveNullAndEmptyArrays: true,
         },
       },
+      // Add lookup for latest task
+      {
+        $lookup: {
+          from: "assigntasks",
+          let: {
+            partyId: "$party._id",
+            companyId: "$companyName._id"
+          },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $and: [
+                    { $eq: ["$partyName", "$$partyId"] },
+                    { $eq: ["$companyName", "$$companyId"] }
+                  ]
+                }
+              }
+            },
+            { $sort: { createdAt: -1 } },
+            { $limit: 1 }
+          ],
+          as: "latestTask"
+        }
+      },
+      {
+        $unwind: {
+          path: "$latestTask",
+          preserveNullAndEmptyArrays: true
+        }
+      },
+      // Add lookup for assignedTo in latestTask
+      {
+        $lookup: {
+          from: "staffs",
+          localField: "latestTask.assignTo",
+          foreignField: "_id",
+          as: "latestTask.assignTo"
+        }
+      },
+      {
+        $unwind: {
+          path: "$latestTask.assignTo",
+          preserveNullAndEmptyArrays: true
+        }
+      }
     ];
 
     // Add match conditions for the main query and party filters
     const matchConditions = {};
 
     if (filters.company && filters.company.length > 0) {
-      pipeline.push({
-        $match: {
-          "companyName.companyName": { $in: filters.company },
-        },
-      });
+      matchConditions["companyName.companyName"] = { $in: filters.company };
     }
 
-    // FIXED: Create a clean match conditions object without circular references
+    // Create a clean match conditions object without circular references
     const mainQueryConditions = { ...query };
     const partyConditions = {};
 
@@ -526,6 +588,18 @@ exports.getAllAccountMasters = async (req, res) => {
       Object.assign(matchConditions, partyConditions);
     }
 
+    // Add remarks filter
+    if (filters.remarks && filters.remarks.length > 0) {
+      matchConditions.$or = filters.remarks.map(remark => ({
+        "latestTask.remarks": { $regex: remark, $options: "i" }
+      }));
+    }
+
+    // Add assignedTo filter
+    if (filters.assignedTo && filters.assignedTo.length > 0 && assignedToIds.length > 0) {
+      matchConditions["latestTask.assignTo._id"] = { $in: assignedToIds.map(id => mongoose.Types.ObjectId(id)) };
+    }
+
     if (Object.keys(matchConditions).length > 0) {
       pipeline.push({ $match: matchConditions });
     }
@@ -533,161 +607,63 @@ exports.getAllAccountMasters = async (req, res) => {
     // Add sorting
     pipeline.push({ $sort: { createdAt: -1 } });
 
-    // Execute the aggregation without pagination to get all results
-    let allAccountMasters = await AccountMaster.aggregate(pipeline);
+    // Prepare facet stages for pagination and counting
+    const facetStages = {
+      data: [
+        { $skip: isPagination ? (page - 1) * pageSize : 0 },
+        { $limit: isPagination ? pageSize : 1000000 } // Large number if no pagination
+      ],
+      count: [
+        { $count: "total" }
+      ]
+    };
 
-    // Get the latest tasks for each party-company combination
-    const assignTasks = await AssignTask.aggregate([
-      { $sort: { createdAt: -1 } },
-      {
-        $group: {
-          _id: { partyName: "$partyName", companyName: "$companyName" },
-          latestTask: { $first: "$$ROOT" },
-        },
-      },
-    ]);
-
-    const taskMap = {};
-    assignTasks.forEach((task) => {
-      const key = `${task._id.partyName}_${task._id.companyName}`;
-      taskMap[key] = task.latestTask;
-    });
-
-    // Enrich all account masters with task details
-    const enrichedAllAccountMasters = await Promise.all(
-      allAccountMasters.map(async (account) => {
-        const taskKey = `${account?.party?._id}_${account?.companyName?._id}`;
-        const latestTask = taskMap[taskKey];
-
-        let taskDetails = {
-          assignedTo: account.createdBy,
-          remarks: "NA",
-          status: "Not Started",
-        };
-
-        if (latestTask) {
-          const populatedTask = await AssignTask.populate(latestTask, {
-            path: "assignTo",
-            select: "firstName lastName email",
-          });
-
-          taskDetails = {
-            assignedTo: populatedTask.assignTo || account.createdBy,
-            remarks: populatedTask.remarks || "NA",
-            status: populatedTask.status || "Not Started",
-          };
-        }
-
-        // FIXED: Safely convert Mongoose documents to plain objects
-        const plainAccount = account.toObject ? account.toObject() : JSON.parse(JSON.stringify(account));
-
-        return {
-          _id: plainAccount._id,
-          companyName: {
-            _id: plainAccount.companyName?._id,
-            name: plainAccount.companyName?.companyName,
-            avatar: plainAccount.companyName?.avatar,
-          },
-          reasonToVisit: plainAccount.reasonToVisit,
-          createdAt: plainAccount.createdAt,
-          updatedAt: plainAccount.updatedAt,
-          createdBy: {
-            _id: plainAccount.createdBy?._id,
-            firstName: plainAccount.createdBy?.firstName,
-            lastName: plainAccount.createdBy?.lastName,
-            email: plainAccount.createdBy?.email
-          },
-          party: {
-            _id: plainAccount.party._id,
-            partyName: plainAccount.party.partyName,
-            ownerName: plainAccount.party.ownerName,
-            ownerMobileNo: plainAccount.party.ownerMobileNo,
-            ownerWhatsAppNo: plainAccount.party.ownerWhatsAppNo,
-            ownerEmail: plainAccount.party.ownerEmail || "N/A",
-            contactPerson: plainAccount.party.contactPerson,
-            personMobileNo: plainAccount.party.personMobileNo,
-            personWhatsAppNo: plainAccount.party.personWhatsAppNo,
-            contactPersonEmail: plainAccount.party.contactPersonEmail || "N/A",
-            contactForPayment: plainAccount.party.contactForPayment,
-            contactMobileNo: plainAccount.party.contactMobileNo,
-            contactWhatsAppNo: plainAccount.party.contactWhatsAppNo,
-            contactForPaymentEmail: plainAccount.party.contactForPaymentEmail || "N/A",
-            GSTNo: plainAccount.party.GSTNo,
-            address: plainAccount.party.address,
-            partyTag: plainAccount.party.partyTag,
-            statusApproval: plainAccount.party.statusApproval,
-            createdAt: plainAccount.party.createdAt,
-            updatedAt: plainAccount.party.updatedAt,
-          },
-          assignment: taskDetails,
-        };
-      })
-    );
-
-    // Apply additional filters for remarks and assignedTo
-    let filteredAccountMasters = [...enrichedAllAccountMasters];
-
-    // Remarks filter (direct match)
-    if (filters.remarks && filters.remarks.length > 0) {
-      filteredAccountMasters = filteredAccountMasters.filter(account =>
-        filters.remarks.some(remark =>
-          account.assignment.remarks.toLowerCase().includes(remark.toLowerCase())
-        )
-      );
-    }
-
-    // AssignedTo filter (populated from staff collection, matching firstName + lastName)
-    if (filters.assignedTo && filters.assignedTo.length > 0) {
-      const assignedToStaff = await Staff.find({
-        $or: [
-          { firstName: { $in: filters.assignedTo } },
-          { lastName: { $in: filters.assignedTo } },
-          {
-            $expr: {
-              $regexMatch: {
-                input: { $concat: ["$firstName", " ", "$lastName"] },
-                regex: new RegExp(filters.assignedTo.join("|"), "i")
+    // Add counts facet if requested
+    if (includeCounts) {
+      facetStages.counts = [
+        {
+          $group: {
+            _id: null,
+            approved: {
+              $sum: {
+                $cond: [{ $eq: ["$party.statusApproval", "APPROVED"] }, 1, 0]
               }
-            }
+            },
+            pending: {
+              $sum: {
+                $cond: [{ $eq: ["$party.statusApproval", "PENDING"] }, 1, 0]
+              }
+            },
+            total: { $sum: 1 }
           }
-        ]
-      }).select('_id').lean();
-
-      const assignedToIds = assignedToStaff.map(s => s._id.toString());
-
-      filteredAccountMasters = filteredAccountMasters.filter(acc => {
-        const assigned = acc.assignment?.assignedTo?._id?.toString();
-        return assigned && assignedToIds.includes(assigned);
-      });
+        }
+      ];
     }
 
+    // Add facet stage to pipeline
+    pipeline.push({ $facet: facetStages });
 
-    // Get the total count after all filters
-    const totalCount = filteredAccountMasters.length;
-
-    // Apply pagination if enabled
-    let enrichedAccountMasters = [...filteredAccountMasters];
-    if (isPagination) {
-      const startIndex = (page - 1) * pageSize;
-      const endIndex = startIndex + pageSize;
-      enrichedAccountMasters = filteredAccountMasters.slice(startIndex, endIndex);
-    }
-
-    // Calculate counts for status
+    // Execute the aggregation
+    const result = await AccountMaster.aggregate(pipeline);
+    const facetResult = result[0];
+    
+    // Extract data and counts
+    const enrichedAccountMasters = facetResult.data || [];
+    const totalCount = facetResult.count[0]?.total || 0;
+    
+    // Format counts
     let counts = {
       approved: 0,
       pending: 0,
       total: totalCount,
     };
 
-    if (includeCounts) {
-      filteredAccountMasters.forEach((account) => {
-        if (account.party.statusApproval === "APPROVED") {
-          counts.approved++;
-        } else if (account.party.statusApproval === "PENDING") {
-          counts.pending++;
-        }
-      });
+    if (includeCounts && facetResult.counts && facetResult.counts.length > 0) {
+      counts = {
+        approved: facetResult.counts[0].approved,
+        pending: facetResult.counts[0].pending,
+        total: facetResult.counts[0].total
+      };
     }
 
     // Prepare pagination information
@@ -1553,6 +1529,27 @@ exports.getAccountMasterByStaffId = async (req, res) => {
       includeCounts = false
     } = req.body;
 
+    // Pre-fetch staff IDs for assignedTo filter
+    let assignedToIds = [];
+    if (filters.assignedTo && filters.assignedTo.length > 0) {
+      const assignedToStaff = await Staff.find({
+        $or: [
+          { firstName: { $in: filters.assignedTo } },
+          { lastName: { $in: filters.assignedTo } },
+          {
+            $expr: {
+              $regexMatch: {
+                input: { $concat: ["$firstName", " ", "$lastName"] },
+                regex: new RegExp(filters.assignedTo.join("|"), "i")
+              }
+            }
+          }
+        ]
+      }).select('_id').lean();
+
+      assignedToIds = assignedToStaff.map(s => s._id.toString());
+    }
+
     // Base query object
     const query = {};
 
@@ -1607,7 +1604,6 @@ exports.getAccountMasterByStaffId = async (req, res) => {
       createdByIds = staffMatched.map(s => s._id);
 
       if (staffMatched.length > 0) {
-        // FIXED: Match on createdBy._id after lookup
         query["createdBy._id"] = { $in: createdByIds };
       }
     }
@@ -1788,20 +1784,62 @@ exports.getAccountMasterByStaffId = async (req, res) => {
           preserveNullAndEmptyArrays: true,
         },
       },
+      // Add lookup for latest task
+      {
+        $lookup: {
+          from: "assigntasks",
+          let: {
+            partyId: "$party._id",
+            companyId: "$companyName._id"
+          },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $and: [
+                    { $eq: ["$partyName", "$$partyId"] },
+                    { $eq: ["$companyName", "$$companyId"] }
+                  ]
+                }
+              }
+            },
+            { $sort: { createdAt: -1 } },
+            { $limit: 1 }
+          ],
+          as: "latestTask"
+        }
+      },
+      {
+        $unwind: {
+          path: "$latestTask",
+          preserveNullAndEmptyArrays: true
+        }
+      },
+      // Add lookup for assignedTo in latestTask
+      {
+        $lookup: {
+          from: "staffs",
+          localField: "latestTask.assignTo",
+          foreignField: "_id",
+          as: "latestTask.assignTo"
+        }
+      },
+      {
+        $unwind: {
+          path: "$latestTask.assignTo",
+          preserveNullAndEmptyArrays: true
+        }
+      }
     ];
 
     // Add match conditions for the main query and party filters
     const matchConditions = {};
 
     if (filters.company && filters.company.length > 0) {
-      pipeline.push({
-        $match: {
-          "companyName.companyName": { $in: filters.company },
-        },
-      });
+      matchConditions["companyName.companyName"] = { $in: filters.company };
     }
 
-    // FIXED: Create a clean match conditions object without circular references
+    // Create a clean match conditions object without circular references
     const mainQueryConditions = { ...query };
     const partyConditions = {};
 
@@ -1828,6 +1866,18 @@ exports.getAccountMasterByStaffId = async (req, res) => {
       Object.assign(matchConditions, partyConditions);
     }
 
+    // Add remarks filter
+    if (filters.remarks && filters.remarks.length > 0) {
+      matchConditions.$or = filters.remarks.map(remark => ({
+        "latestTask.remarks": { $regex: remark, $options: "i" }
+      }));
+    }
+
+    // Add assignedTo filter
+    if (filters.assignedTo && filters.assignedTo.length > 0 && assignedToIds.length > 0) {
+      matchConditions["latestTask.assignTo._id"] = { $in: assignedToIds.map(id => mongoose.Types.ObjectId(id)) };
+    }
+
     if (Object.keys(matchConditions).length > 0) {
       pipeline.push({ $match: matchConditions });
     }
@@ -1835,161 +1885,63 @@ exports.getAccountMasterByStaffId = async (req, res) => {
     // Add sorting
     pipeline.push({ $sort: { createdAt: -1 } });
 
-    // Execute the aggregation without pagination to get all results
-    let allAccountMasters = await AccountMaster.aggregate(pipeline);
+    // Prepare facet stages for pagination and counting
+    const facetStages = {
+      data: [
+        { $skip: isPagination ? (page - 1) * pageSize : 0 },
+        { $limit: isPagination ? pageSize : 1000000 } // Large number if no pagination
+      ],
+      count: [
+        { $count: "total" }
+      ]
+    };
 
-    // Get the latest tasks for each party-company combination
-    const assignTasks = await AssignTask.aggregate([
-      { $sort: { createdAt: -1 } },
-      {
-        $group: {
-          _id: { partyName: "$partyName", companyName: "$companyName" },
-          latestTask: { $first: "$$ROOT" },
-        },
-      },
-    ]);
-
-    const taskMap = {};
-    assignTasks.forEach((task) => {
-      const key = `${task._id.partyName}_${task._id.companyName}`;
-      taskMap[key] = task.latestTask;
-    });
-
-    // Enrich all account masters with task details
-    const enrichedAllAccountMasters = await Promise.all(
-      allAccountMasters.map(async (account) => {
-        const taskKey = `${account?.party?._id}_${account?.companyName?._id}`;
-        const latestTask = taskMap[taskKey];
-
-        let taskDetails = {
-          assignedTo: account.createdBy,
-          remarks: "NA",
-          status: "Not Started",
-        };
-
-        if (latestTask) {
-          const populatedTask = await AssignTask.populate(latestTask, {
-            path: "assignTo",
-            select: "firstName lastName email",
-          });
-
-          taskDetails = {
-            assignedTo: populatedTask.assignTo || account.createdBy,
-            remarks: populatedTask.remarks || "NA",
-            status: populatedTask.status || "Not Started",
-          };
-        }
-
-        // FIXED: Safely convert Mongoose documents to plain objects
-        const plainAccount = account.toObject ? account.toObject() : JSON.parse(JSON.stringify(account));
-
-        return {
-          _id: plainAccount._id,
-          companyName: {
-            _id: plainAccount.companyName?._id,
-            name: plainAccount.companyName?.companyName,
-            avatar: plainAccount.companyName?.avatar,
-          },
-          reasonToVisit: plainAccount.reasonToVisit,
-          createdAt: plainAccount.createdAt,
-          updatedAt: plainAccount.updatedAt,
-          createdBy: {
-            _id: plainAccount.createdBy?._id,
-            firstName: plainAccount.createdBy?.firstName,
-            lastName: plainAccount.createdBy?.lastName,
-            email: plainAccount.createdBy?.email
-          },
-          party: {
-            _id: plainAccount.party._id,
-            partyName: plainAccount.party.partyName,
-            ownerName: plainAccount.party.ownerName,
-            ownerMobileNo: plainAccount.party.ownerMobileNo,
-            ownerWhatsAppNo: plainAccount.party.ownerWhatsAppNo,
-            ownerEmail: plainAccount.party.ownerEmail || "N/A",
-            contactPerson: plainAccount.party.contactPerson,
-            personMobileNo: plainAccount.party.personMobileNo,
-            personWhatsAppNo: plainAccount.party.personWhatsAppNo,
-            contactPersonEmail: plainAccount.party.contactPersonEmail || "N/A",
-            contactForPayment: plainAccount.party.contactForPayment,
-            contactMobileNo: plainAccount.party.contactMobileNo,
-            contactWhatsAppNo: plainAccount.party.contactWhatsAppNo,
-            contactForPaymentEmail: plainAccount.party.contactForPaymentEmail || "N/A",
-            GSTNo: plainAccount.party.GSTNo,
-            address: plainAccount.party.address,
-            partyTag: plainAccount.party.partyTag,
-            statusApproval: plainAccount.party.statusApproval,
-            createdAt: plainAccount.party.createdAt,
-            updatedAt: plainAccount.party.updatedAt,
-            partyType: plainAccount.party.partyType || "",
-          },
-          assignment: taskDetails,
-        };
-      })
-    );
-
-    // Apply additional filters for remarks and assignedTo
-    let filteredAccountMasters = [...enrichedAllAccountMasters];
-
-    // Remarks filter (direct match)
-    if (filters.remarks && filters.remarks.length > 0) {
-      filteredAccountMasters = filteredAccountMasters.filter(account =>
-        filters.remarks.some(remark =>
-          account.assignment.remarks.toLowerCase().includes(remark.toLowerCase())
-        )
-      );
-    }
-
-    // AssignedTo filter (populated from staff collection, matching firstName + lastName)
-    if (filters.assignedTo && filters.assignedTo.length > 0) {
-      const assignedToStaff = await Staff.find({
-        $or: [
-          { firstName: { $in: filters.assignedTo } },
-          { lastName: { $in: filters.assignedTo } },
-          {
-            $expr: {
-              $regexMatch: {
-                input: { $concat: ["$firstName", " ", "$lastName"] },
-                regex: new RegExp(filters.assignedTo.join("|"), "i")
+    // Add counts facet if requested
+    if (includeCounts) {
+      facetStages.counts = [
+        {
+          $group: {
+            _id: null,
+            approved: {
+              $sum: {
+                $cond: [{ $eq: ["$party.statusApproval", "APPROVED"] }, 1, 0]
               }
-            }
+            },
+            pending: {
+              $sum: {
+                $cond: [{ $eq: ["$party.statusApproval", "PENDING"] }, 1, 0]
+              }
+            },
+            total: { $sum: 1 }
           }
-        ]
-      }).select('_id').lean();
-
-      const assignedToIds = assignedToStaff.map(s => s._id.toString());
-
-      filteredAccountMasters = filteredAccountMasters.filter(acc => {
-        const assigned = acc.assignment?.assignedTo?._id?.toString();
-        return assigned && assignedToIds.includes(assigned);
-      });
+        }
+      ];
     }
 
-    // Get the total count after all filters
-    const totalCount = filteredAccountMasters.length;
+    // Add facet stage to pipeline
+    pipeline.push({ $facet: facetStages });
 
-    // Apply pagination if enabled
-    let enrichedAccountMasters = [...filteredAccountMasters];
-    if (isPagination) {
-      const startIndex = (page - 1) * pageSize;
-      const endIndex = startIndex + pageSize;
-      enrichedAccountMasters = filteredAccountMasters.slice(startIndex, endIndex);
-    }
-
-    // Calculate counts for status
+    // Execute the aggregation
+    const result = await AccountMaster.aggregate(pipeline);
+    const facetResult = result[0];
+    
+    // Extract data and counts
+    const enrichedAccountMasters = facetResult.data || [];
+    const totalCount = facetResult.count[0]?.total || 0;
+    
+    // Format counts
     let counts = {
       approved: 0,
       pending: 0,
       total: totalCount,
     };
 
-    if (includeCounts) {
-      filteredAccountMasters.forEach((account) => {
-        if (account.party.statusApproval === "APPROVED") {
-          counts.approved++;
-        } else if (account.party.statusApproval === "PENDING") {
-          counts.pending++;
-        }
-      });
+    if (includeCounts && facetResult.counts && facetResult.counts.length > 0) {
+      counts = {
+        approved: facetResult.counts[0].approved,
+        pending: facetResult.counts[0].pending,
+        total: facetResult.counts[0].total
+      };
     }
 
     // Prepare pagination information

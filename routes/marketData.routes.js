@@ -11,7 +11,7 @@ const MarketDataController = require('../controllers/marketData.controller');
 router.post("/create", MarketDataController.createMarket);
 
 router.get("/getall", MarketDataController.getAllMarkets);
-router.get("/filters", MarketDataController.getMarketFilters);
+
 router.patch("/update/:id", MarketDataController.updateMarket);
 
 router.delete("/delete/:id", MarketDataController.deleteMarket);

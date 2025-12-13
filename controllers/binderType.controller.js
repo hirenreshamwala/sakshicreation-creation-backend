@@ -36,59 +36,14 @@ exports.createBinderType = async (req, res) => {
 // 🔹 Get all binder types
 exports.getAllBinderTypes = async (req, res) => {
   try {
-    const {
-      page = 1,
-      limit = 10,
-      search = "",
-      binderNames = [] // from filter
-    } = req.query;
-
-    const skip = (page - 1) * limit;
-    let filter = {};
-
-    if (search) {
-      filter.$or = [{ name: { $regex: search, $options: "i" } }];
-    }
-    if (binderNames.length) {
-      filter.name = { $in: binderNames };
-    }
-
-    const total = await BinderType.countDocuments(filter);
-    const binderTypes = await BinderType.find(filter)
-      .skip(Number(skip))
-      .limit(Number(limit))
-      .sort({ createdAt: -1 });
-
-    res.status(200).json({
-      success: true,
-      data: binderTypes,
-      pagination: {
-        currentPage: Number(page),
-        totalPages: Math.ceil(total / limit),
-        totalItems: total,
-        itemsPerPage: Number(limit)
-      }
-    });
+    const binderTypes = await BinderType.find().sort({ createdAt: -1 });
+    res.status(200).json({ success: true, data: binderTypes });
   } catch (error) {
     console.error("Error fetching binder types:", error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to fetch binder types"
-    });
+    res.status(500).json({ success: false, message: "Failed to fetch binder types", error: error.message });
   }
 };
 
-// GET FILTER OPTIONS
-exports.getBinderTypeFilters = async (req, res) => {
-  try {
-    const binderNames = await BinderType.distinct("name");
-    res.json({
-      binderNames: binderNames.sort()
-    });
-  } catch (err) {
-    res.status(500).json({ message: "Server error" });
-  }
-};
 // 🔹 Get binder type by ID
 exports.getBinderTypeById = async (req, res) => {
   try {
