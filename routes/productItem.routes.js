@@ -9,7 +9,7 @@ const upload = multer({ storage });
 router.post("/create", productItemController.createProductItem);
 
 router.get("/getall", productItemController.getAllProductItems);
-router.get('/filters', productItemController.getProductItemFilters);
+
 router.get("/getbyid/:id", productItemController.getProductItemById);
 
 router.put("/update/:id", productItemController.updateProductItem);
