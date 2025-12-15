@@ -236,6 +236,577 @@ exports.createAccountMaster = async (req, res) => {
   }
 };
 
+// exports.getAllAccountMasters = async (req, res) => {
+//   try {
+//     const {
+//       filters = {},
+//       search = "",
+//       startDate,
+//       endDate,
+//       isPagination = false,
+//       page = 1,
+//       pageSize = 10,
+//       includeCounts = false
+//     } = req.body;
+
+//     // ===== STEP 1: Build base query for AccountMaster (filter BEFORE lookups) =====
+//     const baseQuery = {};
+
+//     // Date range filter - apply early
+//     if (startDate || endDate) {
+//       baseQuery.createdAt = {};
+//       if (startDate) {
+//         const start = new Date(startDate);
+//         start.setHours(0, 0, 0, 0);
+//         baseQuery.createdAt.$gte = start;
+//       }
+//       if (endDate) {
+//         const end = new Date(endDate);
+//         end.setHours(23, 59, 59, 999);
+//         baseQuery.createdAt.$lte = end;
+//       }
+//     }
+
+//     // Reason filter - apply early
+//     if (filters.reason && filters.reason.length > 0) {
+//       baseQuery.reasonToVisit = { $in: filters.reason };
+//     }
+
+//     // ===== STEP 2: Pre-fetch related IDs for filters =====
+
+//     // CreatedBy filter
+//     if (filters.createdBy && filters.createdBy.length > 0) {
+//       const finalCond = [];
+//       filters.createdBy.forEach(full => {
+//         const parts = full.trim().split(" ");
+//         if (parts.length === 1) {
+//           finalCond.push({ firstName: parts[0] });
+//           finalCond.push({ lastName: parts[0] });
+//         } else {
+//           const first = parts[0];
+//           const last = parts.slice(1).join(" ");
+//           finalCond.push({ firstName: first, lastName: last });
+//         }
+//       });
+
+//       const staffMatched = await Staff.find({ $or: finalCond }).select('_id').lean();
+//       if (staffMatched.length > 0) {
+//         baseQuery.createdBy = { $in: staffMatched.map(s => s._id) };
+//       } else {
+//         // No matching staff found, return empty result
+//         return res.status(200).json({
+//           success: true,
+//           data: [],
+//           pagination: isPagination ? {
+//             currentPage: page,
+//             pageSize: pageSize,
+//             totalCount: 0,
+//             totalPages: 0,
+//             hasNext: false,
+//             hasPrev: false,
+//             counts: { approved: 0, pending: 0, total: 0 }
+//           } : null,
+//           counts: { approved: 0, pending: 0, total: 0 }
+//         });
+//       }
+//     }
+
+//     // Company filter
+//     let companyIds = [];
+//     if (filters.company && filters.company.length > 0) {
+//       const companies = await CompanyName.find({
+//         companyName: { $in: filters.company }
+//       }).select('_id').lean();
+
+//       if (companies.length > 0) {
+//         companyIds = companies.map(c => c._id);
+//         baseQuery.companyName = { $in: companyIds };
+//       } else {
+//         return res.status(200).json({
+//           success: true,
+//           data: [],
+//           pagination: isPagination ? {
+//             currentPage: page,
+//             pageSize: pageSize,
+//             totalCount: 0,
+//             totalPages: 0,
+//             hasNext: false,
+//             hasPrev: false,
+//             counts: { approved: 0, pending: 0, total: 0 }
+//           } : null,
+//           counts: { approved: 0, pending: 0, total: 0 }
+//         });
+//       }
+//     }
+
+//     // Party filters - get party IDs that match filters
+//     let partyIds = null;
+//     const partyQuery = {};
+
+//     if (filters.party && filters.party.length > 0) {
+//       partyQuery.partyName = { $in: filters.party };
+//     }
+//     if (filters.contactPerson && filters.contactPerson.length > 0) {
+//       partyQuery.contactPerson = { $in: filters.contactPerson };
+//     }
+//     if (filters.partyTag && filters.partyTag.length > 0) {
+//       partyQuery.partyTag = { $in: filters.partyTag };
+//     }
+//     if (filters.mobile && filters.mobile.length > 0) {
+//       partyQuery.ownerMobileNo = { $in: filters.mobile };
+//     }
+//     if (filters.unitNo && filters.unitNo.length > 0) {
+//       partyQuery["address.unitNo"] = { $in: filters.unitNo };
+//     }
+//     if (filters.status && filters.status.length > 0) {
+//       partyQuery.statusApproval = { $in: filters.status };
+//     }
+
+//     // Market filter
+//     if (filters.market && filters.market.length > 0) {
+//       const markets = await Market.find({
+//         marketName: { $in: filters.market }
+//       }).select('_id').lean();
+//       if (markets.length > 0) {
+//         partyQuery["address.marketName"] = { $in: markets.map(m => m._id) };
+//       }
+//     }
+
+//     // Area filter
+//     if (filters.area && filters.area.length > 0) {
+//       const areas = await Market.find({
+//         area: { $in: filters.area }
+//       }).select('_id').lean();
+//       if (areas.length > 0) {
+//         partyQuery["address.area"] = { $in: areas.map(a => a._id) };
+//       }
+//     }
+
+//     // Search in party fields
+//     if (search) {
+//       partyQuery.$or = [
+//         { partyName: { $regex: search, $options: "i" } },
+//         { ownerName: { $regex: search, $options: "i" } },
+//         { ownerMobileNo: { $regex: search, $options: "i" } },
+//         { ownerWhatsAppNo: { $regex: search, $options: "i" } },
+//         { contactPerson: { $regex: search, $options: "i" } },
+//         { personMobileNo: { $regex: search, $options: "i" } },
+//         { personWhatsAppNo: { $regex: search, $options: "i" } },
+//         { contactForPayment: { $regex: search, $options: "i" } },
+//         { contactMobileNo: { $regex: search, $options: "i" } },
+//         { contactWhatsAppNo: { $regex: search, $options: "i" } },
+//         { GSTNo: { $regex: search, $options: "i" } },
+//         { "address.unitNo": { $regex: search, $options: "i" } }
+//       ];
+//     }
+
+//     // If we have party filters or search, get matching party IDs
+//     if (Object.keys(partyQuery).length > 0) {
+//       const matchingParties = await Party.find(partyQuery).select('_id').lean();
+//       if (matchingParties.length > 0) {
+//         partyIds = matchingParties.map(p => p._id);
+//         baseQuery.party = { $in: partyIds };
+//       } else {
+//         return res.status(200).json({
+//           success: true,
+//           data: [],
+//           pagination: isPagination ? {
+//             currentPage: page,
+//             pageSize: pageSize,
+//             totalCount: 0,
+//             totalPages: 0,
+//             hasNext: false,
+//             hasPrev: false,
+//             counts: { approved: 0, pending: 0, total: 0 }
+//           } : null,
+//           counts: { approved: 0, pending: 0, total: 0 }
+//         });
+//       }
+//     }
+
+//     // ===== STEP 3: Handle assignedTo and remarks filters (requires task lookup) =====
+//     let taskFilteredAccountMasterIds = null;
+
+//     if ((filters.assignedTo && filters.assignedTo.length > 0) ||
+//       (filters.remarks && filters.remarks.length > 0)) {
+
+//       const taskQuery = {};
+
+//       // AssignedTo filter
+//       if (filters.assignedTo && filters.assignedTo.length > 0) {
+//         const assignedToStaff = await Staff.find({
+//           $or: [
+//             { firstName: { $in: filters.assignedTo } },
+//             { lastName: { $in: filters.assignedTo } },
+//             {
+//               $expr: {
+//                 $regexMatch: {
+//                   input: { $concat: ["$firstName", " ", "$lastName"] },
+//                   regex: new RegExp(filters.assignedTo.join("|"), "i")
+//                 }
+//               }
+//             }
+//           ]
+//         }).select('_id').lean();
+
+//         if (assignedToStaff.length > 0) {
+//           taskQuery.assignTo = { $in: assignedToStaff.map(s => s._id) };
+//         } else {
+//           return res.status(200).json({
+//             success: true,
+//             data: [],
+//             pagination: isPagination ? {
+//               currentPage: page,
+//               pageSize: pageSize,
+//               totalCount: 0,
+//               totalPages: 0,
+//               hasNext: false,
+//               hasPrev: false,
+//               counts: { approved: 0, pending: 0, total: 0 }
+//             } : null,
+//             counts: { approved: 0, pending: 0, total: 0 }
+//           });
+//         }
+//       }
+
+//       // Remarks filter
+//       if (filters.remarks && filters.remarks.length > 0) {
+//         taskQuery.$or = filters.remarks.map(remark => ({
+//           remarks: { $regex: remark, $options: "i" }
+//         }));
+//       }
+
+//       // If we have company filter, add it to task query
+//       if (companyIds.length > 0) {
+//         taskQuery.companyName = { $in: companyIds };
+//       }
+
+//       // If we have party filter, add it to task query
+//       if (partyIds) {
+//         taskQuery.partyName = { $in: partyIds };
+//       }
+
+//       // Get latest tasks that match the criteria
+//       const matchingTasks = await AssignTask.aggregate([
+//         { $match: taskQuery },
+//         { $sort: { createdAt: -1 } },
+//         {
+//           $group: {
+//             _id: { partyName: "$partyName", companyName: "$companyName" },
+//             latestTask: { $first: "$$ROOT" }
+//           }
+//         }
+//       ]);
+
+//       if (matchingTasks.length > 0) {
+//         // Extract unique party-company combinations
+//         const partyCompanyCombos = matchingTasks.map(t => ({
+//           party: t._id.partyName,
+//           company: t._id.companyName
+//         }));
+
+//         // Find AccountMasters with these combinations
+//         const accountMastersWithTasks = await AccountMaster.find({
+//           ...baseQuery,
+//           $or: partyCompanyCombos.map(combo => ({
+//             party: combo.party,
+//             companyName: combo.company
+//           }))
+//         }).select('_id').lean();
+
+//         if (accountMastersWithTasks.length > 0) {
+//           taskFilteredAccountMasterIds = accountMastersWithTasks.map(am => am._id);
+//         } else {
+//           return res.status(200).json({
+//             success: true,
+//             data: [],
+//             pagination: isPagination ? {
+//               currentPage: page,
+//               pageSize: pageSize,
+//               totalCount: 0,
+//               totalPages: 0,
+//               hasNext: false,
+//               hasPrev: false,
+//               counts: { approved: 0, pending: 0, total: 0 }
+//             } : null,
+//             counts: { approved: 0, pending: 0, total: 0 }
+//           });
+//         }
+//       } else {
+//         return res.status(200).json({
+//           success: true,
+//           data: [],
+//           pagination: isPagination ? {
+//             currentPage: page,
+//             pageSize: pageSize,
+//             totalCount: 0,
+//             totalPages: 0,
+//             hasNext: false,
+//             hasPrev: false,
+//             counts: { approved: 0, pending: 0, total: 0 }
+//           } : null,
+//           counts: { approved: 0, pending: 0, total: 0 }
+//         });
+//       }
+//     }
+
+//     // Add task-filtered IDs to base query if applicable
+//     if (taskFilteredAccountMasterIds) {
+//       baseQuery._id = { $in: taskFilteredAccountMasterIds };
+//     }
+
+//     // ===== STEP 4: Get total count with filters =====
+//     const totalCount = await AccountMaster.countDocuments(baseQuery);
+
+//     if (totalCount === 0) {
+//       return res.status(200).json({
+//         success: true,
+//         data: [],
+//         pagination: isPagination ? {
+//           currentPage: page,
+//           pageSize: pageSize,
+//           totalCount: 0,
+//           totalPages: 0,
+//           hasNext: false,
+//           hasPrev: false,
+//           counts: { approved: 0, pending: 0, total: 0 }
+//         } : null,
+//         counts: { approved: 0, pending: 0, total: 0 }
+//       });
+//     }
+
+//     // ===== STEP 5: Get status counts if needed =====
+//     let counts = { approved: 0, pending: 0, total: totalCount };
+
+//     if (includeCounts && partyIds) {
+//       const statusCounts = await Party.aggregate([
+//         { $match: { _id: { $in: partyIds } } },
+//         {
+//           $group: {
+//             _id: "$statusApproval",
+//             count: { $sum: 1 }
+//           }
+//         }
+//       ]);
+
+//       statusCounts.forEach(sc => {
+//         if (sc._id === "APPROVED") counts.approved = sc.count;
+//         if (sc._id === "PENDING") counts.pending = sc.count;
+//       });
+//     }
+
+//     // ===== STEP 6: Build aggregation pipeline with pagination =====
+//     const pipeline = [
+//       { $match: baseQuery },
+//       { $sort: { createdAt: -1 } },
+//       { $skip: isPagination ? (page - 1) * pageSize : 0 },
+//       { $limit: isPagination ? pageSize : totalCount },
+//       // Now do lookups only on the paginated subset
+//       {
+//         $lookup: {
+//           from: "parties",
+//           localField: "party",
+//           foreignField: "_id",
+//           as: "party"
+//         }
+//       },
+//       { $unwind: { path: "$party", preserveNullAndEmptyArrays: false } },
+//       // CreatedBy lookup with only firstName and lastName
+//       {
+//         $lookup: {
+//           from: "staffs",
+//           localField: "createdBy",
+//           foreignField: "_id",
+//           as: "createdBy",
+//           pipeline: [
+//             {
+//               $project: {
+//                 firstName: 1,
+//                 lastName: 1,
+//                 _id: 1
+//               }
+//             }
+//           ]
+//         }
+//       },
+//       { $unwind: { path: "$createdBy", preserveNullAndEmptyArrays: true } },
+//       // CompanyName lookup with only companyName and avtar
+//       {
+//         $lookup: {
+//           from: "companynames",
+//           localField: "companyName",
+//           foreignField: "_id",
+//           as: "companyName",
+//           pipeline: [
+//             {
+//               $project: {
+//                 companyName: 1,
+//                 avtar: 1,
+//                 _id: 1
+//               }
+//             }
+//           ]
+//         }
+//       },
+//       { $unwind: { path: "$companyName", preserveNullAndEmptyArrays: true } },
+//       // MarketName lookup with only marketName
+//       {
+//         $lookup: {
+//           from: "markets",
+//           localField: "party.address.marketName",
+//           foreignField: "_id",
+//           as: "party.address.marketName",
+//           pipeline: [
+//             {
+//               $project: {
+//                 marketName: 1,
+//                 _id: 1
+//               }
+//             }
+//           ]
+//         }
+//       },
+//       { $unwind: { path: "$party.address.marketName", preserveNullAndEmptyArrays: true } },
+      
+//       {
+//         $lookup: {
+//           from: "markets",
+//           localField: "party.address.area",
+//           foreignField: "_id",
+//           as: "party.address.area",
+//           pipeline: [
+//             {
+//               $project: {
+//                 area: 1,
+//                 _id: 1
+//               }
+//             }
+//           ]
+//         }
+//       },
+//       { $unwind: { path: "$party.address.area", preserveNullAndEmptyArrays: true } },
+     
+//       {
+//         $lookup: {
+//           from: "assigntasks",
+//           let: { partyId: "$party._id", companyId: "$companyName._id" },
+//           pipeline: [
+//             {
+//               $match: {
+//                 $expr: {
+//                   $and: [
+//                     { $eq: ["$partyName", "$$partyId"] },
+//                     { $eq: ["$companyName", "$$companyId"] }
+//                   ]
+//                 }
+//               }
+//             },
+//             { $sort: { createdAt: -1 } },
+//             { $limit: 1 },
+//             // Only select required fields
+//             {
+//               $project: {
+//                 remarks: 1,
+//                 status: 1,
+//                 assignTo: 1,
+//                 createdAt: 1,
+//                 updatedAt: 1
+//               }
+//             }
+//           ],
+//           as: "latestTask"
+//         }
+//       },
+//       { $unwind: { path: "$latestTask", preserveNullAndEmptyArrays: true } },
+//       // Populate assignTo with only firstName and lastName
+//       {
+//         $lookup: {
+//           from: "staffs",
+//           let: { assignToId: "$latestTask.assignTo" },
+//           pipeline: [
+//             {
+//               $match: {
+//                 $expr: { $eq: ["$_id", "$$assignToId"] }
+//               }
+//             },
+//             {
+//               $project: {
+//                 firstName: 1,
+//                 lastName: 1,
+//                 _id: 1
+//               }
+//             }
+//           ],
+//           as: "latestTask.assignTo"
+//         }
+//       },
+//       { $unwind: { path: "$latestTask.assignTo", preserveNullAndEmptyArrays: true } },
+//       // Clean up the structure to keep only required fields
+//       {
+//         $addFields: {
+//           // createdBy cleanup
+//           createdBy: {
+//             firstName: "$createdBy.firstName",
+//             lastName: "$createdBy.lastName"
+//           },
+//           // companyName cleanup
+//           companyName: {
+//             companyName: "$companyName.companyName",
+//             avtar: "$companyName.avtar"
+//           },
+//           // party.address cleanup
+//           "party.address": {
+//             unitNo: "$party.address.unitNo",
+//             marketName: "$party.address.marketName.marketName",
+//             area: "$party.address.area.area",
+//           },
+//           // latestTask cleanup
+//           latestTask: {
+//             remarks: "$latestTask.remarks",
+//             status: "$latestTask.status",
+//             assignTo: {
+//               firstName: "$latestTask.assignTo.firstName",
+//               lastName: "$latestTask.assignTo.lastName"
+//             },
+//             createdAt: "$latestTask.createdAt",
+//             updatedAt: "$latestTask.updatedAt"
+//           }
+//         }
+//       }
+//     ];
+
+//     // Execute the aggregation
+//     const enrichedAccountMasters = await AccountMaster.aggregate(pipeline);
+
+//     // Prepare pagination information
+//     const pagination = isPagination ? {
+//       currentPage: page,
+//       pageSize: pageSize,
+//       totalCount: totalCount,
+//       totalPages: Math.ceil(totalCount / pageSize),
+//       hasNext: page < Math.ceil(totalCount / pageSize),
+//       hasPrev: page > 1,
+//       counts: counts
+//     } : null;
+
+//     res.status(200).json({
+//       success: true,
+//       data: enrichedAccountMasters,
+//       pagination: pagination,
+//       counts: counts
+//     });
+
+//   } catch (error) {
+//     console.error("Error getting account masters:", error);
+//     res.status(500).json({
+//       success: false,
+//       message: "Failed to fetch account masters",
+//       error: error.message
+//     });
+//   }
+// };
+
+
 exports.getAllAccountMasters = async (req, res) => {
   try {
     const {
@@ -249,271 +820,473 @@ exports.getAllAccountMasters = async (req, res) => {
       includeCounts = false
     } = req.body;
 
-    // Pre-fetch staff IDs for assignedTo filter
-    let assignedToIds = [];
-    if (filters.assignedTo && filters.assignedTo.length > 0) {
-      const assignedToStaff = await Staff.find({
-        $or: [
-          { firstName: { $in: filters.assignedTo } },
-          { lastName: { $in: filters.assignedTo } },
-          {
-            $expr: {
-              $regexMatch: {
-                input: { $concat: ["$firstName", " ", "$lastName"] },
-                regex: new RegExp(filters.assignedTo.join("|"), "i")
-              }
-            }
-          }
-        ]
-      }).select('_id').lean();
+    // ===== STEP 1: Build base query for AccountMaster (filter BEFORE lookups) =====
+    const baseQuery = {};
 
-      assignedToIds = assignedToStaff.map(s => s._id.toString());
-    }
-
-    // Base query object
-    const query = {};
-
-    // Search functionality - search across multiple fields
-    if (search) {
-      query.$or = [
-        { "reasonToVisit": { $regex: search, $options: "i" } },
-        { "party.partyName": { $regex: search, $options: "i" } },
-        { "party.ownerName": { $regex: search, $options: "i" } },
-        { "party.ownerMobileNo": { $regex: search, $options: "i" } },
-        { "party.ownerWhatsAppNo": { $regex: search, $options: "i" } },
-        { "party.contactPerson": { $regex: search, $options: "i" } },
-        { "party.personMobileNo": { $regex: search, $options: "i" } },
-        { "party.personWhatsAppNo": { $regex: search, $options: "i" } },
-        { "party.contactForPayment": { $regex: search, $options: "i" } },
-        { "party.contactMobileNo": { $regex: search, $options: "i" } },
-        { "party.contactWhatsAppNo": { $regex: search, $options: "i" } },
-        { "party.GSTNo": { $regex: search, $options: "i" } },
-        { "party.address.unitNo": { $regex: search, $options: "i" } },
-        { "party.address.marketName.marketName": { $regex: search, $options: "i" } },
-        { "party.address.landMark.landmark": { $regex: search, $options: "i" } },
-        { "party.address.area.area": { $regex: search, $options: "i" } },
-        { "party.address.pincode.pincode": { $regex: search, $options: "i" } },
-        { "createdBy.firstName": { $regex: search, $options: "i" } },
-        { "createdBy.lastName": { $regex: search, $options: "i" } },
-      ];
-    }
-
-    // createdBy filter
-    let createdByIds = [];
-    if (filters.createdBy && filters.createdBy.length > 0) {
-      const finalCond = [];
-
-      filters.createdBy.forEach(full => {
-        const parts = full.trim().split(" ");
-
-        if (parts.length === 1) {
-          // Only first or only last name
-          finalCond.push({ firstName: parts[0] });
-          finalCond.push({ lastName: parts[0] });
-        } else {
-          // Full name case
-          const first = parts[0];
-          const last = parts.slice(1).join(" ");
-
-          finalCond.push({
-            firstName: first,
-            lastName: last
-          });
-        }
-      });
-
-      const staffMatched = await Staff.find({ $or: finalCond }).select('_id').lean();
-      createdByIds = staffMatched.map(s => s._id);
-
-      if (staffMatched.length > 0) {
-        query["createdBy._id"] = { $in: createdByIds };
-      }
-    }
-
-    // reasonToVisit filter (direct match)
-    if (filters.reason && filters.reason.length > 0) {
-      query.reasonToVisit = { $in: filters.reason };
-    }
-
-    // Date range filter (direct match)
+    // Date range filter - apply early
     if (startDate || endDate) {
-      query.createdAt = {};
+      baseQuery.createdAt = {};
       if (startDate) {
         const start = new Date(startDate);
         start.setHours(0, 0, 0, 0);
-        query.createdAt.$gte = start;
+        baseQuery.createdAt.$gte = start;
       }
       if (endDate) {
         const end = new Date(endDate);
         end.setHours(23, 59, 59, 999);
-        query.createdAt.$lte = end;
+        baseQuery.createdAt.$lte = end;
       }
     }
 
-    let partyMatch = {};
+    // Reason filter - apply early
+    if (filters.reason && filters.reason.length > 0) {
+      baseQuery.reasonToVisit = { $in: filters.reason };
+    }
 
-    // Party name filter (populated from parties collection)
+    // ===== STEP 2: Pre-fetch related IDs for filters =====
+
+    // CreatedBy filter
+    if (filters.createdBy && filters.createdBy.length > 0) {
+      const finalCond = [];
+      filters.createdBy.forEach(full => {
+        const parts = full.trim().split(" ");
+        if (parts.length === 1) {
+          finalCond.push({ firstName: parts[0] });
+          finalCond.push({ lastName: parts[0] });
+        } else {
+          const first = parts[0];
+          const last = parts.slice(1).join(" ");
+          finalCond.push({ firstName: first, lastName: last });
+        }
+      });
+
+      const staffMatched = await Staff.find({ $or: finalCond }).select('_id').lean();
+      if (staffMatched.length > 0) {
+        baseQuery.createdBy = { $in: staffMatched.map(s => s._id) };
+      } else {
+        // No matching staff found, return empty result
+        return res.status(200).json({
+          success: true,
+          data: [],
+          pagination: isPagination ? {
+            currentPage: page,
+            pageSize: pageSize,
+            totalCount: 0,
+            totalPages: 0,
+            hasNext: false,
+            hasPrev: false,
+            counts: { approved: 0, pending: 0, total: 0 }
+          } : null,
+          counts: { approved: 0, pending: 0, total: 0 }
+        });
+      }
+    }
+
+    // Company filter
+    let companyIds = [];
+    if (filters.company && filters.company.length > 0) {
+      const companies = await CompanyName.find({
+        companyName: { $in: filters.company }
+      }).select('_id').lean();
+
+      if (companies.length > 0) {
+        companyIds = companies.map(c => c._id);
+        baseQuery.companyName = { $in: companyIds };
+      } else {
+        return res.status(200).json({
+          success: true,
+          data: [],
+          pagination: isPagination ? {
+            currentPage: page,
+            pageSize: pageSize,
+            totalCount: 0,
+            totalPages: 0,
+            hasNext: false,
+            hasPrev: false,
+            counts: { approved: 0, pending: 0, total: 0 }
+          } : null,
+          counts: { approved: 0, pending: 0, total: 0 }
+        });
+      }
+    }
+
+    // Party filters - get party IDs that match filters
+    let partyIds = null;
+    const partyQuery = {};
+
     if (filters.party && filters.party.length > 0) {
-      partyMatch.partyName = { $in: filters.party };
+      partyQuery.partyName = { $in: filters.party };
     }
-
-    // Contact person filter (direct match)
     if (filters.contactPerson && filters.contactPerson.length > 0) {
-      partyMatch.contactPerson = { $in: filters.contactPerson };
+      partyQuery.contactPerson = { $in: filters.contactPerson };
     }
-
-    // Party tag filter (direct match)
     if (filters.partyTag && filters.partyTag.length > 0) {
-      partyMatch.partyTag = { $in: filters.partyTag };
+      partyQuery.partyTag = { $in: filters.partyTag };
     }
-
-    // Mobile number filters (matching ownerMobileNo)
     if (filters.mobile && filters.mobile.length > 0) {
-      partyMatch.ownerMobileNo = { $in: filters.mobile };
+      partyQuery.ownerMobileNo = { $in: filters.mobile };
     }
-
-    // Unit number filter (matching party.address.unitNo)
     if (filters.unitNo && filters.unitNo.length > 0) {
-      partyMatch["address.unitNo"] = { $in: filters.unitNo };
+      partyQuery["address.unitNo"] = { $in: filters.unitNo };
+    }
+    if (filters.status && filters.status.length > 0) {
+      partyQuery.statusApproval = { $in: filters.status };
     }
 
-    // Market filter (populated from markets collection)
+    // Market filter
     if (filters.market && filters.market.length > 0) {
-      // First get market IDs that match the market names
       const markets = await Market.find({
         marketName: { $in: filters.market }
       }).select('_id').lean();
-
       if (markets.length > 0) {
-        partyMatch["address.marketName._id"] = { $in: markets.map(m => m._id) };
+        partyQuery["address.marketName"] = { $in: markets.map(m => m._id) };
       }
     }
 
-    // Area filter (populated from markets collection)
+    // Area filter
     if (filters.area && filters.area.length > 0) {
-      // First get area IDs that match the area names
       const areas = await Market.find({
         area: { $in: filters.area }
       }).select('_id').lean();
-
       if (areas.length > 0) {
-        partyMatch["address.area._id"] = { $in: areas.map(area => area._id) };
+        partyQuery["address.area"] = { $in: areas.map(a => a._id) };
       }
     }
 
-    // Status filter (direct match)
-    if (filters.status && filters.status.length > 0) {
-      partyMatch.statusApproval = { $in: filters.status };
+    // Search in party fields
+    if (search) {
+      partyQuery.$or = [
+        { partyName: { $regex: search, $options: "i" } },
+        { ownerName: { $regex: search, $options: "i" } },
+        { ownerMobileNo: { $regex: search, $options: "i" } },
+        { ownerWhatsAppNo: { $regex: search, $options: "i" } },
+        { contactPerson: { $regex: search, $options: "i" } },
+        { personMobileNo: { $regex: search, $options: "i" } },
+        { personWhatsAppNo: { $regex: search, $options: "i" } },
+        { contactForPayment: { $regex: search, $options: "i" } },
+        { contactMobileNo: { $regex: search, $options: "i" } },
+        { contactWhatsAppNo: { $regex: search, $options: "i" } },
+        { GSTNo: { $regex: search, $options: "i" } },
+        { "address.unitNo": { $regex: search, $options: "i" } }
+      ];
     }
 
-    // Create the aggregation pipeline
-    let pipeline = [
+    // If we have party filters or search, get matching party IDs
+    if (Object.keys(partyQuery).length > 0) {
+      const matchingParties = await Party.find(partyQuery).select('_id').lean();
+      if (matchingParties.length > 0) {
+        partyIds = matchingParties.map(p => p._id);
+        baseQuery.party = { $in: partyIds };
+      } else {
+        return res.status(200).json({
+          success: true,
+          data: [],
+          pagination: isPagination ? {
+            currentPage: page,
+            pageSize: pageSize,
+            totalCount: 0,
+            totalPages: 0,
+            hasNext: false,
+            hasPrev: false,
+            counts: { approved: 0, pending: 0, total: 0 }
+          } : null,
+          counts: { approved: 0, pending: 0, total: 0 }
+        });
+      }
+    }
+
+    // ===== STEP 3: Handle assignedTo and remarks filters (requires task lookup) =====
+    let taskFilteredAccountMasterIds = null;
+
+    if ((filters.assignedTo && filters.assignedTo.length > 0) ||
+      (filters.remarks && filters.remarks.length > 0)) {
+
+      const taskQuery = {};
+
+      // AssignedTo filter
+      if (filters.assignedTo && filters.assignedTo.length > 0) {
+        const assignedToStaff = await Staff.find({
+          $or: [
+            { firstName: { $in: filters.assignedTo } },
+            { lastName: { $in: filters.assignedTo } },
+            {
+              $expr: {
+                $regexMatch: {
+                  input: { $concat: ["$firstName", " ", "$lastName"] },
+                  regex: new RegExp(filters.assignedTo.join("|"), "i")
+                }
+              }
+            }
+          ]
+        }).select('_id').lean();
+
+        if (assignedToStaff.length > 0) {
+          taskQuery.assignTo = { $in: assignedToStaff.map(s => s._id) };
+        } else {
+          return res.status(200).json({
+            success: true,
+            data: [],
+            pagination: isPagination ? {
+              currentPage: page,
+              pageSize: pageSize,
+              totalCount: 0,
+              totalPages: 0,
+              hasNext: false,
+              hasPrev: false,
+              counts: { approved: 0, pending: 0, total: 0 }
+            } : null,
+            counts: { approved: 0, pending: 0, total: 0 }
+          });
+        }
+      }
+
+      // Remarks filter
+      if (filters.remarks && filters.remarks.length > 0) {
+        taskQuery.$or = filters.remarks.map(remark => ({
+          remarks: { $regex: remark, $options: "i" }
+        }));
+      }
+
+      // If we have company filter, add it to task query
+      if (companyIds.length > 0) {
+        taskQuery.companyName = { $in: companyIds };
+      }
+
+      // If we have party filter, add it to task query
+      if (partyIds) {
+        taskQuery.partyName = { $in: partyIds };
+      }
+
+      // Get latest tasks that match the criteria
+      const matchingTasks = await AssignTask.aggregate([
+        { $match: taskQuery },
+        { $sort: { createdAt: -1 } },
+        {
+          $group: {
+            _id: { partyName: "$partyName", companyName: "$companyName" },
+            latestTask: { $first: "$$ROOT" }
+          }
+        }
+      ]);
+
+      if (matchingTasks.length > 0) {
+        // Extract unique party-company combinations
+        const partyCompanyCombos = matchingTasks.map(t => ({
+          party: t._id.partyName,
+          company: t._id.companyName
+        }));
+
+        // Find AccountMasters with these combinations
+        const accountMastersWithTasks = await AccountMaster.find({
+          ...baseQuery,
+          $or: partyCompanyCombos.map(combo => ({
+            party: combo.party,
+            companyName: combo.company
+          }))
+        }).select('_id').lean();
+
+        if (accountMastersWithTasks.length > 0) {
+          taskFilteredAccountMasterIds = accountMastersWithTasks.map(am => am._id);
+        } else {
+          return res.status(200).json({
+            success: true,
+            data: [],
+            pagination: isPagination ? {
+              currentPage: page,
+              pageSize: pageSize,
+              totalCount: 0,
+              totalPages: 0,
+              hasNext: false,
+              hasPrev: false,
+              counts: { approved: 0, pending: 0, total: 0 }
+            } : null,
+            counts: { approved: 0, pending: 0, total: 0 }
+          });
+        }
+      } else {
+        return res.status(200).json({
+          success: true,
+          data: [],
+          pagination: isPagination ? {
+            currentPage: page,
+            pageSize: pageSize,
+            totalCount: 0,
+            totalPages: 0,
+            hasNext: false,
+            hasPrev: false,
+            counts: { approved: 0, pending: 0, total: 0 }
+          } : null,
+          counts: { approved: 0, pending: 0, total: 0 }
+        });
+      }
+    }
+
+    // Add task-filtered IDs to base query if applicable
+    if (taskFilteredAccountMasterIds) {
+      baseQuery._id = { $in: taskFilteredAccountMasterIds };
+    }
+
+    // ===== STEP 4: Get total count with filters =====
+    const totalCount = await AccountMaster.countDocuments(baseQuery);
+
+    if (totalCount === 0) {
+      return res.status(200).json({
+        success: true,
+        data: [],
+        pagination: isPagination ? {
+          currentPage: page,
+          pageSize: pageSize,
+          totalCount: 0,
+          totalPages: 0,
+          hasNext: false,
+          hasPrev: false,
+          counts: { approved: 0, pending: 0, total: 0 }
+        } : null,
+        counts: { approved: 0, pending: 0, total: 0 }
+      });
+    }
+
+    // ===== STEP 5: Get status counts if needed =====
+    let counts = { approved: 0, pending: 0, total: totalCount };
+
+    if (includeCounts && partyIds) {
+      const statusCounts = await Party.aggregate([
+        { $match: { _id: { $in: partyIds } } },
+        {
+          $group: {
+            _id: "$statusApproval",
+            count: { $sum: 1 }
+          }
+        }
+      ]);
+
+      statusCounts.forEach(sc => {
+        if (sc._id === "APPROVED") counts.approved = sc.count;
+        if (sc._id === "PENDING") counts.pending = sc.count;
+      });
+    }
+
+    // ===== STEP 6: Build aggregation pipeline with pagination =====
+    const pipeline = [
+      { $match: baseQuery },
+      { $sort: { createdAt: -1 } },
+      { $skip: isPagination ? (page - 1) * pageSize : 0 },
+      { $limit: isPagination ? pageSize : totalCount },
+      // Now do lookups only on the paginated subset
       {
         $lookup: {
           from: "parties",
           localField: "party",
           foreignField: "_id",
           as: "party",
-        },
+          // Select only required fields from Party collection
+          pipeline: [
+            {
+              $project: {
+                partyName: 1,
+                partyTag: 1,
+                ownerMobileNo: 1,
+                ownerWhatsAppNo: 1,
+                contactPerson: 1,
+                personMobileNo: 1,
+                personWhatsAppNo: 1,
+                contactForPayment: 1,
+                contactMobileNo: 1,
+                contactWhatsAppNo: 1,
+                GSTNo: 1,
+                statusApproval: 1,
+                "address.unitNo": 1,
+                "address.marketName": 1,
+                "address.area": 1,
+                _id: 1
+                // Excluded fields: contactForPaymentEmail, contactPersonEmail, 
+                // ownerName, ownerEmail, createdAt, updatedAt, __v
+              }
+            }
+          ]
+        }
       },
-      {
-        $unwind: {
-          path: "$party",
-          preserveNullAndEmptyArrays: false,
-        },
-      },
+      { $unwind: { path: "$party", preserveNullAndEmptyArrays: false } },
+      // CreatedBy lookup with only firstName and lastName
       {
         $lookup: {
           from: "staffs",
           localField: "createdBy",
           foreignField: "_id",
           as: "createdBy",
-        },
+          pipeline: [
+            {
+              $project: {
+                firstName: 1,
+                lastName: 1,
+                _id: 1
+              }
+            }
+          ]
+        }
       },
-      {
-        $unwind: {
-          path: "$createdBy",
-          preserveNullAndEmptyArrays: true,
-        },
-      },
+      { $unwind: { path: "$createdBy", preserveNullAndEmptyArrays: true } },
+      // CompanyName lookup with only companyName and avtar
       {
         $lookup: {
           from: "companynames",
           localField: "companyName",
           foreignField: "_id",
           as: "companyName",
-        },
+          pipeline: [
+            {
+              $project: {
+                companyName: 1,
+                avtar: 1,
+                _id: 1
+              }
+            }
+          ]
+        }
       },
-      {
-        $unwind: {
-          path: "$companyName",
-          preserveNullAndEmptyArrays: true,
-        },
-      },
+      { $unwind: { path: "$companyName", preserveNullAndEmptyArrays: true } },
+      // MarketName lookup with only marketName
       {
         $lookup: {
           from: "markets",
           localField: "party.address.marketName",
           foreignField: "_id",
           as: "party.address.marketName",
-        },
+          pipeline: [
+            {
+              $project: {
+                marketName: 1,
+                _id: 1
+              }
+            }
+          ]
+        }
       },
-      {
-        $unwind: {
-          path: "$party.address.marketName",
-          preserveNullAndEmptyArrays: true,
-        },
-      },
-      {
-        $lookup: {
-          from: "markets",
-          localField: "party.address.landMark",
-          foreignField: "_id",
-          as: "party.address.landMark",
-        },
-      },
-      {
-        $unwind: {
-          path: "$party.address.landMark",
-          preserveNullAndEmptyArrays: true,
-        },
-      },
+      { $unwind: { path: "$party.address.marketName", preserveNullAndEmptyArrays: true } },
+      
+      // Area lookup with only area
       {
         $lookup: {
           from: "markets",
           localField: "party.address.area",
           foreignField: "_id",
           as: "party.address.area",
-        },
+          pipeline: [
+            {
+              $project: {
+                area: 1,
+                _id: 1
+              }
+            }
+          ]
+        }
       },
-      {
-        $unwind: {
-          path: "$party.address.area",
-          preserveNullAndEmptyArrays: true,
-        },
-      },
-      {
-        $lookup: {
-          from: "markets",
-          localField: "party.address.pincode",
-          foreignField: "_id",
-          as: "party.address.pincode",
-        },
-      },
-      {
-        $unwind: {
-          path: "$party.address.pincode",
-          preserveNullAndEmptyArrays: true,
-        },
-      },
-      // Add lookup for latest task
+      { $unwind: { path: "$party.address.area", preserveNullAndEmptyArrays: true } },
+     
       {
         $lookup: {
           from: "assigntasks",
-          let: {
-            partyId: "$party._id",
-            companyId: "$companyName._id"
-          },
+          let: { partyId: "$party._id", companyId: "$companyName._id" },
           pipeline: [
             {
               $match: {
@@ -526,175 +1299,127 @@ exports.getAllAccountMasters = async (req, res) => {
               }
             },
             { $sort: { createdAt: -1 } },
-            { $limit: 1 }
+            { $limit: 1 },
+            // Only select required fields
+            {
+              $project: {
+                remarks: 1,
+                status: 1,
+                assignTo: 1,
+                createdAt: 1,
+                updatedAt: 1
+              }
+            }
           ],
           as: "latestTask"
         }
       },
-      {
-        $unwind: {
-          path: "$latestTask",
-          preserveNullAndEmptyArrays: true
-        }
-      },
-      // Add lookup for assignedTo in latestTask
+      { $unwind: { path: "$latestTask", preserveNullAndEmptyArrays: true } },
+      // Populate assignTo with only firstName and lastName
       {
         $lookup: {
           from: "staffs",
-          localField: "latestTask.assignTo",
-          foreignField: "_id",
+          let: { assignToId: "$latestTask.assignTo" },
+          pipeline: [
+            {
+              $match: {
+                $expr: { $eq: ["$_id", "$$assignToId"] }
+              }
+            },
+            {
+              $project: {
+                firstName: 1,
+                lastName: 1,
+                _id: 1
+              }
+            }
+          ],
           as: "latestTask.assignTo"
         }
       },
+      { $unwind: { path: "$latestTask.assignTo", preserveNullAndEmptyArrays: true } },
+      // Clean up the structure to keep only required fields
       {
-        $unwind: {
-          path: "$latestTask.assignTo",
-          preserveNullAndEmptyArrays: true
+        $addFields: {
+          // createdBy cleanup
+          createdBy: {
+            firstName: "$createdBy.firstName",
+            lastName: "$createdBy.lastName"
+          },
+          // companyName cleanup - INCLUDING AVATAR
+          companyName: {
+            companyName: "$companyName.companyName",
+            avtar: "$companyName.avtar"
+          },
+          // party.address cleanup - NO landMark and pincode
+          "party.address": {
+            unitNo: "$party.address.unitNo",
+            marketName: "$party.address.marketName.marketName",
+            area: "$party.address.area.area",
+            state: "$party.address.state",
+            city: "$party.address.city"
+          },
+          // latestTask cleanup
+          latestTask: {
+            remarks: "$latestTask.remarks",
+            status: "$latestTask.status",
+            assignTo: {
+              firstName: "$latestTask.assignTo.firstName",
+              lastName: "$latestTask.assignTo.lastName"
+            },
+            // createdAt: "$latestTask.createdAt",
+            // updatedAt: "$latestTask.updatedAt"
+          }
+        }
+      },
+      // Final project stage to remove unwanted fields from the root document
+      {
+        $project: {
+          // Keep AccountMaster fields you need
+          reasonToVisit: 1,
+          createdAt: 1,
+          updatedAt: 1,
+          // Populated fields
+          party: 1,
+          createdBy: 1,
+          companyName: 1,
+          latestTask: 1,
+          // Remove __v from AccountMaster if present
+          // __v: 0
         }
       }
     ];
 
-    // Add match conditions for the main query and party filters
-    const matchConditions = {};
-
-    if (filters.company && filters.company.length > 0) {
-      matchConditions["companyName.companyName"] = { $in: filters.company };
-    }
-
-    // Create a clean match conditions object without circular references
-    const mainQueryConditions = { ...query };
-    const partyConditions = {};
-
-    // Add party match conditions
-    if (Object.keys(partyMatch).length > 0) {
-      Object.entries(partyMatch).forEach(([key, value]) => {
-        if (key === "$or") {
-          partyConditions.$or = value;
-        } else {
-          partyConditions[`party.${key}`] = value;
-        }
-      });
-    }
-
-    // Build the final match conditions without circular references
-    if (Object.keys(mainQueryConditions).length > 0 && Object.keys(partyConditions).length > 0) {
-      // Both main query and party conditions exist
-      matchConditions.$and = [mainQueryConditions, partyConditions];
-    } else if (Object.keys(mainQueryConditions).length > 0) {
-      // Only main query conditions exist
-      Object.assign(matchConditions, mainQueryConditions);
-    } else if (Object.keys(partyConditions).length > 0) {
-      // Only party conditions exist
-      Object.assign(matchConditions, partyConditions);
-    }
-
-    // Add remarks filter
-    if (filters.remarks && filters.remarks.length > 0) {
-      matchConditions.$or = filters.remarks.map(remark => ({
-        "latestTask.remarks": { $regex: remark, $options: "i" }
-      }));
-    }
-
-    // Add assignedTo filter
-    if (filters.assignedTo && filters.assignedTo.length > 0 && assignedToIds.length > 0) {
-      matchConditions["latestTask.assignTo._id"] = { $in: assignedToIds.map(id => mongoose.Types.ObjectId(id)) };
-    }
-
-    if (Object.keys(matchConditions).length > 0) {
-      pipeline.push({ $match: matchConditions });
-    }
-
-    // Add sorting
-    pipeline.push({ $sort: { createdAt: -1 } });
-
-    // Prepare facet stages for pagination and counting
-    const facetStages = {
-      data: [
-        { $skip: isPagination ? (page - 1) * pageSize : 0 },
-        { $limit: isPagination ? pageSize : 1000000 } // Large number if no pagination
-      ],
-      count: [
-        { $count: "total" }
-      ]
-    };
-
-    // Add counts facet if requested
-    if (includeCounts) {
-      facetStages.counts = [
-        {
-          $group: {
-            _id: null,
-            approved: {
-              $sum: {
-                $cond: [{ $eq: ["$party.statusApproval", "APPROVED"] }, 1, 0]
-              }
-            },
-            pending: {
-              $sum: {
-                $cond: [{ $eq: ["$party.statusApproval", "PENDING"] }, 1, 0]
-              }
-            },
-            total: { $sum: 1 }
-          }
-        }
-      ];
-    }
-
-    // Add facet stage to pipeline
-    pipeline.push({ $facet: facetStages });
-
     // Execute the aggregation
-    const result = await AccountMaster.aggregate(pipeline);
-    const facetResult = result[0];
-    
-    // Extract data and counts
-    const enrichedAccountMasters = facetResult.data || [];
-    const totalCount = facetResult.count[0]?.total || 0;
-    
-    // Format counts
-    let counts = {
-      approved: 0,
-      pending: 0,
-      total: totalCount,
-    };
-
-    if (includeCounts && facetResult.counts && facetResult.counts.length > 0) {
-      counts = {
-        approved: facetResult.counts[0].approved,
-        pending: facetResult.counts[0].pending,
-        total: facetResult.counts[0].total
-      };
-    }
+    const enrichedAccountMasters = await AccountMaster.aggregate(pipeline);
 
     // Prepare pagination information
-    const pagination = isPagination
-      ? {
-        currentPage: page,
-        pageSize: pageSize,
-        totalCount: totalCount,
-        totalPages: Math.ceil(totalCount / pageSize),
-        hasNext: page < Math.ceil(totalCount / pageSize),
-        hasPrev: page > 1,
-        counts: counts,
-      }
-      : null;
+    const pagination = isPagination ? {
+      currentPage: page,
+      pageSize: pageSize,
+      totalCount: totalCount,
+      totalPages: Math.ceil(totalCount / pageSize),
+      hasNext: page < Math.ceil(totalCount / pageSize),
+      hasPrev: page > 1,
+      counts: counts
+    } : null;
 
     res.status(200).json({
       success: true,
       data: enrichedAccountMasters,
       pagination: pagination,
-      counts: counts,
+      counts: counts
     });
+
   } catch (error) {
     console.error("Error getting account masters:", error);
     res.status(500).json({
       success: false,
       message: "Failed to fetch account masters",
-      error: error.message,
+      error: error.message
     });
   }
 };
-
 const normalize = (val) => (val ? String(val).trim().toLowerCase() : null);
 
 // Helper to find a Market by field
@@ -893,7 +1618,7 @@ exports.getAccountMasterById = async (req, res) => {
       .populate("party")
       .populate({
         path: "party",
-        select: "-__v",
+        select: "__v",
         populate: [
           {
             path: "address.marketName",
@@ -1529,269 +2254,423 @@ exports.getAccountMasterByStaffId = async (req, res) => {
       includeCounts = false
     } = req.body;
 
-    // Pre-fetch staff IDs for assignedTo filter
-    let assignedToIds = [];
-    if (filters.assignedTo && filters.assignedTo.length > 0) {
-      const assignedToStaff = await Staff.find({
-        $or: [
-          { firstName: { $in: filters.assignedTo } },
-          { lastName: { $in: filters.assignedTo } },
-          {
-            $expr: {
-              $regexMatch: {
-                input: { $concat: ["$firstName", " ", "$lastName"] },
-                regex: new RegExp(filters.assignedTo.join("|"), "i")
-              }
-            }
-          }
-        ]
-      }).select('_id').lean();
+    // ===== STEP 1: Build base query for AccountMaster =====
+    const baseQuery = {};
 
-      assignedToIds = assignedToStaff.map(s => s._id.toString());
-    }
-
-    // Base query object
-    const query = {};
-
-    // Search functionality - search across multiple fields
-    if (search) {
-      query.$or = [
-        { "reasonToVisit": { $regex: search, $options: "i" } },
-        { "party.partyName": { $regex: search, $options: "i" } },
-        { "party.ownerName": { $regex: search, $options: "i" } },
-        { "party.ownerMobileNo": { $regex: search, $options: "i" } },
-        { "party.ownerWhatsAppNo": { $regex: search, $options: "i" } },
-        { "party.contactPerson": { $regex: search, $options: "i" } },
-        { "party.personMobileNo": { $regex: search, $options: "i" } },
-        { "party.personWhatsAppNo": { $regex: search, $options: "i" } },
-        { "party.contactForPayment": { $regex: search, $options: "i" } },
-        { "party.contactMobileNo": { $regex: search, $options: "i" } },
-        { "party.contactWhatsAppNo": { $regex: search, $options: "i" } },
-        { "party.GSTNo": { $regex: search, $options: "i" } },
-        { "party.address.unitNo": { $regex: search, $options: "i" } },
-        { "party.address.marketName.marketName": { $regex: search, $options: "i" } },
-        { "party.address.landMark.landmark": { $regex: search, $options: "i" } },
-        { "party.address.area.area": { $regex: search, $options: "i" } },
-        { "party.address.pincode.pincode": { $regex: search, $options: "i" } },
-      ];
-    }
-
-    // createdBy filter
-    let createdByIds = [];
-    if (filters.createdBy && filters.createdBy.length > 0) {
-      const finalCond = [];
-
-      filters.createdBy.forEach(full => {
-        const parts = full.trim().split(" ");
-
-        if (parts.length === 1) {
-          // Only first or only last name
-          finalCond.push({ firstName: parts[0] });
-          finalCond.push({ lastName: parts[0] });
-        } else {
-          // Full name case
-          const first = parts[0];
-          const last = parts.slice(1).join(" ");
-
-          finalCond.push({
-            firstName: first,
-            lastName: last
-          });
-        }
-      });
-
-      const staffMatched = await Staff.find({ $or: finalCond }).select('_id').lean();
-      createdByIds = staffMatched.map(s => s._id);
-
-      if (staffMatched.length > 0) {
-        query["createdBy._id"] = { $in: createdByIds };
-      }
-    }
-
-    // reasonToVisit filter (direct match)
-    if (filters.reason && filters.reason.length > 0) {
-      query.reasonToVisit = { $in: filters.reason };
-    }
-
-    // Date range filter (direct match)
+    // Date range filter
     if (startDate || endDate) {
-      query.createdAt = {};
+      baseQuery.createdAt = {};
       if (startDate) {
         const start = new Date(startDate);
         start.setHours(0, 0, 0, 0);
-        query.createdAt.$gte = start;
+        baseQuery.createdAt.$gte = start;
       }
       if (endDate) {
         const end = new Date(endDate);
         end.setHours(23, 59, 59, 999);
-        query.createdAt.$lte = end;
+        baseQuery.createdAt.$lte = end;
       }
     }
 
-    let partyMatch = {};
+    // Reason filter
+    if (filters.reason && filters.reason.length > 0) {
+      baseQuery.reasonToVisit = { $in: filters.reason };
+    }
 
-    // Party name filter (populated from parties collection)
+    // ===== STEP 2: Pre-fetch related IDs =====
+
+    // CreatedBy filter
+    if (filters.createdBy && filters.createdBy.length > 0) {
+      const finalCond = [];
+      filters.createdBy.forEach(full => {
+        const parts = full.trim().split(" ");
+        if (parts.length === 1) {
+          finalCond.push({ firstName: parts[0] });
+          finalCond.push({ lastName: parts[0] });
+        } else {
+          const first = parts[0];
+          const last = parts.slice(1).join(" ");
+          finalCond.push({ firstName: first, lastName: last });
+        }
+      });
+
+      const staffMatched = await Staff.find({ $or: finalCond }).select('_id').lean();
+      if (staffMatched.length > 0) {
+        baseQuery.createdBy = { $in: staffMatched.map(s => s._id) };
+      } else {
+        return res.status(200).json({
+          success: true,
+          data: [],
+          pagination: isPagination ? {
+            currentPage: page,
+            pageSize: pageSize,
+            totalCount: 0,
+            totalPages: 0,
+            hasNext: false,
+            hasPrev: false,
+            counts: { approved: 0, pending: 0, total: 0 }
+          } : null,
+          counts: { approved: 0, pending: 0, total: 0 }
+        });
+      }
+    }
+
+    // Company filter
+    let companyIds = [];
+    if (filters.company && filters.company.length > 0) {
+      const companies = await CompanyName.find({
+        companyName: { $in: filters.company }
+      }).select('_id').lean();
+
+      if (companies.length > 0) {
+        companyIds = companies.map(c => c._id);
+        baseQuery.companyName = { $in: companyIds };
+      } else {
+        return res.status(200).json({
+          success: true,
+          data: [],
+          pagination: isPagination ? {
+            currentPage: page,
+            pageSize: pageSize,
+            totalCount: 0,
+            totalPages: 0,
+            hasNext: false,
+            hasPrev: false,
+            counts: { approved: 0, pending: 0, total: 0 }
+          } : null,
+          counts: { approved: 0, pending: 0, total: 0 }
+        });
+      }
+    }
+
+    // Party filters
+    let partyIds = null;
+    const partyQuery = {};
+
     if (filters.party && filters.party.length > 0) {
-      partyMatch.partyName = { $in: filters.party };
+      partyQuery.partyName = { $in: filters.party };
     }
-
-    // Contact person filter (direct match)
     if (filters.contactPerson && filters.contactPerson.length > 0) {
-      partyMatch.contactPerson = { $in: filters.contactPerson };
+      partyQuery.contactPerson = { $in: filters.contactPerson };
     }
-
-    // Party tag filter (direct match)
     if (filters.partyTag && filters.partyTag.length > 0) {
-      partyMatch.partyTag = { $in: filters.partyTag };
+      partyQuery.partyTag = { $in: filters.partyTag };
     }
-
-    // Mobile number filters (matching ownerMobileNo)
     if (filters.mobile && filters.mobile.length > 0) {
-      partyMatch.ownerMobileNo = { $in: filters.mobile };
+      partyQuery.ownerMobileNo = { $in: filters.mobile };
     }
-
-    // Unit number filter (matching party.address.unitNo)
     if (filters.unitNo && filters.unitNo.length > 0) {
-      partyMatch["address.unitNo"] = { $in: filters.unitNo };
+      partyQuery["address.unitNo"] = { $in: filters.unitNo };
+    }
+    if (filters.status && filters.status.length > 0) {
+      partyQuery.statusApproval = { $in: filters.status };
     }
 
-    // Market filter (populated from markets collection)
+    // Market filter
     if (filters.market && filters.market.length > 0) {
-      // First get market IDs that match the market names
       const markets = await Market.find({
         marketName: { $in: filters.market }
       }).select('_id').lean();
-
       if (markets.length > 0) {
-        partyMatch["address.marketName._id"] = { $in: markets.map(m => m._id) };
+        partyQuery["address.marketName"] = { $in: markets.map(m => m._id) };
       }
     }
 
-    // Area filter (populated from markets collection)
+    // Area filter
     if (filters.area && filters.area.length > 0) {
-      // First get area IDs that match the area names
       const areas = await Market.find({
         area: { $in: filters.area }
       }).select('_id').lean();
-
       if (areas.length > 0) {
-        partyMatch["address.area._id"] = { $in: areas.map(area => area._id) };
+        partyQuery["address.area"] = { $in: areas.map(a => a._id) };
       }
     }
 
-    // Status filter (direct match)
-    if (filters.status && filters.status.length > 0) {
-      partyMatch.statusApproval = { $in: filters.status };
+    // Search in party fields
+    if (search) {
+      partyQuery.$or = [
+        { partyName: { $regex: search, $options: "i" } },
+        { ownerName: { $regex: search, $options: "i" } },
+        { ownerMobileNo: { $regex: search, $options: "i" } },
+        { ownerWhatsAppNo: { $regex: search, $options: "i" } },
+        { contactPerson: { $regex: search, $options: "i" } },
+        { personMobileNo: { $regex: search, $options: "i" } },
+        { personWhatsAppNo: { $regex: search, $options: "i" } },
+        { contactForPayment: { $regex: search, $options: "i" } },
+        { contactMobileNo: { $regex: search, $options: "i" } },
+        { contactWhatsAppNo: { $regex: search, $options: "i" } },
+        { GSTNo: { $regex: search, $options: "i" } },
+        { "address.unitNo": { $regex: search, $options: "i" } }
+      ];
     }
 
-    // Create the aggregation pipeline
-    let pipeline = [
+    // Get matching party IDs if we have party filters
+    if (Object.keys(partyQuery).length > 0) {
+      const matchingParties = await Party.find(partyQuery).select('_id').lean();
+      if (matchingParties.length > 0) {
+        partyIds = matchingParties.map(p => p._id);
+        baseQuery.party = { $in: partyIds };
+      } else {
+        return res.status(200).json({
+          success: true,
+          data: [],
+          pagination: isPagination ? {
+            currentPage: page,
+            pageSize: pageSize,
+            totalCount: 0,
+            totalPages: 0,
+            hasNext: false,
+            hasPrev: false,
+            counts: { approved: 0, pending: 0, total: 0 }
+          } : null,
+          counts: { approved: 0, pending: 0, total: 0 }
+        });
+      }
+    }
+
+    // ===== STEP 3: Handle task-based filters =====
+    let taskFilteredAccountMasterIds = null;
+
+    if ((filters.assignedTo && filters.assignedTo.length > 0) ||
+      (filters.remarks && filters.remarks.length > 0)) {
+
+      const taskQuery = {};
+
+      // AssignedTo filter
+      if (filters.assignedTo && filters.assignedTo.length > 0) {
+        const assignedToStaff = await Staff.find({
+          $or: [
+            { firstName: { $in: filters.assignedTo } },
+            { lastName: { $in: filters.assignedTo } },
+            {
+              $expr: {
+                $regexMatch: {
+                  input: { $concat: ["$firstName", " ", "$lastName"] },
+                  regex: new RegExp(filters.assignedTo.join("|"), "i")
+                }
+              }
+            }
+          ]
+        }).select('_id').lean();
+
+        if (assignedToStaff.length > 0) {
+          taskQuery.assignTo = { $in: assignedToStaff.map(s => s._id) };
+        } else {
+          return res.status(200).json({
+            success: true,
+            data: [],
+            pagination: isPagination ? {
+              currentPage: page,
+              pageSize: pageSize,
+              totalCount: 0,
+              totalPages: 0,
+              hasNext: false,
+              hasPrev: false,
+              counts: { approved: 0, pending: 0, total: 0 }
+            } : null,
+            counts: { approved: 0, pending: 0, total: 0 }
+          });
+        }
+      }
+
+      // Remarks filter
+      if (filters.remarks && filters.remarks.length > 0) {
+        taskQuery.$or = filters.remarks.map(remark => ({
+          remarks: { $regex: remark, $options: "i" }
+        }));
+      }
+
+      // Add company filter to task query
+      if (companyIds.length > 0) {
+        taskQuery.companyName = { $in: companyIds };
+      }
+
+      // Add party filter to task query
+      if (partyIds) {
+        taskQuery.partyName = { $in: partyIds };
+      }
+
+      // Get latest tasks matching criteria
+      const matchingTasks = await AssignTask.aggregate([
+        { $match: taskQuery },
+        { $sort: { createdAt: -1 } },
+        {
+          $group: {
+            _id: { partyName: "$partyName", companyName: "$companyName" },
+            latestTask: { $first: "$$ROOT" }
+          }
+        }
+      ]);
+
+      if (matchingTasks.length > 0) {
+        const partyCompanyCombos = matchingTasks.map(t => ({
+          party: t._id.partyName,
+          company: t._id.companyName
+        }));
+
+        const accountMastersWithTasks = await AccountMaster.find({
+          ...baseQuery,
+          $or: partyCompanyCombos.map(combo => ({
+            party: combo.party,
+            companyName: combo.company
+          }))
+        }).select('_id').lean();
+
+        if (accountMastersWithTasks.length > 0) {
+          taskFilteredAccountMasterIds = accountMastersWithTasks.map(am => am._id);
+        } else {
+          return res.status(200).json({
+            success: true,
+            data: [],
+            pagination: isPagination ? {
+              currentPage: page,
+              pageSize: pageSize,
+              totalCount: 0,
+              totalPages: 0,
+              hasNext: false,
+              hasPrev: false,
+              counts: { approved: 0, pending: 0, total: 0 }
+            } : null,
+            counts: { approved: 0, pending: 0, total: 0 }
+          });
+        }
+      } else {
+        return res.status(200).json({
+          success: true,
+          data: [],
+          pagination: isPagination ? {
+            currentPage: page,
+            pageSize: pageSize,
+            totalCount: 0,
+            totalPages: 0,
+            hasNext: false,
+            hasPrev: false,
+            counts: { approved: 0, pending: 0, total: 0 }
+          } : null,
+          counts: { approved: 0, pending: 0, total: 0 }
+        });
+      }
+    }
+
+    // Add task-filtered IDs to base query
+    if (taskFilteredAccountMasterIds) {
+      baseQuery._id = { $in: taskFilteredAccountMasterIds };
+    }
+
+    // ===== STEP 4: Get total count =====
+    const totalCount = await AccountMaster.countDocuments(baseQuery);
+
+    if (totalCount === 0) {
+      return res.status(200).json({
+        success: true,
+        data: [],
+        pagination: isPagination ? {
+          currentPage: page,
+          pageSize: pageSize,
+          totalCount: 0,
+          totalPages: 0,
+          hasNext: false,
+          hasPrev: false,
+          counts: { approved: 0, pending: 0, total: 0 }
+        } : null,
+        counts: { approved: 0, pending: 0, total: 0 }
+      });
+    }
+
+    // ===== STEP 5: Get status counts =====
+    let counts = { approved: 0, pending: 0, total: totalCount };
+
+    if (includeCounts && partyIds) {
+      const statusCounts = await Party.aggregate([
+        { $match: { _id: { $in: partyIds } } },
+        {
+          $group: {
+            _id: "$statusApproval",
+            count: { $sum: 1 }
+          }
+        }
+      ]);
+
+      statusCounts.forEach(sc => {
+        if (sc._id === "APPROVED") counts.approved = sc.count;
+        if (sc._id === "PENDING") counts.pending = sc.count;
+      });
+    }
+
+    // ===== STEP 6: Build aggregation pipeline with pagination =====
+    const pipeline = [
+      { $match: baseQuery },
+      { $sort: { createdAt: -1 } },
+      { $skip: isPagination ? (page - 1) * pageSize : 0 },
+      { $limit: isPagination ? pageSize : totalCount },
+      // Lookups only on paginated subset
       {
         $lookup: {
           from: "parties",
           localField: "party",
           foreignField: "_id",
-          as: "party",
-        },
+          as: "party"
+        }
       },
-      {
-        $unwind: {
-          path: "$party",
-          preserveNullAndEmptyArrays: false,
-        },
-      },
+      { $unwind: { path: "$party", preserveNullAndEmptyArrays: false } },
       {
         $lookup: {
           from: "staffs",
           localField: "createdBy",
           foreignField: "_id",
-          as: "createdBy",
-        },
+          as: "createdBy"
+        }
       },
-      {
-        $unwind: {
-          path: "$createdBy",
-          preserveNullAndEmptyArrays: true,
-        },
-      },
+      { $unwind: { path: "$createdBy", preserveNullAndEmptyArrays: true } },
       {
         $lookup: {
           from: "companynames",
           localField: "companyName",
           foreignField: "_id",
-          as: "companyName",
-        },
+          as: "companyName"
+        }
       },
-      {
-        $unwind: {
-          path: "$companyName",
-          preserveNullAndEmptyArrays: true,
-        },
-      },
+      { $unwind: { path: "$companyName", preserveNullAndEmptyArrays: true } },
       {
         $lookup: {
           from: "markets",
           localField: "party.address.marketName",
           foreignField: "_id",
-          as: "party.address.marketName",
-        },
+          as: "party.address.marketName"
+        }
       },
-      {
-        $unwind: {
-          path: "$party.address.marketName",
-          preserveNullAndEmptyArrays: true,
-        },
-      },
+      { $unwind: { path: "$party.address.marketName", preserveNullAndEmptyArrays: true } },
       {
         $lookup: {
           from: "markets",
           localField: "party.address.landMark",
           foreignField: "_id",
-          as: "party.address.landMark",
-        },
+          as: "party.address.landMark"
+        }
       },
-      {
-        $unwind: {
-          path: "$party.address.landMark",
-          preserveNullAndEmptyArrays: true,
-        },
-      },
+      { $unwind: { path: "$party.address.landMark", preserveNullAndEmptyArrays: true } },
       {
         $lookup: {
           from: "markets",
           localField: "party.address.area",
           foreignField: "_id",
-          as: "party.address.area",
-        },
+          as: "party.address.area"
+        }
       },
-      {
-        $unwind: {
-          path: "$party.address.area",
-          preserveNullAndEmptyArrays: true,
-        },
-      },
+      { $unwind: { path: "$party.address.area", preserveNullAndEmptyArrays: true } },
       {
         $lookup: {
           from: "markets",
           localField: "party.address.pincode",
           foreignField: "_id",
-          as: "party.address.pincode",
-        },
+          as: "party.address.pincode"
+        }
       },
-      {
-        $unwind: {
-          path: "$party.address.pincode",
-          preserveNullAndEmptyArrays: true,
-        },
-      },
-      // Add lookup for latest task
+      { $unwind: { path: "$party.address.pincode", preserveNullAndEmptyArrays: true } },
       {
         $lookup: {
           from: "assigntasks",
-          let: {
-            partyId: "$party._id",
-            companyId: "$companyName._id"
-          },
+          let: { partyId: "$party._id", companyId: "$companyName._id" },
           pipeline: [
             {
               $match: {
@@ -1809,13 +2688,7 @@ exports.getAccountMasterByStaffId = async (req, res) => {
           as: "latestTask"
         }
       },
-      {
-        $unwind: {
-          path: "$latestTask",
-          preserveNullAndEmptyArrays: true
-        }
-      },
-      // Add lookup for assignedTo in latestTask
+      { $unwind: { path: "$latestTask", preserveNullAndEmptyArrays: true } },
       {
         $lookup: {
           from: "staffs",
@@ -1824,151 +2697,36 @@ exports.getAccountMasterByStaffId = async (req, res) => {
           as: "latestTask.assignTo"
         }
       },
-      {
-        $unwind: {
-          path: "$latestTask.assignTo",
-          preserveNullAndEmptyArrays: true
-        }
-      }
+      { $unwind: { path: "$latestTask.assignTo", preserveNullAndEmptyArrays: true } }
     ];
 
-    // Add match conditions for the main query and party filters
-    const matchConditions = {};
+    // Execute aggregation
+    const enrichedAccountMasters = await AccountMaster.aggregate(pipeline);
 
-    if (filters.company && filters.company.length > 0) {
-      matchConditions["companyName.companyName"] = { $in: filters.company };
-    }
-
-    // Create a clean match conditions object without circular references
-    const mainQueryConditions = { ...query };
-    const partyConditions = {};
-
-    // Add party match conditions
-    if (Object.keys(partyMatch).length > 0) {
-      Object.entries(partyMatch).forEach(([key, value]) => {
-        if (key === "$or") {
-          partyConditions.$or = value;
-        } else {
-          partyConditions[`party.${key}`] = value;
-        }
-      });
-    }
-
-    // Build the final match conditions without circular references
-    if (Object.keys(mainQueryConditions).length > 0 && Object.keys(partyConditions).length > 0) {
-      // Both main query and party conditions exist
-      matchConditions.$and = [mainQueryConditions, partyConditions];
-    } else if (Object.keys(mainQueryConditions).length > 0) {
-      // Only main query conditions exist
-      Object.assign(matchConditions, mainQueryConditions);
-    } else if (Object.keys(partyConditions).length > 0) {
-      // Only party conditions exist
-      Object.assign(matchConditions, partyConditions);
-    }
-
-    // Add remarks filter
-    if (filters.remarks && filters.remarks.length > 0) {
-      matchConditions.$or = filters.remarks.map(remark => ({
-        "latestTask.remarks": { $regex: remark, $options: "i" }
-      }));
-    }
-
-    // Add assignedTo filter
-    if (filters.assignedTo && filters.assignedTo.length > 0 && assignedToIds.length > 0) {
-      matchConditions["latestTask.assignTo._id"] = { $in: assignedToIds.map(id => mongoose.Types.ObjectId(id)) };
-    }
-
-    if (Object.keys(matchConditions).length > 0) {
-      pipeline.push({ $match: matchConditions });
-    }
-
-    // Add sorting
-    pipeline.push({ $sort: { createdAt: -1 } });
-
-    // Prepare facet stages for pagination and counting
-    const facetStages = {
-      data: [
-        { $skip: isPagination ? (page - 1) * pageSize : 0 },
-        { $limit: isPagination ? pageSize : 1000000 } // Large number if no pagination
-      ],
-      count: [
-        { $count: "total" }
-      ]
-    };
-
-    // Add counts facet if requested
-    if (includeCounts) {
-      facetStages.counts = [
-        {
-          $group: {
-            _id: null,
-            approved: {
-              $sum: {
-                $cond: [{ $eq: ["$party.statusApproval", "APPROVED"] }, 1, 0]
-              }
-            },
-            pending: {
-              $sum: {
-                $cond: [{ $eq: ["$party.statusApproval", "PENDING"] }, 1, 0]
-              }
-            },
-            total: { $sum: 1 }
-          }
-        }
-      ];
-    }
-
-    // Add facet stage to pipeline
-    pipeline.push({ $facet: facetStages });
-
-    // Execute the aggregation
-    const result = await AccountMaster.aggregate(pipeline);
-    const facetResult = result[0];
-    
-    // Extract data and counts
-    const enrichedAccountMasters = facetResult.data || [];
-    const totalCount = facetResult.count[0]?.total || 0;
-    
-    // Format counts
-    let counts = {
-      approved: 0,
-      pending: 0,
-      total: totalCount,
-    };
-
-    if (includeCounts && facetResult.counts && facetResult.counts.length > 0) {
-      counts = {
-        approved: facetResult.counts[0].approved,
-        pending: facetResult.counts[0].pending,
-        total: facetResult.counts[0].total
-      };
-    }
-
-    // Prepare pagination information
-    const pagination = isPagination
-      ? {
-        currentPage: page,
-        pageSize: pageSize,
-        totalCount: totalCount,
-        totalPages: Math.ceil(totalCount / pageSize),
-        hasNext: page < Math.ceil(totalCount / pageSize),
-        hasPrev: page > 1,
-        counts: counts,
-      }
-      : null;
+    // Prepare pagination
+    const pagination = isPagination ? {
+      currentPage: page,
+      pageSize: pageSize,
+      totalCount: totalCount,
+      totalPages: Math.ceil(totalCount / pageSize),
+      hasNext: page < Math.ceil(totalCount / pageSize),
+      hasPrev: page > 1,
+      counts: counts
+    } : null;
 
     res.status(200).json({
       success: true,
       data: enrichedAccountMasters,
       pagination: pagination,
-      counts: counts,
+      counts: counts
     });
+
   } catch (error) {
     console.error("Error getting account masters:", error);
     res.status(500).json({
       success: false,
       message: "Failed to fetch account masters",
-      error: error.message,
+      error: error.message
     });
   }
 };
