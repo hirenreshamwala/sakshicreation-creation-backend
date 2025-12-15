@@ -6,7 +6,7 @@ const AssignTask = require("../models/assignTask.model");
 const Party = require("../models/Party.model");
 const Staff = require("../models/staff.model");
 const Inventory = require("../models/inventory.model");
-const ProductItem = require('../models/productItem.model');
+const ProductItem = require("../models/productItem.model");
 // const Size = require('../models/size.model');
 exports.createOrder = async (req, res) => {
   try {
@@ -31,7 +31,7 @@ exports.createOrder = async (req, res) => {
       color,
       color1,
       color2,
-      description
+      description,
     } = req.body;
 
     // Validate required fields
@@ -262,10 +262,17 @@ exports.getFilterOptionsData = async (req, res) => {
     const { search, ...otherFilters } = filters;
 
     if (!field) {
-      return res.status(400).json({ success: false, message: "Field parameter is required" });
+      return res
+        .status(400)
+        .json({ success: false, message: "Field parameter is required" });
     }
 
-    console.log("Order Filter Options - Field:", field, "Filters:", otherFilters);
+    console.log(
+      "Order Filter Options - Field:",
+      field,
+      "Filters:",
+      otherFilters
+    );
 
     // Build main filter query
     const query = {};
@@ -273,11 +280,13 @@ exports.getFilterOptionsData = async (req, res) => {
     // Company filter
     if (otherFilters.company && otherFilters.company.length > 0) {
       const companies = await Company.find({
-        companyName: { $in: otherFilters.company }
-      }).select('_id').lean();
-      
+        companyName: { $in: otherFilters.company },
+      })
+        .select("_id")
+        .lean();
+
       if (companies.length > 0) {
-        query.companyName = { $in: companies.map(c => c._id) };
+        query.companyName = { $in: companies.map((c) => c._id) };
       }
     }
 
@@ -311,35 +320,41 @@ exports.getFilterOptionsData = async (req, res) => {
           { _id: { $in: companyIds } },
           "companyName"
         );
-        uniqueValues = companies.map(c => c.companyName).filter(Boolean);
+        uniqueValues = companies.map((c) => c.companyName).filter(Boolean);
         break;
 
       case "party":
         const partyIds = await Order.distinct("party", query);
-        const parties = await Party.find({ _id: { $in: partyIds } }, "partyName");
-        uniqueValues = parties.map(p => p.partyName).filter(Boolean);
+        const parties = await Party.find(
+          { _id: { $in: partyIds } },
+          "partyName"
+        );
+        uniqueValues = parties.map((p) => p.partyName).filter(Boolean);
         break;
 
       case "orderNumber":
         uniqueValues = await Order.distinct("orderNumber", query);
-        uniqueValues = uniqueValues.filter(val => val && val.trim() !== "");
+        uniqueValues = uniqueValues.filter((val) => val && val.trim() !== "");
         break;
 
       case "item":
         const productItemIds = await Order.distinct("productItem", query);
-        const productItems = await ProductItem.find({ _id: { $in: productItemIds } }, "itemName");
-        uniqueValues = productItems.map(p => p.itemName).filter(Boolean);
+        const productItems = await ProductItem.find(
+          { _id: { $in: productItemIds } },
+          "itemName"
+        );
+        uniqueValues = productItems.map((p) => p.itemName).filter(Boolean);
         break;
 
       case "size":
         // FIXED: Assume size is string field, direct distinct
         uniqueValues = await Order.distinct("size", query);
-        uniqueValues = uniqueValues.filter(val => val && val.trim() !== "");
+        uniqueValues = uniqueValues.filter((val) => val && val.trim() !== "");
         break;
 
       case "remarks":
         uniqueValues = await Order.distinct("remarks", query);
-        uniqueValues = uniqueValues.filter(val => val && val.trim() !== "");
+        uniqueValues = uniqueValues.filter((val) => val && val.trim() !== "");
         break;
 
       case "orderedBy":
@@ -348,32 +363,36 @@ exports.getFilterOptionsData = async (req, res) => {
           { _id: { $in: createdByIds } },
           "firstName lastName"
         );
-        uniqueValues = staffUsers.map(u => `${u.firstName} ${u.lastName}`).filter(Boolean);
+        uniqueValues = staffUsers
+          .map((u) => `${u.firstName} ${u.lastName}`)
+          .filter(Boolean);
         break;
 
       case "orderStatus":
         uniqueValues = await Order.distinct("status", query);
-        uniqueValues = uniqueValues.filter(val => val && val.trim() !== "");
+        uniqueValues = uniqueValues.filter((val) => val && val.trim() !== "");
         break;
 
       case "date":
         const dates = await Order.distinct("createdAt", query);
         // FIXED: Format to DD-MM-YYYY, sort ascending
         uniqueValues = dates
-          .map(d => moment(d).format("DD-MM-YYYY"))
+          .map((d) => moment(d).format("DD-MM-YYYY"))
           .filter((v, i, self) => v && self.indexOf(v) === i) // Unique
           .sort((a, b) => new Date(a).getTime() - new Date(b).getTime());
         break;
 
       default:
         console.log("Invalid field parameter:", field);
-        return res.status(400).json({ success: false, message: "Invalid field parameter" });
+        return res
+          .status(400)
+          .json({ success: false, message: "Invalid field parameter" });
     }
 
     // SEARCH FILTER
     if (search) {
       const searchText = search.toLowerCase();
-      uniqueValues = uniqueValues.filter(v =>
+      uniqueValues = uniqueValues.filter((v) =>
         v?.toString().toLowerCase().includes(searchText)
       );
     }
@@ -389,15 +408,14 @@ exports.getFilterOptionsData = async (req, res) => {
     res.status(200).json({
       success: true,
       data: uniqueValues,
-      count: uniqueValues.length
+      count: uniqueValues.length,
     });
-
   } catch (err) {
     console.error("Error loading order filter options:", err);
     res.status(500).json({
       success: false,
       message: "Error loading filter options",
-      error: err.message
+      error: err.message,
     });
   }
 };
@@ -558,15 +576,17 @@ exports.getAllOrdersPagination = async (req, res) => {
       }
 
       // Ordered By (createdBy name)
-      const nameRegex = new RegExp(search, 'i');
+      const nameRegex = new RegExp(search, "i");
       const matchingStaff = await Staff.find({
         $or: [
           { firstName: nameRegex },
           { lastName: nameRegex },
           // Add if you have a full 'name' field: { name: nameRegex }
-        ]
-      }).select('_id').lean();
-      const creatorIds = matchingStaff.map(s => s._id);
+        ],
+      })
+        .select("_id")
+        .lean();
+      const creatorIds = matchingStaff.map((s) => s._id);
       if (creatorIds.length > 0) {
         directOr.push({ createdBy: { $in: creatorIds } });
       }
@@ -594,36 +614,49 @@ exports.getAllOrdersPagination = async (req, res) => {
     // Company filter
     if (filters.company && filters.company.length > 0) {
       const companies = await Company.find({
-        companyName: { $in: filters.company }
-      }).select('_id').lean();
-      
+        companyName: { $in: filters.company },
+      })
+        .select("_id")
+        .lean();
+
       if (companies.length > 0) {
         if (query.companyName) {
           // Combine with existing if any
-          query.companyName.$in = [...(query.companyName.$in || []), ...companies.map(c => c._id)];
+          query.companyName.$in = [
+            ...(query.companyName.$in || []),
+            ...companies.map((c) => c._id),
+          ];
         } else {
-          query.companyName = { $in: companies.map(c => c._id) };
+          query.companyName = { $in: companies.map((c) => c._id) };
         }
       }
     }
     // Party filter
     if (filters.party && filters.party.length > 0) {
       const parties = await Party.find({
-        partyName: { $in: filters.party }
-      }).select('_id').lean();
-      
+        partyName: { $in: filters.party },
+      })
+        .select("_id")
+        .lean();
+
       if (parties.length > 0) {
         if (query.party) {
-          query.party.$in = [...(query.party.$in || []), ...parties.map(p => p._id)];
+          query.party.$in = [
+            ...(query.party.$in || []),
+            ...parties.map((p) => p._id),
+          ];
         } else {
-          query.party = { $in: parties.map(p => p._id) };
+          query.party = { $in: parties.map((p) => p._id) };
         }
       }
     }
     // Order Status filter
     if (filters.orderStatus && filters.orderStatus.length > 0) {
       if (query.status) {
-        query.status.$in = [...(query.status.$in || []), ...filters.orderStatus];
+        query.status.$in = [
+          ...(query.status.$in || []),
+          ...filters.orderStatus,
+        ];
       } else {
         query.status = { $in: filters.orderStatus };
       }
@@ -631,14 +664,19 @@ exports.getAllOrdersPagination = async (req, res) => {
     // Item filter
     if (filters.item && filters.item.length > 0) {
       const itemDocs = await ProductItem.find({
-        itemName: { $in: filters.item }
-      }).select('_id').lean();
-      
+        itemName: { $in: filters.item },
+      })
+        .select("_id")
+        .lean();
+
       if (itemDocs.length > 0) {
         if (query.productItem) {
-          query.productItem.$in = [...(query.productItem.$in || []), ...itemDocs.map(i => i._id)];
+          query.productItem.$in = [
+            ...(query.productItem.$in || []),
+            ...itemDocs.map((i) => i._id),
+          ];
         } else {
-          query.productItem = { $in: itemDocs.map(i => i._id) };
+          query.productItem = { $in: itemDocs.map((i) => i._id) };
         }
       }
     }
@@ -653,7 +691,10 @@ exports.getAllOrdersPagination = async (req, res) => {
     // Order Number filter
     if (filters.orderNumber && filters.orderNumber.length > 0) {
       if (query.orderNumber) {
-        query.orderNumber.$in = [...(query.orderNumber.$in || []), ...filters.orderNumber];
+        query.orderNumber.$in = [
+          ...(query.orderNumber.$in || []),
+          ...filters.orderNumber,
+        ];
       } else {
         query.orderNumber = { $in: filters.orderNumber };
       }
@@ -671,18 +712,26 @@ exports.getAllOrdersPagination = async (req, res) => {
       const staffQuery = {
         $or: filters.orderedBy.map((name) => ({
           $or: [
-            { firstName: { $regex: `^${name.split(' ')[0] || ''}`, $options: 'i' } },
-            { lastName: { $regex: (name.split(' ')[1] || ''), $options: 'i' } }
-          ]
-        }))
+            {
+              firstName: {
+                $regex: `^${name.split(" ")[0] || ""}`,
+                $options: "i",
+              },
+            },
+            { lastName: { $regex: name.split(" ")[1] || "", $options: "i" } },
+          ],
+        })),
       };
-      const staffDocs = await Staff.find(staffQuery).select('_id').lean();
-      
+      const staffDocs = await Staff.find(staffQuery).select("_id").lean();
+
       if (staffDocs.length > 0) {
         if (query.createdBy) {
-          query.createdBy.$in = [...(query.createdBy.$in || []), ...staffDocs.map(s => s._id)];
+          query.createdBy.$in = [
+            ...(query.createdBy.$in || []),
+            ...staffDocs.map((s) => s._id),
+          ];
         } else {
-          query.createdBy = { $in: staffDocs.map(s => s._id) };
+          query.createdBy = { $in: staffDocs.map((s) => s._id) };
         }
       }
     }
@@ -697,55 +746,65 @@ exports.getAllOrdersPagination = async (req, res) => {
       orders = await Order.find(query)
         .skip(skip)
         .limit(pageSize)
-        .populate('companyName', 'companyName avatar')
+        .populate("companyName", "companyName avatar")
         .populate({
-          path: 'party',
-          select: '-__v',
+          path: "party",
+          select: "-__v",
           populate: [
-            { path: 'address.marketName', model: 'Market', select: 'marketName' },
-            { path: 'address.landMark', model: 'Market', select: 'landmark' },
-            { path: 'address.area', model: 'Market', select: 'area' },
-            { path: 'address.pincode', model: 'Market', select: 'pincode' },
+            {
+              path: "address.marketName",
+              model: "Market",
+              select: "marketName",
+            },
+            { path: "address.landMark", model: "Market", select: "landmark" },
+            { path: "address.area", model: "Market", select: "area" },
+            { path: "address.pincode", model: "Market", select: "pincode" },
           ],
         })
-      .populate('productItem', 'itemName')
-      .populate('createdBy', 'firstName lastName')
-      .populate('designer', 'firstName lastName')
-      .populate('printer', 'firstName lastName')
-      .populate('binder', 'firstName lastName')
-      .populate('bookletBinder', 'firstName lastName')
+        .populate("productItem", "itemName")
+        .populate("createdBy", "firstName lastName")
+        .populate("designer", "firstName lastName")
+        .populate("printer", "firstName lastName")
+        .populate("binder", "firstName lastName")
+        .populate("bookletBinder", "firstName lastName")
         .sort({ createdAt: -1 });
     } else {
       orders = await Order.find(query)
-        .populate('companyName', 'companyName avatar')
+        .populate("companyName", "companyName avatar")
         .populate({
-          path: 'party',
-          select: '-__v',
+          path: "party",
+          select: "-__v",
           populate: [
-            { path: 'address.marketName', model: 'Market', select: 'marketName' },
-            { path: 'address.landMark', model: 'Market', select: 'landmark' },
-            { path: 'address.area', model: 'Market', select: 'area' },
-            { path: 'address.pincode', model: 'Market', select: 'pincode' },
+            {
+              path: "address.marketName",
+              model: "Market",
+              select: "marketName",
+            },
+            { path: "address.landMark", model: "Market", select: "landmark" },
+            { path: "address.area", model: "Market", select: "area" },
+            { path: "address.pincode", model: "Market", select: "pincode" },
           ],
         })
-        .populate('productItem', 'itemName')
-        .populate('createdBy', 'firstName lastName')
-        .populate('designer', 'firstName lastName')
-        .populate('printer', 'firstName lastName')
-        .populate('binder', 'firstName lastName')
-        .populate('bookletBinder', 'firstName lastName')
+        .populate("productItem", "itemName")
+        .populate("createdBy", "firstName lastName")
+        .populate("designer", "firstName lastName")
+        .populate("printer", "firstName lastName")
+        .populate("binder", "firstName lastName")
+        .populate("bookletBinder", "firstName lastName")
         .sort({ createdAt: -1 });
     }
 
     // Prepare pagination information
-    const pagination = isPagination ? {
-      currentPage: parseInt(page),
-      pageSize: parseInt(pageSize),
-      totalCount: totalCount,
-      totalPages: Math.ceil(totalCount / pageSize),
-      hasNext: page < Math.ceil(totalCount / pageSize),
-      hasPrev: page > 1,
-    } : null;
+    const pagination = isPagination
+      ? {
+          currentPage: parseInt(page),
+          pageSize: parseInt(pageSize),
+          totalCount: totalCount,
+          totalPages: Math.ceil(totalCount / pageSize),
+          hasNext: page < Math.ceil(totalCount / pageSize),
+          hasPrev: page > 1,
+        }
+      : null;
 
     res.status(200).json({
       success: true,
@@ -884,6 +943,72 @@ exports.updateOrder = async (req, res) => {
 
 
     const orderData = await Order.findById(id);
+    if (
+      updateData.designer &&
+      updateData.designer !== orderData.designer?.toString()
+    ) {
+      // Set designer assigned timestamp
+      updateData.designerAssignedAt = new Date();
+    }
+    if (
+      updateData.printer &&
+      updateData.printer !== orderData.printer?.toString()
+    ) {
+      // Set printer assigned timestamp
+      updateData.printerAssignedAt = new Date();
+    }
+    if (
+      updateData.binder &&
+      updateData.binder !== orderData.binder?.toString()
+    ) {
+      // Set binder assigned timestamp
+      updateData.binderAssignedAt = new Date();
+    }
+    if (
+      updateData.bookletBinder &&
+      updateData.bookletBinder !== orderData.bookletBinder?.toString()
+    ) {
+      // Set booklet binder assigned timestamp
+      updateData.bookletBinderAssignedAt = new Date();
+    }
+    if (
+      updateData.designerStatus === "Approved" &&
+      !orderData.designApprovedAt
+    ) {
+      updateData.designApproved = new Date();
+    }
+
+    if (updateData.printerStatus === "Done" && !orderData.printingCompletedAt) {
+      updateData.printingCompletedAt = new Date();
+    }
+    if (updateData.binderStatus === "Done" && !orderData.bindingCompletedAt) {
+      updateData.bindingCompletedAt = new Date();
+    }
+    if (
+      updateData.bookletBinderStatus === "Done" &&
+      !orderData.bookletBindingCompletedAt
+    ) {
+      updateData.bookletBindingCompletedAt = new Date();
+    }
+
+    if (
+      updateData.printerStatus === "In Progress" &&
+      !orderData.printingStartedAt
+    ) {
+      updateData.printingStartedAt = new Date();
+    }
+    if (
+      updateData.binderStatus === "In Progress" &&
+      !orderData.bindingStartedAt
+    ) {
+      updateData.bindingStartedAt = new Date();
+    }
+    if (
+      updateData.bookletBinderStatus === "In Progress" &&
+      !orderData.bookletBindingStartedAt
+    ) {
+      updateData.bookletBindingStartedAt = new Date();
+    }
     if (!orderData) {
       return res.status(404).json({
         success: false,
@@ -1130,10 +1255,10 @@ exports.updateOrder = async (req, res) => {
           const parsed = JSON.parse(updateData.filePaths);
           updateData.filePaths = Array.isArray(parsed)
             ? parsed.map((item) => ({
-              path: typeof item === "string" ? item : item.path,
-              remark: typeof item === "object" ? item.remark || "" : "",
-              uploadedAt: new Date(),
-            }))
+                path: typeof item === "string" ? item : item.path,
+                remark: typeof item === "object" ? item.remark || "" : "",
+                uploadedAt: new Date(),
+              }))
             : [];
         } else if (Array.isArray(updateData.filePaths)) {
           updateData.filePaths = updateData.filePaths.map((item) => ({
@@ -1154,10 +1279,10 @@ exports.updateOrder = async (req, res) => {
           const parsed = JSON.parse(updateData.designFiles);
           updateData.designFiles = Array.isArray(parsed)
             ? parsed.map((item) => ({
-              path: typeof item === "string" ? item : item.path,
-              remark: typeof item === "object" ? item.remark || "" : "",
-              uploadedAt: new Date(),
-            }))
+                path: typeof item === "string" ? item : item.path,
+                remark: typeof item === "object" ? item.remark || "" : "",
+                uploadedAt: new Date(),
+              }))
             : [];
         } else if (Array.isArray(updateData.designFiles)) {
           updateData.designFiles = updateData.designFiles.map((item) => ({
@@ -1777,7 +1902,7 @@ exports.getOrdersByStaffId = async (req, res) => {
       isPagination = true,
       page = 1,
       pageSize = 10,
-      includeCounts = true
+      includeCounts = true,
     } = req.body;
 
     // Build query object - FIXED: Add createdBy = id
@@ -1786,36 +1911,42 @@ exports.getOrdersByStaffId = async (req, res) => {
     // Search functionality
     if (search) {
       const directOr = [
-        { "orderNumber": { $regex: search, $options: "i" } },
-        { "remarks": { $regex: search, $options: "i" } },
-        { "size": { $regex: search, $options: "i" } },
-        { "status": { $regex: search, $options: "i" } },
+        { orderNumber: { $regex: search, $options: "i" } },
+        { remarks: { $regex: search, $options: "i" } },
+        { size: { $regex: search, $options: "i" } },
+        { status: { $regex: search, $options: "i" } },
       ];
 
       // For populated fields: Fetch matching IDs first
       // Company
       const matchingCompanies = await Company.find({
-        companyName: { $regex: search, $options: "i" }
-      }).select('_id').lean();
-      const companyIds = matchingCompanies.map(c => c._id);
+        companyName: { $regex: search, $options: "i" },
+      })
+        .select("_id")
+        .lean();
+      const companyIds = matchingCompanies.map((c) => c._id);
       if (companyIds.length > 0) {
         directOr.push({ companyName: { $in: companyIds } });
       }
 
       // Party
       const matchingParties = await Party.find({
-        partyName: { $regex: search, $options: "i" }
-      }).select('_id').lean();
-      const partyIds = matchingParties.map(p => p._id);
+        partyName: { $regex: search, $options: "i" },
+      })
+        .select("_id")
+        .lean();
+      const partyIds = matchingParties.map((p) => p._id);
       if (partyIds.length > 0) {
         directOr.push({ party: { $in: partyIds } });
       }
 
       // Item
       const matchingItems = await ProductItem.find({
-        itemName: { $regex: search, $options: "i" }
-      }).select('_id').lean();
-      const itemIds = matchingItems.map(i => i._id);
+        itemName: { $regex: search, $options: "i" },
+      })
+        .select("_id")
+        .lean();
+      const itemIds = matchingItems.map((i) => i._id);
       if (itemIds.length > 0) {
         directOr.push({ productItem: { $in: itemIds } });
       }
@@ -1827,7 +1958,10 @@ exports.getOrdersByStaffId = async (req, res) => {
         query.$or = directOr;
       }
 
-      console.log("🔍 Built search conditions for staff:", JSON.stringify(query.$or, null, 2)); // Debug log
+      console.log(
+        "🔍 Built search conditions for staff:",
+        JSON.stringify(query.$or, null, 2)
+      ); // Debug log
     }
 
     // Date range filter (unchanged)
@@ -1849,25 +1983,32 @@ exports.getOrdersByStaffId = async (req, res) => {
     // Company filter
     if (filters.company && filters.company.length > 0) {
       const companies = await Company.find({
-        companyName: { $in: filters.company }
-      }).select('_id').lean();
-      
+        companyName: { $in: filters.company },
+      })
+        .select("_id")
+        .lean();
+
       if (companies.length > 0) {
         if (query.companyName) {
-          query.companyName.$in = [...(query.companyName.$in || []), ...companies.map(c => c._id)];
+          query.companyName.$in = [
+            ...(query.companyName.$in || []),
+            ...companies.map((c) => c._id),
+          ];
         } else {
-          query.companyName = { $in: companies.map(c => c._id) };
+          query.companyName = { $in: companies.map((c) => c._id) };
         }
       }
     }
     // Party filter
     if (filters.party && filters.party.length > 0) {
       const parties = await Party.find({
-        partyName: { $in: filters.party }
-      }).select('_id').lean();
-      
+        partyName: { $in: filters.party },
+      })
+        .select("_id")
+        .lean();
+
       if (parties.length > 0) {
-        query.party = { $in: parties.map(p => p._id) };
+        query.party = { $in: parties.map((p) => p._id) };
       }
     }
 
@@ -1879,11 +2020,13 @@ exports.getOrdersByStaffId = async (req, res) => {
     // Item filter
     if (filters.item && filters.item.length > 0) {
       const itemDocs = await ProductItem.find({
-        itemName: { $in: filters.item }
-      }).select('_id').lean();
-      
+        itemName: { $in: filters.item },
+      })
+        .select("_id")
+        .lean();
+
       if (itemDocs.length > 0) {
-        query.productItem = { $in: itemDocs.map(i => i._id) };
+        query.productItem = { $in: itemDocs.map((i) => i._id) };
       }
     }
 
@@ -1980,37 +2123,43 @@ exports.getOrdersByStaffId = async (req, res) => {
       .sort({ createdAt: -1 });
     } else {
       orders = await Order.find(query)
-        .populate('companyName', 'companyName avatar')
+        .populate("companyName", "companyName avatar")
         .populate({
-          path: 'party',
-          select: '-__v',
+          path: "party",
+          select: "-__v",
           populate: [
-            { path: 'address.marketName', model: 'Market', select: 'marketName' },
-            { path: 'address.landMark', model: 'Market', select: 'landmark' },
-            { path: 'address.area', model: 'Market', select: 'area' },
-            { path: 'address.pincode', model: 'Market', select: 'pincode' },
+            {
+              path: "address.marketName",
+              model: "Market",
+              select: "marketName",
+            },
+            { path: "address.landMark", model: "Market", select: "landmark" },
+            { path: "address.area", model: "Market", select: "area" },
+            { path: "address.pincode", model: "Market", select: "pincode" },
           ],
         })
-        .populate('productItem', 'itemName')
-        .populate('createdBy', 'firstName lastName')
-        .populate('designer', 'name')
-        .populate('printer', 'name')
-        .populate('binder', 'name')
-        .populate('bookletBinder', 'name')
-        .populate('reworkHistory.createdBy', 'name')
+        .populate("productItem", "itemName")
+        .populate("createdBy", "firstName lastName")
+        .populate("designer", "name")
+        .populate("printer", "name")
+        .populate("binder", "name")
+        .populate("bookletBinder", "name")
+        .populate("reworkHistory.createdBy", "name")
         .populate("bindingType", "name")
         .sort({ createdAt: -1 });
     }
 
     // Prepare pagination information
-    const pagination = isPagination ? {
-      currentPage: parseInt(page),
-      pageSize: parseInt(pageSize),
-      totalCount: totalCount,
-      totalPages: Math.ceil(totalCount / pageSize),
-      hasNext: page < Math.ceil(totalCount / pageSize),
-      hasPrev: page > 1,
-    } : null;
+    const pagination = isPagination
+      ? {
+          currentPage: parseInt(page),
+          pageSize: parseInt(pageSize),
+          totalCount: totalCount,
+          totalPages: Math.ceil(totalCount / pageSize),
+          hasNext: page < Math.ceil(totalCount / pageSize),
+          hasPrev: page > 1,
+        }
+      : null;
 
     // 4. If no orders found, return an empty array with a message
     if (!orders || orders.length === 0) {
@@ -2117,6 +2266,25 @@ exports.updateStaffStatus = async (req, res) => {
         .json({ success: false, message: "Order not found" });
     }
 
+    let startedAtUpdate = {};
+
+    if (status === "In Progress") {
+      if (statusType === "printer" && !currentOrder.printingStartedAt) {
+        startedAtUpdate.printingStartedAt = new Date();
+      }
+
+      if (statusType === "binder" && !currentOrder.bindingStartedAt) {
+        startedAtUpdate.bindingStartedAt = new Date();
+      }
+
+      if (
+        statusType === "bookletBinder" &&
+        !currentOrder.bookletBindingStartedAt
+      ) {
+        startedAtUpdate.bookletBindingStartedAt = new Date();
+      }
+    }
+
     console.log("✅ Order found:", currentOrder._id);
 
     console.log("🔍 Fetching staff role:", req.user.id);
@@ -2185,7 +2353,10 @@ exports.updateStaffStatus = async (req, res) => {
 
     const updatedOrder = await Order.findByIdAndUpdate(
       orderId,
-      { [updateField]: status },
+      {
+        [updateField]: status,
+        ...startedAtUpdate,
+      },
       { new: true }
     )
       .populate("companyName", "companyName avatar")
