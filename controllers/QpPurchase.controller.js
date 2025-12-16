@@ -308,7 +308,7 @@ exports.createPurchase = async (req, res) => {
       paper1GSM: type === "Box" ? paper1GSM : undefined,
       paper2GSM: type === "Box" ? paper2GSM : undefined,
       paper3GSM: type === "Box" ? paper3GSM : undefined,
-      noOfBox: type === "Box" ? noOfBox : undefined,
+      quantity: type === "Box" ? noOfBox : undefined,
     });
 
     await newInventory.save();
@@ -414,7 +414,8 @@ exports.updatePurchase = async (req, res) => {
       paper1GSM,
       paper2GSM,
       paper3GSM,
-      noOfBox
+      noOfBox,
+      quantity
     } = req.body;
 
     // Validate ObjectIds if provided
@@ -590,6 +591,7 @@ exports.updatePurchase = async (req, res) => {
       ...(paper2GSM && { paper2GSM }),
       ...(paper3GSM && { paper3GSM }),
       ...(noOfBox && { noOfBox }),
+      ...(quantity && { quantity }),
     };
 
     // Clear fields not relevant to the type
@@ -614,7 +616,7 @@ exports.updatePurchase = async (req, res) => {
         updateData.paper1GSM = undefined;
         updateData.paper2GSM = undefined;
         updateData.paper3GSM = undefined;
-        updateData.noOfBox = undefined;
+        updateData.quantity = undefined;
         // Agar Box nahi hai toh deckal bhi clear karo (agar paper bhi nahi hai)
         if (type !== "paper") {
           updateData.deckal = undefined;

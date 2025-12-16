@@ -64,7 +64,37 @@ const PurchaseSchema = new mongoose.Schema(
     reelBatchNo: {
       type: String,
     },
-    color:{
+    color: {
+      type: String,
+    },
+    quantity: {
+      type: Number,
+    },
+    boxLength: {
+      type: Number,
+    },
+    boxWidth: {
+      type: Number,
+    },
+    boxHeight: {
+      type: Number,
+    },
+    ply: {
+      type: Number,
+    },
+    paper1GSM: {
+      type: Number,
+    },
+    paper2GSM: {
+      type: Number,
+    },
+    paper3GSM: {
+      type: Number,
+    },
+    noOfBox: {
+      type: Number,
+    },
+    deckal: {
       type: String,
     }
   },
