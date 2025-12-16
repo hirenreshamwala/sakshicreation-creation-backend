@@ -677,6 +677,50 @@ const orderSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
+    designerAssignedAt: {
+      type: Date,
+      default: null
+    },
+    designApproved: {
+      type: Date,
+      default: null
+    },
+    printerAssignedAt: {
+      type: Date,
+      default: null
+    },
+    binderAssignedAt: {
+      type: Date,
+      default: null
+    },
+    bookletBinderAssignedAt: {
+      type: Date,
+      default: null
+    },
+    printingCompletedAt: {
+      type: Date,
+      default: null
+    },
+    bindingCompletedAt: {
+      type: Date,
+      default: null
+    },
+    bookletBindingCompletedAt: {
+      type: Date,
+      default: null
+    },
+    printingStartedAt: {
+      type: Date,
+      default: null
+    },
+    bindingStartedAt: {
+      type: Date,
+      default: null
+    },
+    bookletBindingStartedAt: {
+      type: Date,
+      default: null
+    },
     applyGST: {
       type: Boolean,
       default: false,
