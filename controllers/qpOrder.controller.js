@@ -3,8 +3,8 @@ const QpData = require("../models/qpOrder.model"); // Adjust path to your model
 const Staff = require("../models/staff.model");
 const Inventory = require("../models/inventory.model"); // Import Inventory model
 const PackagingOption = require("../models/packagingOption.model");
-const Party = require("../models/Party.model"); 
-const Company = require("../models/companyName.model"); 
+const Party = require("../models/Party.model");
+const Company = require("../models/companyName.model");
 const moment = require("moment");
 const _ = require("lodash");
 
@@ -170,6 +170,10 @@ exports.createQpOrder = async (req, res) => {
         "party ply uom length width height deckal paper1GSM paper2GSM paper3GSM noOfPieces ratePerPiece isKantan kantan"
       )
       .populate("kantan", "kantanName")
+      .populate({
+        path: "createdBy",
+        select: "firstName lastName",
+      })
       .session(session);
 
     await session.commitTransaction();
@@ -348,7 +352,7 @@ exports.getAllQpOrdersForDriver = async (req, res) => {
     } else if (filters.status && filters.status.length > 0) {
       query.status = { $in: filters.status };
     }
-      if (search && search.trim()) {
+    if (search && search.trim()) {
       const directOr = [
         { "status": { $regex: search, $options: "i" } },
         { "deliveryStatus": { $regex: search, $options: "i" } },
@@ -445,7 +449,7 @@ exports.getAllQpOrdersForDriver = async (req, res) => {
           }
         }
       });
-      
+
       if (directOr.length > 1) { // If more than base conditions
         query.$or = directOr;
       }
@@ -622,7 +626,7 @@ exports.getQpFilterOptionsData = async (req, res) => {
       const companies = await Company.find({ // FIXED: Use imported Company model
         companyName: { $in: otherFilters.company }
       }).select('_id').lean();
- 
+
       if (companies.length > 0) {
         query.companyName = { $in: companies.map(c => c._id) };
       }
@@ -650,7 +654,7 @@ exports.getQpFilterOptionsData = async (req, res) => {
       const parties = await Party.find({
         partyName: { $in: otherFilters.party }
       }).select('_id').lean();
- 
+
       if (parties.length > 0) {
         query.party = { $in: parties.map(p => p._id) };
       }
@@ -738,7 +742,7 @@ exports.getQpFilterOptionsData = async (req, res) => {
         const partiesForMarket = await Party.find(
           { _id: { $in: partyIdsForMarket } }
         ).populate("address.marketName", "marketName").lean(); // Added .lean() for performance
-    
+
         uniqueValues = partiesForMarket
           .map(p => p.address?.marketName?.marketName)
           .filter(Boolean)
@@ -754,7 +758,7 @@ exports.getQpFilterOptionsData = async (req, res) => {
         const partiesForArea = await Party.find(
           { _id: { $in: partyIdsForArea } }
         ).populate("address.area", "area").lean(); // Added .lean() for performance
-    
+
         uniqueValues = partiesForArea
           .map(p => p.address?.area?.area)
           .filter(Boolean)

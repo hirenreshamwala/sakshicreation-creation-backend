@@ -561,6 +561,18 @@ const qpDataSchema = new mongoose.Schema(
     paperQuality: {
       type: String,
     },
+    dyeQuantity: {
+      type: String,
+    },
+    designerSize: {
+      type: String,
+    },
+    laminationSize: {
+      type: String,
+    },
+    laminationQty: {
+      type: String,
+    },
   },
   {
     timestamps: true,
