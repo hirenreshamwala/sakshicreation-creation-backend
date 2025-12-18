@@ -686,7 +686,7 @@ const getQPReport = async (req, res) => {
     }).select("_id companyName");
     if (!company)
       return res
-        .status(404)
+        .status(200)
         .json({ success: false, message: "Company not found" });
 
     const salesRoles = await Role.find({
@@ -3006,7 +3006,7 @@ const getscsalescredit = async (req, res) => {
     ]);
 
     if (!salesCreditReport.length) {
-      return res.status(404).json({
+      return res.status(200).json({
         success: false,
         message: "No sales credit data found for the given date range",
         data: { report: [], dateRange: { startDate: start, endDate: end } },
@@ -3141,7 +3141,7 @@ const getQpsalescredit = async (req, res) => {
     ]);
 
     if (!salesCreditReport.length) {
-      return res.status(404).json({
+      return res.status(200).json({
         success: false,
         message: "No sales credit data found for the given date range",
         data: { report: [], dateRange: { startDate: start, endDate: end } },
