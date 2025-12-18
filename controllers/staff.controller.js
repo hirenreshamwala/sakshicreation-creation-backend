@@ -55,7 +55,7 @@ exports.createStaff = async (req, res) => {
         });
       }
     }
-// Normalize email to lowercase if provided
+    // Normalize email to lowercase if provided
     if (req.body.email) {
       req.body.email = req.body.email.toLowerCase();
       const existingEmail = await Staff.findOne({ email: req.body.email });
@@ -67,24 +67,24 @@ exports.createStaff = async (req, res) => {
       }
     }
     // Check if email already exists (only if provided)
-      if (req.body.email) {
-        const existingEmail = await Staff.findOne({ email: req.body.email });
-        if (existingEmail) {
-          return res.status(400).json({
-            success: false,
-            message: "Email already in use",
-          });
-        }
-      }
-
-      // Validate aadharNo
-      const aadharRegex = /^[0-9]{12}$/;
-      if (!aadharRegex.test(req.body.aadharNo)) {
+    if (req.body.email) {
+      const existingEmail = await Staff.findOne({ email: req.body.email });
+      if (existingEmail) {
         return res.status(400).json({
           success: false,
-          message: "Invalid Aadhar number format. Must be 12 digits.",
+          message: "Email already in use",
         });
       }
+    }
+
+    // Validate aadharNo
+    const aadharRegex = /^[0-9]{12}$/;
+    if (!aadharRegex.test(req.body.aadharNo)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid Aadhar number format. Must be 12 digits.",
+      });
+    }
 
     // Check if Aadhar number already exists
     const existingAadhar = await Staff.findOne({ aadharNo: req.body.aadharNo });
@@ -111,7 +111,7 @@ exports.createStaff = async (req, res) => {
         message: "Invalid role ID. No matching role found.",
       });
     }
-  
+
     const hashedPassword = encryptData(req.body.password);
 
     const staffData = {
@@ -124,7 +124,7 @@ exports.createStaff = async (req, res) => {
       aadharNo: req.body.aadharNo,
       joiningDate: new Date(req.body.joiningDate),
       birthDay: req.body.birthDay ? new Date(req.body.birthDay) : null,
-      CompanyName: req.body.CompanyName  ,
+      CompanyName: req.body.CompanyName,
       password: hashedPassword,
       role: roleId,
       aadharFiles: req.body.aadharFiles, // Required
@@ -383,7 +383,7 @@ exports.loginStaff = async (req, res) => {
     }
 
     // Find staff by email and populate role
-    const staff = await Staff.findOne({ email }).populate(["role","CompanyName"]);
+    const staff = await Staff.findOne({ email }).populate(["role", "CompanyName"]);
     if (!staff) {
       return res.status(401).json({
         success: false,
@@ -420,6 +420,13 @@ exports.loginStaff = async (req, res) => {
       });
     }
 
+    if (requestType === "web" && staff.role?.roleName === "sales staff") {
+      return res.status(403).json({
+        success: false,
+        message: "Sales staff are not allowed to login from web",
+      });
+    }
+
     await staff.save();
 
     // Generate JWT token including deviceToken
@@ -445,7 +452,7 @@ exports.loginStaff = async (req, res) => {
         email: staff.email,
         role: staff.role,
         isDispatch: staff.isDisptach,
-        company:staff.CompanyName,
+        company: staff.CompanyName,
         requestType,
         deviceToken,
         token,

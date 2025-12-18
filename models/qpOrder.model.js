@@ -499,6 +499,10 @@ const qpDataSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
+    completedPunchingBoxCount: {
+      type: Number,
+      default: 0,
+    },
     deductFrom: {
       type: String,
     },
