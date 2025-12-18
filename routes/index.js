@@ -34,7 +34,10 @@ const factoryArrival = require("./factoryReturn.routes");
 const paymentFolder = require("./paymentFolder.routes");
 
 
+const PartyRouter = require("./party.routes");
+
 router.use("/staff", StaffRouter);
+router.use("/party", PartyRouter);
 router.use("/filedownload", filedownloadRouter);
 router.use(authenticateToken);
 router.use("/company", CompanyRouter);
