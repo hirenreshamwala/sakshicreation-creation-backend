@@ -11,4 +11,7 @@ router.post("/getscdesigners", ReportController.getscDesigner);
 router.post("/getscprinters", ReportController.getscPrinter);
 router.post("/getscbinder", ReportController.getscBinder);
 router.post("/getscbookletbinder", ReportController.getscBookletBinder);
+router.post("/getscproductitem", ReportController.getscProductItem);
+router.post("/getscsalescredit", ReportController.getscsalescredit);
+router.post("/getqpsalescredit", ReportController.getQpsalescredit);
 module.exports = router;

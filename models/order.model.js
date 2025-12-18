@@ -23,6 +23,10 @@ const orderProformaHistorySchema = new mongoose.Schema({
   applyGST: Boolean,
   gstPercentage: String,
   finalAmount: String,
+  salecredit: { 
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Staff"
+  },
   createdAt: {
     type: Date,
     default: Date.now
@@ -735,6 +739,10 @@ const orderSchema = new mongoose.Schema(
     finalAmount: {
       type: Number,
       default: 0,
+    },
+     salecredit: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Staff",
     },
     daysAfterConfirmation: {
       type: Number,

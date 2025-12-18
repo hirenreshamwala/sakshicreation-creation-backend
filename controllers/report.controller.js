@@ -2800,6 +2800,374 @@ const getscBookletBinder = async (req, res) => {
   }
 };
 
+const getscProductItem = async (req, res) => {
+  try {
+    const { startDate, endDate } = req.body;
+
+    if (!startDate || !endDate) {
+      return res.status(400).json({
+        success: false,
+        message: "Start date and end date are required",
+      });
+    }
+
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    end.setHours(23, 59, 59, 999);
+
+    // Get sales staff roles
+    const salesRoles = await Role.find({
+      roleName: { $regex: "Sales Staff", $options: "i" },
+      isDelete: false,
+    }).select("_id");
+
+    const salesRoleIds = salesRoles.map((role) => role._id);
+    
+    // Get all sales staff
+    const staffList = await Staff.find({
+      role: { $in: salesRoleIds },
+    }).select("firstName lastName _id");
+
+    if (staffList.length === 0) {
+      return res.status(200).json({
+        success: true,
+        data: [],
+        message: "No sales staff found",
+      });
+    }
+
+    const staffIds = staffList.map(staff => staff._id);
+    
+    // Get orders
+    const orders = await Order.find({
+      createdBy: { $in: staffIds },
+      createdAt: { $gte: start, $lte: end }
+    })
+    .populate('productItem', 'itemName')
+    .populate('createdBy', 'firstName lastName')
+    .select('orderNumber productItem createdBy')
+    .lean();
+
+    // Create simple count map
+    const resultMap = {};
+    
+    orders.forEach(order => {
+      const staffId = order.createdBy._id.toString();
+      const staffName = `${order.createdBy.firstName} ${order.createdBy.lastName}`;
+      const productId = order.productItem?._id?.toString();
+      const productName = order.productItem?.itemName || 'Unknown';
+      
+      if (!resultMap[staffId]) {
+        resultMap[staffId] = {
+          staffId: staffId,
+          staffName: staffName,
+          products: {}
+        };
+      }
+      
+      if (!resultMap[staffId].products[productId]) {
+        resultMap[staffId].products[productId] = {
+          productId: productId,
+          productName: productName,
+          orderCount: 0
+        };
+      }
+      
+      resultMap[staffId].products[productId].orderCount += 1;
+    });
+
+    // Format response
+    const formattedResult = Object.values(resultMap).map(staff => ({
+      staffName: staff.staffName,
+      products: Object.values(staff.products)
+        .sort((a, b) => b.orderCount - a.orderCount)
+        .map(product => ({
+          productName: product.productName,
+          orderCount: product.orderCount
+        }))
+    }));
+
+    return res.status(200).json({
+      success: true,
+      data: formattedResult,
+      message: "Sales staff product item count retrieved successfully",
+    });
+    
+  } catch (error) {
+    console.error("Error in getscProductItem:", error);
+    return res.status(500).json({ 
+      success: false,
+      message: "Internal server error", 
+      error: error.message 
+    });
+  }
+};
+const getscsalescredit = async (req, res) => {
+  try {
+    const { startDate, endDate } = req.body;
+
+    // Input validation
+    if (!startDate || !endDate) {
+      return res.status(400).json({
+        success: false,
+        message: "Start date and end date are required",
+      });
+    }
+
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+
+    // Validate dates
+    if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid date format for startDate or endDate",
+      });
+    }
+
+    // Set end date to end of day
+    end.setHours(23, 59, 59, 999);
+
+    const salesCreditReport = await Order.aggregate([
+      // Stage 1: Date range filter
+      {
+        $match: {
+          createdAt: { $gte: start, $lte: end },
+          salecredit: { $exists: true, $ne: null }
+        }
+      },
+      // Stage 2: Join staff details
+      {
+        $lookup: {
+          from: "staffs",
+          let: { saleCreditId: "$salecredit" },
+          pipeline: [
+            {
+              $match: {
+                $expr: { $eq: ["$_id", "$$saleCreditId"] }
+              }
+            },
+            {
+              $project: {
+                firstName: 1,
+                lastName: 1
+              }
+            }
+          ],
+          as: "staffDetails"
+        }
+      },
+      // Stage 3: Unwind staffDetails
+      {
+        $unwind: {
+          path: "$staffDetails",
+          preserveNullAndEmptyArrays: false
+        }
+      },
+      // Stage 4: Group by salecredit (staff) - એક staff માટે બધા orders નો total કરો
+      {
+        $group: {
+          _id: "$salecredit",
+          staffName: {
+            $first: { 
+              $concat: ["$staffDetails.firstName", " ", "$staffDetails.lastName"] 
+            }
+          },
+          // દરેક staff ના બધા orders નો total finalAmount
+          totalFinalAmount: { $sum: "$finalAmount" },
+          // કુલ કેટલા orders છે તેની ગણતરી
+          totalOrders: { $sum: 1 },
+          // દરેક order ની વિગતો (જો જોઈતી હોય તો)
+          orders: {
+            $push: {
+              orderNumber: "$orderNumber",
+              finalAmount: "$finalAmount",
+              createdAt: "$createdAt"
+            }
+          }
+        }
+      },
+      // Stage 5: Sort by totalFinalAmount (જેથી સૌથી વધુ sales કરનાર staff પહેલા આવે)
+      {
+        $sort: { totalFinalAmount: -1 }
+      },
+      // Stage 6: Project only required fields
+      {
+        $project: {
+          salecredit: "$_id",
+          staffName: 1,
+          totalFinalAmount: 1,
+          totalOrders: 1,
+          orders: {
+            $slice: ["$orders", 50] // ફક્ત પ્રથમ 50 orders (જો જોઈતું હોય તો)
+          }
+        }
+      }
+    ]);
+
+    if (!salesCreditReport.length) {
+      return res.status(404).json({
+        success: false,
+        message: "No sales credit data found for the given date range",
+        data: { report: [], dateRange: { startDate: start, endDate: end } },
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Sales credit report fetched successfully",
+      data: {
+        report: salesCreditReport,
+        dateRange: { startDate: start, endDate: end },
+      },
+    });
+  } catch (error) {
+    console.error("Error in getscsalescredit:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      error: error.message,
+    });
+  }
+};
+
+const getQpsalescredit = async (req, res) => {
+  try {
+    const { startDate, endDate } = req.body;
+
+    // Input validation
+    if (!startDate || !endDate) {
+      return res.status(400).json({
+        success: false,
+        message: "Start date and end date are required",
+      });
+    }
+
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+
+    // Validate dates
+    if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid date format for startDate or endDate",
+      });
+    }
+
+    // Set end date to end of day
+    end.setHours(23, 59, 59, 999);
+
+    const salesCreditReport = await QpData.aggregate([
+      // Stage 1: Date range filter and ensure createdBy exists
+      {
+        $match: {
+          createdAt: { $gte: start, $lte: end },
+          createdBy: { $exists: true, $ne: null }
+        }
+      },
+      // Stage 2: Join staff details using createdBy field
+      {
+        $lookup: {
+          from: "staffs",
+          let: { staffId: "$createdBy" },
+          pipeline: [
+            {
+              $match: {
+                $expr: { $eq: ["$_id", "$$staffId"] }
+              }
+            },
+            {
+              $project: {
+                firstName: 1,
+                lastName: 1
+              }
+            }
+          ],
+          as: "staffDetails"
+        }
+      },
+      // Stage 3: Unwind staffDetails
+      {
+        $unwind: {
+          path: "$staffDetails",
+          preserveNullAndEmptyArrays: false
+        }
+      },
+      // Stage 4: Group by createdBy (staff)
+      {
+        $group: {
+          _id: "$createdBy",
+          staffName: {
+            $first: { 
+              $concat: ["$staffDetails.firstName", " ", "$staffDetails.lastName"] 
+            }
+          },
+          // totalKg sum કરો (જો string હોય તો number માં convert કરો)
+          totalKgSum: { 
+            $sum: { 
+              $cond: {
+                if: { $eq: [{ $type: "$totalKg" }, "string"] },
+                then: { $toDouble: "$totalKg" },
+                else: { $toDouble: { $ifNull: ["$totalKg", 0] } }
+              }
+            }
+          },
+          totalOrders: { $sum: 1 },
+          orders: {
+            $push: {
+              orderNumber: "$orderNo",
+              totalKg: "$totalKg",
+              createdAt: "$createdAt"
+            }
+          }
+        }
+      },
+      // Stage 5: Sort by totalKgSum descending
+      {
+        $sort: { totalKgSum: -1 }
+      },
+      // Stage 6: Project final fields
+      {
+        $project: {
+          createdBy: "$_id",
+          staffName: 1,
+          totalKgSum: 1,
+          totalOrders: 1,
+          orders: {
+            $slice: ["$orders", 50]
+          }
+        }
+      }
+    ]);
+
+    if (!salesCreditReport.length) {
+      return res.status(404).json({
+        success: false,
+        message: "No sales credit data found for the given date range",
+        data: { report: [], dateRange: { startDate: start, endDate: end } },
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Sales credit report fetched successfully",
+      data: {
+        report: salesCreditReport,
+        dateRange: { startDate: start, endDate: end },
+      },
+    });
+  } catch (error) {
+    console.error("Error in getQpsalescredit:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      error: error.message,
+    });
+  }
+};
+
+
+
 module.exports = {
   getStaffReport,
   getSCReport,
@@ -2810,4 +3178,7 @@ module.exports = {
   getscPrinter,
   getscBinder,
   getscBookletBinder,
+  getscProductItem,
+  getscsalescredit,
+  getQpsalescredit
 };

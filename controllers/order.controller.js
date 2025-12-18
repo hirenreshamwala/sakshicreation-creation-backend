@@ -7,6 +7,8 @@ const Party = require("../models/Party.model");
 const Staff = require("../models/staff.model");
 const Inventory = require("../models/inventory.model");
 const ProductItem = require("../models/productItem.model");
+const moment = require("moment");
+
 // const Size = require('../models/size.model');
 exports.createOrder = async (req, res) => {
   try {
@@ -374,12 +376,12 @@ exports.getFilterOptionsData = async (req, res) => {
         break;
 
       case "date":
+      case "createdAt":
         const dates = await Order.distinct("createdAt", query);
-        // FIXED: Format to DD-MM-YYYY, sort ascending
         uniqueValues = dates
           .map((d) => moment(d).format("DD-MM-YYYY"))
-          .filter((v, i, self) => v && self.indexOf(v) === i) // Unique
-          .sort((a, b) => new Date(a).getTime() - new Date(b).getTime());
+          .filter((v, i, self) => v && self.indexOf(v) === i)
+          .sort((a, b) => moment(a, "DD-MM-YYYY").toDate().getTime() - moment(b, "DD-MM-YYYY").toDate().getTime());
         break;
 
       default:
