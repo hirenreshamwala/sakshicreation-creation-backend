@@ -127,7 +127,7 @@ exports.createPurchase = async (req, res) => {
       !companyName ||
       !role ||
       !staff ||
-      !type 
+      !type
     ) {
       return res.status(400).json({
         success: false,
@@ -261,7 +261,7 @@ exports.createPurchase = async (req, res) => {
       type,
       reel: type === "kantan" ? reel : undefined,
       reelBatchNo: type === "paper" ? reelBatchNo : undefined,
-      color: type === "paper" ? color : undefined, 
+      color: type === "paper" ? color : undefined,
       kantan: type === "kantan" ? kantan : undefined,
       deckal: type === "paper" || type === "Box" ? deckal : undefined,
       gsm: type === "paper" ? gsm : undefined,
@@ -309,6 +309,7 @@ exports.createPurchase = async (req, res) => {
       paper2GSM: type === "Box" ? paper2GSM : undefined,
       paper3GSM: type === "Box" ? paper3GSM : undefined,
       quantity: type === "Box" ? noOfBox : undefined,
+      usedBox: type === "Box" ? 0 : 0,
     });
 
     await newInventory.save();
@@ -401,7 +402,7 @@ exports.updatePurchase = async (req, res) => {
       deckal,
       gsm,
       reel,
-      reelBatchNo, 
+      reelBatchNo,
       paperMil,
       category,
       bf,
@@ -678,6 +679,7 @@ exports.updatePurchase = async (req, res) => {
       paper2GSM: type === "Box" ? paper2GSM : undefined,
       paper3GSM: type === "Box" ? paper3GSM : undefined,
       noOfBox: type === "Box" ? noOfBox : undefined,
+      usedBox: type === "Box" ? 0 : 0,
     };
 
     // find if inventory exists for this purchase
