@@ -420,12 +420,6 @@ exports.loginStaff = async (req, res) => {
       });
     }
 
-    if (requestType === "web" && staff.role?.roleName.toLowerCase() === "sales staff") {
-      return res.status(403).json({
-        success: false,
-        message: "Sales staff are not allowed to login from web",
-      });
-    }
 
     await staff.save();
 
