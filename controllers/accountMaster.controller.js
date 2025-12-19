@@ -657,7 +657,7 @@ exports.getAllAccountMasters = async (req, res) => {
         }
       },
       { $unwind: { path: "$createdBy", preserveNullAndEmptyArrays: true } },
-      // CompanyName lookup with only companyName and avtar
+      // CompanyName lookup with only companyName and avatar
       {
         $lookup: {
           from: "companynames",
@@ -668,7 +668,7 @@ exports.getAllAccountMasters = async (req, res) => {
             {
               $project: {
                 companyName: 1,
-                avtar: 1,
+                avatar: 1,
                 _id: 1
               }
             }
@@ -780,7 +780,7 @@ exports.getAllAccountMasters = async (req, res) => {
           // companyName cleanup - INCLUDING AVATAR
           companyName: {
             companyName: "$companyName.companyName",
-            avtar: "$companyName.avtar"
+            avatar: "$companyName.avatar"
           },
           // party.address cleanup - NO landMark and pincode
           "party.address": {
