@@ -339,7 +339,7 @@ exports.getAllAccountMasters = async (req, res) => {
       }
     }
 
-    // Party filters - get party IDs that match filters
+    // ===== STEP 3: Build Party Query with ALL filters =====
     let partyIds = null;
     const partyQuery = {};
 
@@ -355,9 +355,12 @@ exports.getAllAccountMasters = async (req, res) => {
     if (filters.mobile && filters.mobile.length > 0) {
       partyQuery.ownerMobileNo = { $in: filters.mobile };
     }
+    
+    // FIXED: Unit No filter - properly handle as array
     if (filters.unitNo && filters.unitNo.length > 0) {
       partyQuery["address.unitNo"] = { $in: filters.unitNo };
     }
+    
     if (filters.status && filters.status.length > 0) {
       partyQuery.statusApproval = { $in: filters.status };
     }
@@ -369,6 +372,22 @@ exports.getAllAccountMasters = async (req, res) => {
       }).select('_id').lean();
       if (markets.length > 0) {
         partyQuery["address.marketName"] = { $in: markets.map(m => m._id) };
+      } else {
+        // No markets found, return empty
+        return res.status(200).json({
+          success: true,
+          data: [],
+          pagination: isPagination ? {
+            currentPage: page,
+            pageSize: pageSize,
+            totalCount: 0,
+            totalPages: 0,
+            hasNext: false,
+            hasPrev: false,
+            counts: { approved: 0, pending: 0, total: 0 }
+          } : null,
+          counts: { approved: 0, pending: 0, total: 0 }
+        });
       }
     }
 
@@ -379,6 +398,22 @@ exports.getAllAccountMasters = async (req, res) => {
       }).select('_id').lean();
       if (areas.length > 0) {
         partyQuery["address.area"] = { $in: areas.map(a => a._id) };
+      } else {
+        // No areas found, return empty
+        return res.status(200).json({
+          success: true,
+          data: [],
+          pagination: isPagination ? {
+            currentPage: page,
+            pageSize: pageSize,
+            totalCount: 0,
+            totalPages: 0,
+            hasNext: false,
+            hasPrev: false,
+            counts: { approved: 0, pending: 0, total: 0 }
+          } : null,
+          counts: { approved: 0, pending: 0, total: 0 }
+        });
       }
     }
 
@@ -396,15 +431,13 @@ exports.getAllAccountMasters = async (req, res) => {
         { contactMobileNo: { $regex: search, $options: "i" } },
         { contactWhatsAppNo: { $regex: search, $options: "i" } },
         { GSTNo: { $regex: search, $options: "i" } },
-        { "address.unitNo": { $regex: search, $options: "i" } },
-        { "address.marketName.marketName": { $regex: search, $options: "i" } },
-        { "address.area.area": { $regex: search, $options: "i" } },
+        { "address.unitNo": { $regex: search, $options: "i" } }
       ];
     }
 
     // If we have party filters or search, get matching party IDs
     if (Object.keys(partyQuery).length > 0) {
-      const matchingParties = await Party.find(partyQuery).select('_id').lean();
+      const matchingParties = await Party.find(partyQuery).select('_id statusApproval').lean();
       if (matchingParties.length > 0) {
         partyIds = matchingParties.map(p => p._id);
         baseQuery.party = { $in: partyIds };
@@ -426,7 +459,7 @@ exports.getAllAccountMasters = async (req, res) => {
       }
     }
 
-    // ===== STEP 3: Handle assignedTo and remarks filters (requires task lookup) =====
+    // ===== STEP 4: Handle assignedTo and remarks filters (requires task lookup) =====
     let taskFilteredAccountMasterIds = null;
 
     if ((filters.assignedTo && filters.assignedTo.length > 0) ||
@@ -557,7 +590,7 @@ exports.getAllAccountMasters = async (req, res) => {
       baseQuery._id = { $in: taskFilteredAccountMasterIds };
     }
 
-    // ===== STEP 4: Get total count with filters =====
+    // ===== STEP 5: Get total count with ALL filters applied =====
     const totalCount = await AccountMaster.countDocuments(baseQuery);
 
     if (totalCount === 0) {
@@ -577,27 +610,37 @@ exports.getAllAccountMasters = async (req, res) => {
       });
     }
 
-    // ===== STEP 5: Get status counts if needed =====
+    // ===== STEP 6: FIXED - Get accurate status counts based on FILTERED AccountMasters =====
     let counts = { approved: 0, pending: 0, total: totalCount };
 
-    if (includeCounts && partyIds) {
-      const statusCounts = await Party.aggregate([
-        { $match: { _id: { $in: partyIds } } },
-        {
-          $group: {
-            _id: "$statusApproval",
-            count: { $sum: 1 }
-          }
-        }
-      ]);
+    if (includeCounts) {
+      // Get all AccountMaster IDs that match the current filters
+      const filteredAccountMasterIds = await AccountMaster.find(baseQuery)
+        .select('party')
+        .lean();
+      
+      const filteredPartyIds = filteredAccountMasterIds.map(am => am.party);
 
-      statusCounts.forEach(sc => {
-        if (sc._id === "APPROVED") counts.approved = sc.count;
-        if (sc._id === "PENDING") counts.pending = sc.count;
-      });
+      if (filteredPartyIds.length > 0) {
+        // Get status counts only for parties that are in filtered AccountMasters
+        const statusCounts = await Party.aggregate([
+          { $match: { _id: { $in: filteredPartyIds } } },
+          {
+            $group: {
+              _id: "$statusApproval",
+              count: { $sum: 1 }
+            }
+          }
+        ]);
+
+        statusCounts.forEach(sc => {
+          if (sc._id === "APPROVED") counts.approved = sc.count;
+          if (sc._id === "PENDING") counts.pending = sc.count;
+        });
+      }
     }
 
-    // ===== STEP 6: Build aggregation pipeline with pagination =====
+    // ===== STEP 7: Build aggregation pipeline with pagination =====
     const pipeline = [
       { $match: baseQuery },
       { $sort: { createdAt: -1 } },
@@ -610,7 +653,6 @@ exports.getAllAccountMasters = async (req, res) => {
           localField: "party",
           foreignField: "_id",
           as: "party",
-          // Select only required fields from Party collection
           pipeline: [
             {
               $project: {
@@ -629,16 +671,16 @@ exports.getAllAccountMasters = async (req, res) => {
                 "address.unitNo": 1,
                 "address.marketName": 1,
                 "address.area": 1,
+                "address.state": 1,
+                "address.city": 1,
                 _id: 1
-                // Excluded fields: contactForPaymentEmail, contactPersonEmail, 
-                // ownerName, ownerEmail, createdAt, updatedAt, __v
               }
             }
           ]
         }
       },
       { $unwind: { path: "$party", preserveNullAndEmptyArrays: false } },
-      // CreatedBy lookup with only firstName and lastName
+      // CreatedBy lookup
       {
         $lookup: {
           from: "staffs",
@@ -657,7 +699,7 @@ exports.getAllAccountMasters = async (req, res) => {
         }
       },
       { $unwind: { path: "$createdBy", preserveNullAndEmptyArrays: true } },
-      // CompanyName lookup with only companyName and avatar
+      // CompanyName lookup
       {
         $lookup: {
           from: "companynames",
@@ -676,7 +718,7 @@ exports.getAllAccountMasters = async (req, res) => {
         }
       },
       { $unwind: { path: "$companyName", preserveNullAndEmptyArrays: true } },
-      // MarketName lookup with only marketName
+      // MarketName lookup
       {
         $lookup: {
           from: "markets",
@@ -694,8 +736,7 @@ exports.getAllAccountMasters = async (req, res) => {
         }
       },
       { $unwind: { path: "$party.address.marketName", preserveNullAndEmptyArrays: true } },
-      
-      // Area lookup with only area
+      // Area lookup
       {
         $lookup: {
           from: "markets",
@@ -713,7 +754,7 @@ exports.getAllAccountMasters = async (req, res) => {
         }
       },
       { $unwind: { path: "$party.address.area", preserveNullAndEmptyArrays: true } },
-     
+      // Latest task lookup
       {
         $lookup: {
           from: "assigntasks",
@@ -731,7 +772,6 @@ exports.getAllAccountMasters = async (req, res) => {
             },
             { $sort: { createdAt: -1 } },
             { $limit: 1 },
-            // Only select required fields
             {
               $project: {
                 remarks: 1,
@@ -746,7 +786,7 @@ exports.getAllAccountMasters = async (req, res) => {
         }
       },
       { $unwind: { path: "$latestTask", preserveNullAndEmptyArrays: true } },
-      // Populate assignTo with only firstName and lastName
+      // Populate assignTo
       {
         $lookup: {
           from: "staffs",
@@ -769,20 +809,17 @@ exports.getAllAccountMasters = async (req, res) => {
         }
       },
       { $unwind: { path: "$latestTask.assignTo", preserveNullAndEmptyArrays: true } },
-      // Clean up the structure to keep only required fields
+      // Clean up the structure
       {
         $addFields: {
-          // createdBy cleanup
           createdBy: {
             firstName: "$createdBy.firstName",
             lastName: "$createdBy.lastName"
           },
-          // companyName cleanup - INCLUDING AVATAR
           companyName: {
             companyName: "$companyName.companyName",
             avatar: "$companyName.avatar"
           },
-          // party.address cleanup - NO landMark and pincode
           "party.address": {
             unitNo: "$party.address.unitNo",
             marketName: "$party.address.marketName.marketName",
@@ -790,33 +827,26 @@ exports.getAllAccountMasters = async (req, res) => {
             state: "$party.address.state",
             city: "$party.address.city"
           },
-          // latestTask cleanup
           latestTask: {
             remarks: "$latestTask.remarks",
             status: "$latestTask.status",
             assignTo: {
               firstName: "$latestTask.assignTo.firstName",
               lastName: "$latestTask.assignTo.lastName"
-            },
-            // createdAt: "$latestTask.createdAt",
-            // updatedAt: "$latestTask.updatedAt"
+            }
           }
         }
       },
-      // Final project stage to remove unwanted fields from the root document
+      // Final project
       {
         $project: {
-          // Keep AccountMaster fields you need
           reasonToVisit: 1,
           createdAt: 1,
           updatedAt: 1,
-          // Populated fields
           party: 1,
           createdBy: 1,
           companyName: 1,
-          latestTask: 1,
-          // Remove __v from AccountMaster if present
-          // __v: 0
+          latestTask: 1
         }
       }
     ];
@@ -824,13 +854,14 @@ exports.getAllAccountMasters = async (req, res) => {
     // Execute the aggregation
     const enrichedAccountMasters = await AccountMaster.aggregate(pipeline);
 
-    // Prepare pagination information
+    // FIXED: Prepare proper pagination information with accurate counts
+    const totalPages = Math.ceil(totalCount / pageSize);
     const pagination = isPagination ? {
       currentPage: page,
       pageSize: pageSize,
       totalCount: totalCount,
-      totalPages: Math.ceil(totalCount / pageSize),
-      hasNext: page < Math.ceil(totalCount / pageSize),
+      totalPages: totalPages,
+      hasNext: page < totalPages,
       hasPrev: page > 1,
       counts: counts
     } : null;
