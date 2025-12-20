@@ -355,12 +355,12 @@ exports.getAllAccountMasters = async (req, res) => {
     if (filters.mobile && filters.mobile.length > 0) {
       partyQuery.ownerMobileNo = { $in: filters.mobile };
     }
-    
+
     // FIXED: Unit No filter - properly handle as array
     if (filters.unitNo && filters.unitNo.length > 0) {
       partyQuery["address.unitNo"] = { $in: filters.unitNo };
     }
-    
+
     if (filters.status && filters.status.length > 0) {
       partyQuery.statusApproval = { $in: filters.status };
     }
@@ -618,7 +618,7 @@ exports.getAllAccountMasters = async (req, res) => {
       const filteredAccountMasterIds = await AccountMaster.find(baseQuery)
         .select('party')
         .lean();
-      
+
       const filteredPartyIds = filteredAccountMasterIds.map(am => am.party);
 
       if (filteredPartyIds.length > 0) {
@@ -1080,32 +1080,27 @@ exports.getAccountMasterById = async (req, res) => {
       .populate("party")
       .populate({
         path: "party",
-        select: "__v",
+        select: "partyName ownerName ownerMobileNo ownerWhatsAppNo ownerEmail contactPerson personMobileNo personWhatsAppNo contactPersonEmail contactForPayment contactMobileNo contactWhatsAppNo contactForPaymentEmail GSTNo partyTag partyType address",
         populate: [
           {
             path: "address.marketName",
             model: "Market",
-            select: "marketName", // only marketName
+            select: "marketName",
           },
-          // {
-          //   path: "address.streetAddress",
-          //   model: "Market",
-          //   select: "streetAddress", // only streetAddress
-          // },
           {
             path: "address.landMark",
             model: "Market",
-            select: "landmark", // only landMark
+            select: "landmark",
           },
           {
             path: "address.area",
             model: "Market",
-            select: "area", // only area
+            select: "area",
           },
           {
             path: "address.pincode",
             model: "Market",
-            select: "pincode", // only pincode
+            select: "pincode",
           },
         ],
       })
