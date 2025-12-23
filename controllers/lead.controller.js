@@ -1622,7 +1622,7 @@ exports.getPartyFilterOptionsData = async (req, res) => {
 
     /* ✅ CLEAN + SORT + LIMIT */
     uniqueValues = [...new Set(uniqueValues)].filter(Boolean).sort();
-    uniqueValues = uniqueValues.slice(0, 100);
+    // uniqueValues = uniqueValues.slice(0, 100);
 
     return res.status(200).json({
       success: true,

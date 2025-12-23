@@ -505,7 +505,7 @@ exports.getPaymentFolderFilterOptions = async (req, res) => {
     }
    
     // Remove duplicates and sort (already handled in cases)
-    uniqueValues = uniqueValues.slice(0, 100); // Limit for safety
+    // uniqueValues = uniqueValues.slice(0, 100); // Limit for safety
    
     console.log(`✅ PaymentFolder Filter options for ${field}:`, uniqueValues.length, "items");
     res.status(200).json({

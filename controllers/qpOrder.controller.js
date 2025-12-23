@@ -797,7 +797,7 @@ exports.getQpFilterOptionsData = async (req, res) => {
         return a.localeCompare(b);
       });
     // LIMIT FOR SAFETY
-    uniqueValues = uniqueValues.slice(0, 100);
+    // uniqueValues = uniqueValues.slice(0, 100);
     console.log(`QP Filter options for ${field}:`, uniqueValues.length, "items");
     res.status(200).json({
       success: true,

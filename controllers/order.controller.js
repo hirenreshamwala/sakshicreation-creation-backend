@@ -403,7 +403,7 @@ exports.getFilterOptionsData = async (req, res) => {
     uniqueValues = [...new Set(uniqueValues)].filter(Boolean).sort();
 
     // LIMIT FOR SAFETY
-    uniqueValues = uniqueValues.slice(0, 100);
+    // uniqueValues = uniqueValues.slice(0, 100);
 
     console.log(`Filter options for ${field}:`, uniqueValues.length, "items");
 

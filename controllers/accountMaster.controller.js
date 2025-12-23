@@ -2486,7 +2486,7 @@ exports.getFilterOptionsData = async (req, res) => {
     uniqueValues = [...new Set(uniqueValues)].filter(Boolean).sort();
 
     // LIMIT FOR SAFETY
-    uniqueValues = uniqueValues.slice(0, 100);
+    // uniqueValues = uniqueValues.slice(0, 100);
 
     res.status(200).json({
       success: true,
