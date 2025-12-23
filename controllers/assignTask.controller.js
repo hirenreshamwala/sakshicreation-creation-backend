@@ -284,6 +284,10 @@ exports.getAssignTaskById = async (req, res) => {
           select: "marketName" // choose the fields you want
         },
         {
+          path: "address.landMark",
+          select: "landmark" // choose the fields you want
+        },
+        {
           path: "address.area",
           select: "area" // choose the fields you want
         },
