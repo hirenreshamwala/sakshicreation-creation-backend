@@ -2283,33 +2283,16 @@ exports.getFilterOptionsData = async (req, res) => {
     const { search, ...otherFilters } = filters;
 
     if (!field) {
-      return res.status(400).json({
-        success: false,
-        message: "Field parameter is required"
-      });
+      return res.status(400).json({ success: false, message: "Field parameter is required" });
     }
 
-    // ==========================================
-    // 1️⃣ COMPANY NAME → OBJECT ID CONVERSION
-    // ==========================================
-    let companyIds = [];
-
-    if (Array.isArray(otherFilters.company) && otherFilters.company.length > 0) {
-      const companies = await CompanyName.find(
-        { companyName: { $in: otherFilters.company } },
-        "_id"
-      ).lean();
-
-      companyIds = companies.map(c => c._id);
-    }
-
-    // ==========================================
-    // 2️⃣ BUILD BASE ACCOUNTMASTER QUERY
-    // ==========================================
+    // -----------------------
+    // BUILD MAIN FILTER QUERY
+    // -----------------------
     const query = {};
 
-    if (companyIds.length > 0) {
-      query.companyName = { $in: companyIds };
+    if (otherFilters.companyName) {
+      query.companyName = otherFilters.companyName;
     }
 
     if (otherFilters.staffId) {
@@ -2333,216 +2316,185 @@ exports.getFilterOptionsData = async (req, res) => {
 
     let uniqueValues = [];
 
-    // ==========================================
-    // 3️⃣ FIELD-WISE LOGIC
-    // ==========================================
+    // ===========================================
+    //          FIELD WISE CLEAN SOLUTIONS
+    // ===========================================
+
     switch (field) {
 
-      // ---------------- COMPANY ----------------
-      case "company": {
+      case "company":
+        const companyIds = await AccountMaster.distinct("companyName", query);
+
         const companies = await CompanyName.find(
-          companyIds.length ? { _id: { $in: companyIds } } : {},
+          { _id: { $in: companyIds } },
           "companyName"
-        ).lean();
+        );
 
         uniqueValues = companies.map(c => c.companyName);
         break;
-      }
 
-      // ---------------- PARTY (ALL PARTIES) ----------------
-      case "party": {
-        const partyQuery = {};
-        if (companyIds.length) {
-          partyQuery.companyName = { $in: companyIds };
-        }
 
-        const parties = await Party.find(partyQuery, "partyName").lean();
+      case "party":
+        const partyIds = await AccountMaster.distinct("party", query);
+        const parties = await Party.find({ _id: { $in: partyIds } }, "partyName");
         uniqueValues = parties.map(p => p.partyName);
         break;
-      }
 
-      // ---------------- CONTACT PERSON ----------------
-      case "contactPerson": {
-        const partyIds = await AccountMaster.distinct("party", query);
-        const persons = await Party.find(
-          { _id: { $in: partyIds }, contactPerson: { $exists: true } },
-          "contactPerson"
-        ).lean();
-
+      case "contactPerson":
+        const partyIds1 = await AccountMaster.distinct("party", query);
+        const persons = await Party.find({ _id: { $in: partyIds1 } }, "contactPerson");
         uniqueValues = persons.map(p => p.contactPerson);
         break;
-      }
 
-      // ---------------- CREATED DATE ----------------
-      case "createdAt": {
+      case "createdAt":
         const dates = await AccountMaster.distinct("createdAt", query);
-        uniqueValues = dates.map(d => moment(d).format("DD-MM-YYYY"));
-        break;
-      }
 
-      // ---------------- MOBILE ----------------
-      case "mobile": {
-        const partyIds = await AccountMaster.distinct("party", query);
-        const mobiles = await Party.find(
-          { _id: { $in: partyIds } },
+        uniqueValues = dates
+          .sort((a, b) => new Date(b) - new Date(a))
+          .map(d => moment(d).format("DD-MM-YYYY HH:mm:ss"));
+
+        break;
+
+      case "mobile":
+        const partyIds8 = await AccountMaster.distinct("party", query);
+
+        const partyMobiles = await Party.find(
+          { _id: { $in: partyIds8 } },
           "ownerMobileNo"
-        ).lean();
+        );
 
-        uniqueValues = mobiles.map(m => m.ownerMobileNo);
+        uniqueValues = partyMobiles
+          .map(p => p.ownerMobileNo)
+          .filter(Boolean);
         break;
-      }
 
-      // ---------------- PARTY TAG ----------------
-      case "partyTag": {
-        const partyIds = await AccountMaster.distinct("party", query);
-        const tags = await Party.find(
-          { _id: { $in: partyIds } },
-          "partyTag"
-        ).lean();
 
-        uniqueValues = tags.map(t => t.partyTag);
+
+      case "partyTag":
+        const partyIds2 = await AccountMaster.distinct("party", query);
+        const tags = await Party.find({ _id: { $in: partyIds2 } }, "partyTag");
+        uniqueValues = tags.map(p => p.partyTag);
         break;
-      }
 
-      // ---------------- UNIT NO ----------------
-      case "unitNo": {
-        const partyIds = await AccountMaster.distinct("party", query);
-        const units = await Party.find(
-          { _id: { $in: partyIds }, "address.unitNo": { $exists: true } },
-          "address.unitNo"
-        ).lean();
+      case "unitNo":
+        const partyIds3 = await AccountMaster.distinct("party", query);
+        console.log(partyIds3, 'partyIds3');
 
-        uniqueValues = units.map(u => u.address.unitNo);
+        const partiess = await Party.find(
+          { _id: { $in: partyIds3 } },
+          "address.unitNo"   // <-- Only this nested field
+        );
+
+        console.log(partiess, 'parties');
+
+        uniqueValues = partiess.map(p => p.address?.unitNo).filter(v => v);
         break;
-      }
 
-      // ---------------- MOBILE NO (ALL TYPES) ----------------
-      case "mobileNo": {
-        const partyIds = await AccountMaster.distinct("party", query);
-        const parties = await Party.find(
-          { _id: { $in: partyIds } }
-        ).lean();
+      case "mobileNo":
+        const partyIds4 = await AccountMaster.distinct("party", query);
+        const numbers = await Party.find(
+          { _id: { $in: partyIds4 } },
+          "ownerMobileNo ownerWhatsAppNo personMobileNo personWhatsAppNo contactMobileNo contactWhatsAppNo"
+        );
 
-        uniqueValues = parties.flatMap(p => [
-          p.ownerMobileNo,
-          p.ownerWhatsAppNo,
-          p.personMobileNo,
-          p.personWhatsAppNo,
-          p.contactMobileNo,
-          p.contactWhatsAppNo
-        ]);
+        uniqueValues = [
+          ...new Set(
+            numbers.flatMap(n => [
+              n.ownerMobileNo,
+              n.ownerWhatsAppNo,
+              n.personMobileNo,
+              n.personWhatsAppNo,
+              n.contactMobileNo,
+              n.contactWhatsAppNo,
+            ]).filter(Boolean)
+          )
+        ];
         break;
-      }
 
-      // ---------------- MARKET ----------------
-      case "market": {
-        const partyIds = await AccountMaster.distinct("party", query);
-        const markets = await Party.find(
-          { _id: { $in: partyIds } }
-        )
-          .populate("address.marketName", "marketName")
-          .lean();
+      case "market":
+        const partyIds5 = await AccountMaster.distinct("party", query);
+        const markets = await Party.find({ _id: { $in: partyIds5 } })
+          .populate("address.marketName", "marketName");
 
-        uniqueValues = markets.map(m => m.address?.marketName?.marketName);
+        uniqueValues = [
+          ...new Set(
+            markets.map(m => m.address?.marketName?.marketName).filter(Boolean)
+          )
+        ];
         break;
-      }
 
-      // ---------------- AREA ----------------
-      case "area": {
-        const partyIds = await AccountMaster.distinct("party", query);
-        const areas = await Party.find(
-          { _id: { $in: partyIds } }
-        )
-          .populate("address.area", "area")
-          .lean();
+      case "area":
+        const partyIds6 = await AccountMaster.distinct("party", query);
+        const areas = await Party.find({ _id: { $in: partyIds6 } })
+          .populate("address.area", "area");
 
-        uniqueValues = areas.map(a => a.address?.area?.area);
+        uniqueValues = [
+          ...new Set(
+            areas.map(a => a.address?.area?.area).filter(Boolean)
+          )
+        ];
         break;
-      }
 
-      // ---------------- REASON ----------------
-      case "reason": {
+      case "reason":
         uniqueValues = await AccountMaster.distinct("reasonToVisit", query);
         break;
-      }
 
-      // ---------------- CREATED BY ----------------
-      case "createdBy": {
-        const ids = await AccountMaster.distinct("createdBy", query);
-        const users = await Staff.find(
-          { _id: { $in: ids } },
+      case "createdBy":
+        const createdByIds = await AccountMaster.distinct("createdBy", query);
+
+        const staffUsers = await Staff.find(
+          { _id: { $in: createdByIds } },
           "firstName lastName"
-        ).lean();
-
-        uniqueValues = users.map(u =>
-          `${u.firstName || ""} ${u.lastName || ""}`.trim()
         );
-        break;
-      }
 
-      // ---------------- STATUS ----------------
-      case "status": {
-        const partyIds = await AccountMaster.distinct("party", query);
+        uniqueValues = staffUsers.map(u => `${u.firstName} ${u.lastName}`);
+        break;
+
+      case "status":
+        const partyIds7 = await AccountMaster.distinct("party", query);
         const statuses = await Party.find(
-          { _id: { $in: partyIds } },
+          { _id: { $in: partyIds7 } },
           "statusApproval"
-        ).lean();
+        );
 
         uniqueValues = statuses.map(s => s.statusApproval);
         break;
-      }
 
-      // ---------------- ASSIGNED TO ----------------
-      case "assignedTo": {
-        const ids = await AssignTask.distinct("assignTo");
-        const users = await Staff.find(
-          { _id: { $in: ids } },
-          "firstName lastName"
-        ).lean();
+      case "assignedTo":
+        const tasks = await AssignTask.distinct("assignTo", {
+          assignTo: { $exists: true, $ne: null }
+        });
 
-        uniqueValues = users.map(u =>
-          `${u.firstName || ""} ${u.lastName || ""}`.trim()
-        );
+        const users = await Staff.find({ _id: { $in: tasks } }, "firstName lastName");
+
+        uniqueValues = users.map(u => `${u.firstName} ${u.lastName}`);
         break;
-      }
 
       default:
-        return res.status(400).json({
-          success: false,
-          message: "Invalid field parameter"
-        });
+        return res.status(400).json({ success: false, message: "Invalid field parameter" });
     }
 
-    // ==========================================
-    // 4️⃣ SEARCH + CLEAN + SORT + LIMIT
-    // ==========================================
-    if (search && search.trim()) {
-      const s = search.toLowerCase();
+    // SEARCH FILTER
+    if (search) {
+      const searchText = search.toLowerCase();
       uniqueValues = uniqueValues.filter(v =>
-        v?.toString().toLowerCase().includes(s)
+        v?.toString().toLowerCase().includes(searchText)
       );
     }
 
-    uniqueValues = [...new Set(uniqueValues)]
-      .filter(v => v && v.toString().trim())
-      .sort((a, b) => a.toString().localeCompare(b.toString()));
+    // REMOVE DUPLICATES + SORT
+    uniqueValues = [...new Set(uniqueValues)].filter(Boolean).sort();
 
     // LIMIT FOR SAFETY
     // uniqueValues = uniqueValues.slice(0, 100);
 
-    // ==========================================
-    // 5️⃣ RESPONSE
-    // ==========================================
     res.status(200).json({
       success: true,
       data: uniqueValues,
-      count: uniqueValues.length,
-      totalCount,
-      hasMore: totalCount > 100
+      count: uniqueValues.length
     });
 
   } catch (err) {
-    console.error("getFilterOptionsData error:", err);
     res.status(500).json({
       success: false,
       message: "Error loading filter options",
