@@ -1951,6 +1951,7 @@ exports.exportDesignerPerformanceToExcel = async (req, res) => {
       { header: 'Party Name', key: 'partyName', width: 30 },
       { header: 'Item', key: 'item', width: 25 },
       { header: 'Size', key: 'size', width: 15 },
+      { header: 'Qty', key: 'qty', width: 10 },
       { header: 'Created By', key: 'createdBy', width: 20 },
       { header: 'Status', key: 'status', width: 18 },
     ];
@@ -1973,10 +1974,10 @@ exports.exportDesignerPerformanceToExcel = async (req, res) => {
         .populate("party", "partyName")
         .populate("productItem", "itemName")
         .populate("createdBy", "firstName lastName")
-        .select("orderNumber designerAssignedAt size designerStatus");
+        .select("orderNumber designerAssignedAt size designerStatus qty");
 
       // === Designer Name as merged header across all columns ===
-      worksheet.mergeCells(currentRowNumber, 1, currentRowNumber, 8); // 8 columns
+      worksheet.mergeCells(currentRowNumber, 1, currentRowNumber, 9); // 8 columns
       const designerHeaderCell = worksheet.getCell(currentRowNumber, 1);
       designerHeaderCell.value = designerName;
       designerHeaderCell.font = { bold: true, size: 13 };
@@ -1997,6 +1998,7 @@ exports.exportDesignerPerformanceToExcel = async (req, res) => {
             partyName: order.party?.partyName || '-',
             item: order.productItem?.itemName || '-',
             size: order.size || '-',
+            qty: order.qty || '-',
             createdBy: order.createdBy ? `${order.createdBy.firstName} ${order.createdBy.lastName}`.trim() : '-',
             status: order.designerStatus || '-',
           });
@@ -2009,6 +2011,7 @@ exports.exportDesignerPerformanceToExcel = async (req, res) => {
           partyName: '',
           item: '',
           size: '',
+          qty: '',
           createdBy: '',
           status: '',
         });
@@ -2083,11 +2086,11 @@ exports.exportPrinterPerformanceToExcel = async (req, res) => {
       { header: 'Party Name', key: 'partyName', width: 30 },
       { header: 'Size', key: 'size', width: 15 },           // Size first
       { header: 'Item Name', key: 'itemName', width: 25 }, // Item Name after
-      { header: 'Remarks', key: 'remarks', width: 30 },
       { header: 'Qty', key: 'qty', width: 10 },
       { header: 'Number', key: 'number', width: 12 },
       { header: 'Color', key: 'color', width: 12 },
-      { header: 'P.Type', key: 'pType', width: 12 },       // Width reduced because only 1 letter
+      { header: 'P.Type', key: 'pType', width: 12 },    // Width reduced because only 1 letter
+      { header: 'Remarks', key: 'remarks', width: 30 },
       // Status column removed from here
     ];
 
@@ -2145,11 +2148,11 @@ exports.exportPrinterPerformanceToExcel = async (req, res) => {
             partyName: order.party?.partyName || '-',
             size: order.size || '-',                    // Size first
             itemName: order.productItem?.itemName || '-', // Item Name after
-            remarks: order.printerRemarks || '-',
             qty: order.qty || '-',
             number: numberShort,                        // Y or N
             color: order.color || '-',
             pType: pTypeShort,                          // O, S, or O
+            remarks: order.printerRemarks || '-',
             // Status column value removed from here
           });
         });
@@ -2161,11 +2164,11 @@ exports.exportPrinterPerformanceToExcel = async (req, res) => {
           partyName: '',
           size: '',
           itemName: '',
-          remarks: '',
           qty: '',
           number: '',
           color: '',
           pType: '',
+          remarks: '',
           // Status column value removed from here
         });
       }
@@ -2235,10 +2238,11 @@ exports.exportBinderPerformanceToExcel = async (req, res) => {
     worksheet.columns = [
       { header: 'Sr No', key: 'srNo', width: 10 },
       { header: 'Order No', key: 'orderNo', width: 18 },
-      { header: 'Remark', key: 'remark', width: 35 },
       { header: 'Party Name', key: 'partyName', width: 30 },
       { header: 'Size', key: 'size', width: 15 },
       { header: 'Item Name', key: 'itemName', width: 25 },
+      { header: 'Qty', key: 'qty', width: 10 },
+      { header: 'Remark', key: 'remark', width: 35 },
     ];
 
     // Header style
@@ -2258,10 +2262,10 @@ exports.exportBinderPerformanceToExcel = async (req, res) => {
       })
         .populate("party", "partyName")
         .populate("productItem", "itemName")
-        .select("orderNumber binderRemarks size party productItem");
+        .select("orderNumber binderRemarks size party productItem qty");
 
       // Binder Name - Merged across all 6 columns
-      worksheet.mergeCells(currentRowNumber, 1, currentRowNumber, 6);
+      worksheet.mergeCells(currentRowNumber, 1, currentRowNumber, 7);
       const binderHeaderCell = worksheet.getCell(currentRowNumber, 1);
       binderHeaderCell.value = binderName;
       binderHeaderCell.font = { bold: true, size: 13 };
@@ -2277,20 +2281,22 @@ exports.exportBinderPerformanceToExcel = async (req, res) => {
           worksheet.addRow({
             srNo: localSrNo++,
             orderNo: order.orderNumber || '-',
-            remark: order.binderRemarks || '-',
             partyName: order.party?.partyName || '-',
             size: order.size || '-',
             itemName: order.productItem?.itemName || '-',
+            qty: order.qty || '-',
+            remark: order.binderRemarks || '-',
           });
         });
       } else {
         worksheet.addRow({
           srNo: localSrNo++,
           orderNo: 'No orders in this period',
-          remark: '',
           partyName: '',
           size: '',
           itemName: '',
+          qty: '',
+          remark: '',
         });
       }
 
@@ -2360,10 +2366,11 @@ exports.exportBookletBinderPerformanceToExcel = async (req, res) => {
     worksheet.columns = [
       { header: 'Sr No', key: 'srNo', width: 10 },
       { header: 'Order No', key: 'orderNo', width: 18 },
-      { header: 'Remark', key: 'remark', width: 35 },
       { header: 'Party Name', key: 'partyName', width: 30 },
       { header: 'Size', key: 'size', width: 15 },
       { header: 'Item Name', key: 'itemName', width: 25 },
+      { header: 'Qty', key: 'qty', width: 10 },
+      { header: 'Remark', key: 'remark', width: 35 },
     ];
 
     // Header style
@@ -2383,10 +2390,10 @@ exports.exportBookletBinderPerformanceToExcel = async (req, res) => {
       })
         .populate("party", "partyName")
         .populate("productItem", "itemName")
-        .select("orderNumber bookletBinderRemarks size");
+        .select("orderNumber bookletBinderRemarks size qty");
 
       // Merged header for name
-      worksheet.mergeCells(currentRowNumber, 1, currentRowNumber, 6);
+      worksheet.mergeCells(currentRowNumber, 1, currentRowNumber, 7);
       const headerCell = worksheet.getCell(currentRowNumber, 1);
       headerCell.value = bookletBinderName;
       headerCell.font = { bold: true, size: 13 };
@@ -2402,20 +2409,22 @@ exports.exportBookletBinderPerformanceToExcel = async (req, res) => {
           worksheet.addRow({
             srNo: localSrNo++,
             orderNo: order.orderNumber || '-',
-            remark: order.bookletBinderRemarks || '-',
             partyName: order.party?.partyName || '-',
             size: order.size || '-',
             itemName: order.productItem?.itemName || '-',
+            qty: order.qty || '-',
+            remark: order.bookletBinderRemarks || '-',
           });
         });
       } else {
         worksheet.addRow({
           srNo: localSrNo++,
           orderNo: 'No orders in this period',
-          remark: '',
           partyName: '',
           size: '',
           itemName: '',
+          qty: '',
+          remark: '',
         });
       }
 
