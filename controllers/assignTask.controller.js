@@ -276,7 +276,23 @@ exports.bulkCreateTasks = async (req, res) => {
 
 exports.getAssignTaskById = async (req, res) => {
   try {
-    const assignTask = await AssignTask.findById(req.params.id)
+    const assignTask = await AssignTask.findById(req.params.id).populate({
+      path: "partyName",
+      populate: [
+        {
+          path: "address.marketName",
+          select: "marketName" // choose the fields you want
+        },
+        {
+          path: "address.area",
+          select: "area" // choose the fields you want
+        },
+        {
+          path: "address.pincode",
+          select: "pincode" // if pincode is a reference
+        }
+      ]
+    })
       .populate({
         path: "assignTo",
         populate: {
@@ -660,7 +676,7 @@ exports.getAllAssignTasks = async (req, res) => {
     ================================ */
     if (search && search.trim() !== '') {
       const searchRegex = { $regex: search, $options: 'i' };
-      
+
       // Create a separate search condition object
       const searchCondition = {
         $or: [
@@ -701,7 +717,7 @@ exports.getAllAssignTasks = async (req, res) => {
           }
         ]
       };
-      
+
       // If there are existing conditions, combine with $and
       if (Object.keys(matchConditions).length > 0) {
         // Create a new object to avoid circular references
@@ -711,7 +727,7 @@ exports.getAllAssignTasks = async (req, res) => {
             searchCondition
           ]
         };
-        
+
         // Replace matchConditions with the new combined conditions
         Object.keys(matchConditions).forEach(key => delete matchConditions[key]);
         Object.assign(matchConditions, combinedConditions);
@@ -935,7 +951,7 @@ exports.getAllAssignTasks = async (req, res) => {
           // If assignTo already exists, combine with $and
           const existingCondition = matchConditions.assignTo;
           delete matchConditions.assignTo;
-          
+
           matchConditions.$and = matchConditions.$and || [];
           matchConditions.$and.push(
             existingCondition,
@@ -1788,7 +1804,7 @@ exports.getAssignTaskFilterOptionsData = async (req, res) => {
        CLEAN + SORT + LIMIT
     ================================ */
     uniqueValues = [...new Set(uniqueValues)].filter(Boolean).sort();
-    uniqueValues = uniqueValues.slice(0, 100);
+    // uniqueValues = uniqueValues.slice(0, 100);
 
     return res.status(200).json({
       success: true,
@@ -1882,7 +1898,7 @@ exports.getTaskForParty = async (req, res) => {
 
   } catch (error) {
     console.error("Error assigning task:", error);
-    
+
     // Handle duplicate or validation errors
     if (error.name === 'ValidationError') {
       return res.status(400).json({

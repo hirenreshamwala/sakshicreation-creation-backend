@@ -2527,8 +2527,8 @@ exports.getFilterOptionsData = async (req, res) => {
       .filter(v => v && v.toString().trim())
       .sort((a, b) => a.toString().localeCompare(b.toString()));
 
-    const totalCount = uniqueValues.length;
-    uniqueValues = uniqueValues.slice(0, 100);
+    // LIMIT FOR SAFETY
+    // uniqueValues = uniqueValues.slice(0, 100);
 
     // ==========================================
     // 5️⃣ RESPONSE

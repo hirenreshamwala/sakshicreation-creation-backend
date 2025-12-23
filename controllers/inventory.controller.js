@@ -509,7 +509,7 @@ exports.getInventoryFilterOptions = async (req, res) => {
       uniqueValues = uniqueValues.filter(val => regex.test(String(val)));
     }
 
-    uniqueValues = uniqueValues.slice(0, 100); // Limit
+    // uniqueValues = uniqueValues.slice(0, 100); // Limit
 
     console.log(`✅ Inventory Filter options for ${field}:`, uniqueValues.length, "items");
     res.status(200).json({

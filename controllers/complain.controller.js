@@ -526,9 +526,9 @@ exports.getComplainFilterOptions = async (req, res) => {
                 .filter(Boolean)
                 .filter((v, i, self) => self.indexOf(v) === i)
                 .sort((a, b) => a.localeCompare(b))
-                .slice(0, 100); // Limit for safety
+                // .slice(0, 100); // Limit for safety
         } else {
-            uniqueValues = uniqueValues.slice(0, 100); // Limit for safety
+            // uniqueValues = uniqueValues.slice(0, 100); // Limit for safety
         }
         
         console.log(`✅ Complain Filter options for ${field}:`, uniqueValues.length, "items");
