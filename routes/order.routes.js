@@ -47,4 +47,6 @@ router.delete("/delete/:id", deleteOrder);
 
 router.get("/company/:companyId/party/:partyId", getOrdersByCompanyAndParty);
 
+router.post("/export-pending-client-approval-orders", ExcelDownloadController.exportPendingClientApprovalOrdersToExcel);
+
 module.exports = router;

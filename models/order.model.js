@@ -273,6 +273,10 @@ const orderSchema = new mongoose.Schema(
       min: 0,
       default: 0,
     },
+    clientApprovalSentAt: {
+      type: Date,
+      default: null
+    },
     designerRemarks: {
       type: String,
       trim: true,
