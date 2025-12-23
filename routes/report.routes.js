@@ -1,6 +1,7 @@
 const express = require("express")
 const router = express.Router()
 const ReportController = require("../controllers/report.controller");
+const ExcelDownloadController = require("../controllers/exccelDownload.controller");
 
 router.post("/get", ReportController.getStaffReport);
 router.post("/getsc", ReportController.getSCReport);
@@ -14,4 +15,10 @@ router.post("/getscbookletbinder", ReportController.getscBookletBinder);
 router.post("/getscproductitem", ReportController.getscProductItem);
 router.post("/getscsalescredit", ReportController.getscsalescredit);
 router.post("/getqpsalescredit", ReportController.getQpsalescredit);
+
+//exelAPI
+router.post("/export-designer-excel",ExcelDownloadController.exportDesignerPerformanceToExcel );
+router.post("/export-printer-excel", ExcelDownloadController.exportPrinterPerformanceToExcel);
+router.post("/export-binder-excel", ExcelDownloadController.exportBinderPerformanceToExcel);
+router.post("/export-bookletbinder-excel", ExcelDownloadController.exportBookletBinderPerformanceToExcel);
 module.exports = router;

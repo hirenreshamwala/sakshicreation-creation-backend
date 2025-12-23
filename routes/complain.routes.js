@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const complainController = require('../controllers/complain.controller');
+const ExcelDownloadController = require("../controllers/exccelDownload.controller");
 
 router.post('/getall', complainController.getAllComplains);
 router.get('/getbyid/:id', complainController.getComplain);
@@ -9,4 +10,6 @@ router.post('/create', complainController.createComplain);
 router.put('/update/:id', complainController.updateComplain);
 router.delete('/delete/:id', complainController.deleteComplain);
 router.post('/filter-options/:field', complainController.getComplainFilterOptions);
+
+router.post("/export-complain-excel", ExcelDownloadController.exportComplainToExcel);
 module.exports = router;

@@ -17,6 +17,7 @@ const {
   getAllOrdersPagination
 } = require("../controllers/order.controller");
 const { authenticateToken } = require("../middleware/auth");
+const ExcelDownloadController = require("../controllers/exccelDownload.controller");
 
 router.post("/create", authenticateToken, createOrder);
 
@@ -44,5 +45,7 @@ router.put("/update/:id",authenticateToken, updateOrder);
 router.delete("/delete/:id", deleteOrder);
 
 router.get("/company/:companyId/party/:partyId", getOrdersByCompanyAndParty);
+
+router.post("/export-pending-client-approval-orders", ExcelDownloadController.exportPendingClientApprovalOrdersToExcel);
 
 module.exports = router;

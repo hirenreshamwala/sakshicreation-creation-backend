@@ -1,6 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const paymentFolderController = require("../controllers/paymentFolder.controller");
+const ExcelDownloadController = require("../controllers/exccelDownload.controller");
 
 router.post("/create", paymentFolderController.createPaymentFolder);
 // router.get("/getall", paymentFolderController.getPaymentFolders);
@@ -12,4 +13,5 @@ router.post("/multi-delete", paymentFolderController.deleteMultiplePaymentFolder
 router.post("/payments/:id", paymentFolderController.addPaymentToFolder);
 router.post("/filter-options/:field", paymentFolderController.getPaymentFolderFilterOptions);
 
+router.post("/export-payment-folder-excel", ExcelDownloadController.exportPaymentFolderToExcel);
 module.exports = router;

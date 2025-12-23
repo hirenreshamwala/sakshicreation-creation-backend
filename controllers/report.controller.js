@@ -1390,24 +1390,24 @@ const getscDesigner = async (req, res) => {
             },
           },
           // OR orders with design approval within date range
-          {
-            designApproved: {
-              $gte: start,
-              $lte: end,
-            },
-          },
-          // OR orders with status changes within date range
-          {
-            statusHistory: {
-              $elemMatch: {
-                status: { $in: ["Designer", "Approved"] },
-                changedAt: {
-                  $gte: start,
-                  $lte: end,
-                },
-              },
-            },
-          },
+          // {
+          //   designApproved: {
+          //     $gte: start,
+          //     $lte: end,
+          //   },
+          // },
+          // // OR orders with status changes within date range
+          // {
+          //   statusHistory: {
+          //     $elemMatch: {
+          //       status: { $in: ["Designer", "Approved"] },
+          //       changedAt: {
+          //         $gte: start,
+          //         $lte: end,
+          //       },
+          //     },
+          //   },
+          // },
         ],
       })
         .populate("companyName", "companyName")
@@ -1670,32 +1670,32 @@ const getscPrinter = async (req, res) => {
               $lte: end,
             },
           },
-          // OR orders with printing started within date range
-          {
-            printingStartedAt: {
-              $gte: start,
-              $lte: end,
-            },
-          },
-          // OR orders with printing completed within date range
-          {
-            printingCompletedAt: {
-              $gte: start,
-              $lte: end,
-            },
-          },
-          // OR orders with status changes within date range
-          {
-            statusHistory: {
-              $elemMatch: {
-                status: "Printer",
-                changedAt: {
-                  $gte: start,
-                  $lte: end,
-                },
-              },
-            },
-          },
+          // // OR orders with printing started within date range
+          // {
+          //   printingStartedAt: {
+          //     $gte: start,
+          //     $lte: end,
+          //   },
+          // },
+          // // OR orders with printing completed within date range
+          // {
+          //   printingCompletedAt: {
+          //     $gte: start,
+          //     $lte: end,
+          //   },
+          // },
+          // // OR orders with status changes within date range
+          // {
+          //   statusHistory: {
+          //     $elemMatch: {
+          //       status: "Printer",
+          //       changedAt: {
+          //         $gte: start,
+          //         $lte: end,
+          //       },
+          //     },
+          //   },
+          // },
         ],
       })
         .populate("companyName", "companyName")
@@ -2061,32 +2061,32 @@ const getscBinder = async (req, res) => {
               $lte: end,
             },
           },
-          // OR orders with binding started within date range
-          {
-            bindingStartedAt: {
-              $gte: start,
-              $lte: end,
-            },
-          },
-          // OR orders with binding completed within date range
-          {
-            bindingCompletedAt: {
-              $gte: start,
-              $lte: end,
-            },
-          },
-          // OR orders with status changes within date range
-          {
-            statusHistory: {
-              $elemMatch: {
-                status: "Binder",
-                changedAt: {
-                  $gte: start,
-                  $lte: end,
-                },
-              },
-            },
-          },
+          // // OR orders with binding started within date range
+          // {
+          //   bindingStartedAt: {
+          //     $gte: start,
+          //     $lte: end,
+          //   },
+          // },
+          // // OR orders with binding completed within date range
+          // {
+          //   bindingCompletedAt: {
+          //     $gte: start,
+          //     $lte: end,
+          //   },
+          // },
+          // // OR orders with status changes within date range
+          // {
+          //   statusHistory: {
+          //     $elemMatch: {
+          //       status: "Binder",
+          //       changedAt: {
+          //         $gte: start,
+          //         $lte: end,
+          //       },
+          //     },
+          //   },
+          // },
         ],
       })
         .populate("companyName", "companyName")
@@ -2441,32 +2441,6 @@ const getscBookletBinder = async (req, res) => {
             bookletBinderAssignedAt: {
               $gte: start,
               $lte: end,
-            },
-          },
-          // OR orders with booklet binding started within date range
-          {
-            bookletBindingStartedAt: {
-              $gte: start,
-              $lte: end,
-            },
-          },
-          // OR orders with booklet binding completed within date range
-          {
-            bookletBindingCompletedAt: {
-              $gte: start,
-              $lte: end,
-            },
-          },
-          // OR orders with status changes within date range
-          {
-            statusHistory: {
-              $elemMatch: {
-                status: "Booklet & Folder Binder",
-                changedAt: {
-                  $gte: start,
-                  $lte: end,
-                },
-              },
             },
           },
         ],

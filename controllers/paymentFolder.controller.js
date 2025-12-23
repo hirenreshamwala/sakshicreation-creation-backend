@@ -16,6 +16,7 @@ exports.createPaymentFolder = async (req, res) => {
       month,
       paymentAmount,
       area,
+      paymentTerms,
       receivedAmount = 0
     } = req.body;
 
@@ -51,6 +52,7 @@ exports.createPaymentFolder = async (req, res) => {
       month,
       paymentAmount,
       area,
+      paymentTerms,
       receivedAmount,
       pendingAmount,
       assignTask: savedAssignTask._id, // Store the assign task ID
