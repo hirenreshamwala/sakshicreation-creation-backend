@@ -1903,7 +1903,10 @@ exports.updateQPOrderStatus = async (req, res) => {
     const updateData = {};
 
     // Assign driver if not already assigned
-    if (driverId && !currentOrder.driver) updateData.driver = driverId;
+    if (driverId && !currentOrder.driver) {
+      updateData.driver = driverId;
+      updateData.driverAssignedDate = currentTime;
+    }
 
     // Handle status
     if (status) {
@@ -2091,7 +2094,10 @@ exports.bulkUpdateQPOrderStatus = async (req, res) => {
       throw new Error("Some orders are assigned to another driver");
 
     const updateData = {};
-    if (driverId) updateData.driver = driverId;
+    if (driverId) {
+      updateData.driver = driverId;
+      updateData.driverAssignedDate = currentTime; // 👈 assign time
+    }
 
     const driver = await Staff.findById(driverId).session(session);
     if (!driver) throw new Error("Driver not found");

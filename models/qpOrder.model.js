@@ -290,6 +290,7 @@ const qpDataSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "Staff",
     },
+    driverAssignedDate: { type: Date },
     kantanStart: { type: Date },
     kantanEnd: { type: Date },
     designer: {

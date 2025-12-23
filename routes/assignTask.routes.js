@@ -1,5 +1,6 @@
 const express = require("express");
 const AssignTaskController = require("../controllers/assignTask.controller");
+const ExcelDownloadController = require("../controllers/exccelDownload.controller");
 
 const router = express.Router();
 
@@ -30,5 +31,7 @@ router.get("/party-names", AssignTaskController.getPartyNamesByCompany);
 router.post("/get-filter/:field",AssignTaskController.getAssignTaskFilterOptionsData)
 router.post("/get-task-by-party-and-accountmaster", AssignTaskController.getTaskForParty);
 router.post("/get-party-task", AssignTaskController.getPartyTask);
+
+router.post("/download-excel", ExcelDownloadController.exportAssignTasksToExcel);
 
 module.exports = router;

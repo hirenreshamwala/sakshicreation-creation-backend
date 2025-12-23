@@ -419,13 +419,13 @@ const getSCReport = async (req, res) => {
         // Initialize keys
         taskReasons.forEach(
           (r) =>
-            (tasksByReason[r.toLowerCase().replace(/\s+/g, "")] = {
-              reason: r,
-              total: 0,
-              completed: 0,
-              cancelled: 0,
-              rescheduled: 0,
-            })
+          (tasksByReason[r.toLowerCase().replace(/\s+/g, "")] = {
+            reason: r,
+            total: 0,
+            completed: 0,
+            cancelled: 0,
+            rescheduled: 0,
+          })
         );
         tasksByReason["other"] = {
           reason: "Other",
@@ -459,13 +459,13 @@ const getSCReport = async (req, res) => {
 
         leadReasons.forEach(
           (r) =>
-            (leadsByReason[r.toLowerCase().replace(/\s+/g, "")] = {
-              reason: r,
-              total: 0,
-              completed: 0,
-              cancelled: 0,
-              rescheduled: 0,
-            })
+          (leadsByReason[r.toLowerCase().replace(/\s+/g, "")] = {
+            reason: r,
+            total: 0,
+            completed: 0,
+            cancelled: 0,
+            rescheduled: 0,
+          })
         );
         leadsByReason["other"] = {
           reason: "Other",
@@ -760,13 +760,13 @@ const getQPReport = async (req, res) => {
         const tasksByReason = {};
         taskReasons.forEach(
           (r) =>
-            (tasksByReason[r.toLowerCase().replace(/\s+/g, "")] = {
-              reason: r,
-              total: 0,
-              completed: 0,
-              cancelled: 0,
-              rescheduled: 0,
-            })
+          (tasksByReason[r.toLowerCase().replace(/\s+/g, "")] = {
+            reason: r,
+            total: 0,
+            completed: 0,
+            cancelled: 0,
+            rescheduled: 0,
+          })
         );
         tasksByReason["other"] = {
           reason: "Other",
@@ -799,13 +799,13 @@ const getQPReport = async (req, res) => {
         const leadsByReason = {};
         leadReasons.forEach(
           (r) =>
-            (leadsByReason[r.toLowerCase().replace(/\s+/g, "")] = {
-              reason: r,
-              total: 0,
-              completed: 0,
-              cancelled: 0,
-              rescheduled: 0,
-            })
+          (leadsByReason[r.toLowerCase().replace(/\s+/g, "")] = {
+            reason: r,
+            total: 0,
+            completed: 0,
+            cancelled: 0,
+            rescheduled: 0,
+          })
         );
         leadsByReason["other"] = {
           reason: "Other",
@@ -995,8 +995,8 @@ const getQPReport = async (req, res) => {
 const getqpInactiveParties = async (req, res) => {
   try {
     const days = parseInt(req.body.days) || 30;
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - days);
+    const cutoffDate = new Date(); // ✅ नाम change किया
+    cutoffDate.setDate(cutoffDate.getDate() - days);
 
     // 1️⃣ Find company "Quality Packaging"
     const company = await CompanyName.findOne({
@@ -1040,16 +1040,30 @@ const getqpInactiveParties = async (req, res) => {
               in: { $arrayElemAt: ["$$sortedOrders._id", 0] },
             },
           },
+          // ✅ नया field: actualLastOrderDate जो lastOrderDate या createdAt use करे
+          actualLastOrderDate: {
+            $cond: {
+              if: { $eq: [{ $max: "$orders.createdAt" }, null] },
+              then: "$createdAt", // Party का createdAt
+              else: { $max: "$orders.createdAt" }
+            }
+          }
         },
       },
 
       // Only include inactive parties
       {
         $match: {
+          // ✅ Filter update किया
           $or: [
-            { lastOrderDate: { $lt: thirtyDaysAgo } },
-            { lastOrderDate: { $eq: null } },
-          ],
+            { actualLastOrderDate: { $lt: cutoffDate } },
+            {
+              $and: [
+                { actualLastOrderDate: { $eq: null } },
+                { createdAt: { $lt: cutoffDate } }
+              ]
+            }
+          ]
         },
       },
 
@@ -1123,8 +1137,11 @@ const getqpInactiveParties = async (req, res) => {
           partyName: 1,
           ownerName: 1,
           ownerMobileNo: 1,
+          partyTag: 1, // ✅ partyTag include करें
           lastOrderDate: 1,
-          lastOrderId: 1, // ✅ include only ID
+          actualLastOrderDate: 1, // ✅ नया field
+          lastOrderId: 1,
+          createdAt: 1, // ✅ Party creation date
           createdBy: {
             _id: "$createdByDetails._id",
             firstName: "$createdByDetails.firstName",
@@ -1170,8 +1187,8 @@ const getqpInactiveParties = async (req, res) => {
 const getscOrderInactiveParties = async (req, res) => {
   try {
     const days = parseInt(req.body.days) || 30;
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - days);
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - days);
 
     const company = await CompanyName.findOne({
       companyName: { $regex: "sakshi creation", $options: "i" },
@@ -1210,14 +1227,28 @@ const getscOrderInactiveParties = async (req, res) => {
               in: { $arrayElemAt: ["$$sortedOrders._id", 0] },
             },
           },
+          // नया field: actualLastOrderDate जो lastOrderDate या createdAt use करे
+          actualLastOrderDate: {
+            $cond: {
+              if: { $eq: [{ $max: "$orders.createdAt" }, null] },
+              then: "$createdAt", // Party का createdAt
+              else: { $max: "$orders.createdAt" }
+            }
+          }
         },
       },
       {
         $match: {
+          // Filter: actualLastOrderDate cutoffDate से पहले हो या null हो
           $or: [
-            { lastOrderDate: { $lt: thirtyDaysAgo } },
-            { lastOrderDate: { $eq: null } },
-          ],
+            { actualLastOrderDate: { $lt: cutoffDate } },
+            {
+              $and: [
+                { actualLastOrderDate: { $eq: null } },
+                { createdAt: { $lt: cutoffDate } }
+              ]
+            }
+          ]
         },
       },
 
@@ -1282,15 +1313,18 @@ const getscOrderInactiveParties = async (req, res) => {
         },
       },
 
-      // Final projection
+      // Final projection - partyTag को include करें
       {
         $project: {
           _id: 1,
           partyName: 1,
           ownerName: 1,
           ownerMobileNo: 1,
+          partyTag: 1, // ✅ partyTag include करें
           lastOrderDate: 1,
-          lastOrderId: 1, // ✅ only store ID
+          actualLastOrderDate: 1, // ✅ नया field
+          lastOrderId: 1,
+          createdAt: 1, // ✅ Party creation date
           createdBy: {
             _id: "$createdByDetails._id",
             firstName: "$createdByDetails.firstName",
@@ -1312,7 +1346,7 @@ const getscOrderInactiveParties = async (req, res) => {
     // 3️⃣ Populate lastOrderId (convert ObjectId → Order doc)
     const populatedParties = await Order.populate(inactiveParties, {
       path: "lastOrderId",
-      select: "_id orderNumber qty createdAt productItem quotation",
+      select: "_id orderNumber qty createdAt productItem quotation finalAmount",
       populate: {
         path: "productItem", // packagingOption reference
         model: "productItem",
@@ -1906,7 +1940,7 @@ const getscPrinter = async (req, res) => {
           efficiency:
             orders.length > 0
               ? ((printingCompletedCount / orders.length) * 100).toFixed(2) +
-                "%"
+              "%"
               : "0%",
           avgProcessingTime: avgCompletionDays.toFixed(2) + " days",
         },
@@ -1955,20 +1989,20 @@ const getscPrinter = async (req, res) => {
       avgCompletionRate:
         printerPerformance.length > 0
           ? (
-              printerPerformance.reduce((sum, printer) => {
-                const rate = parseFloat(printer.completionRate);
-                return sum + (isNaN(rate) ? 0 : rate);
-              }, 0) / printerPerformance.length
-            ).toFixed(2) + "%"
+            printerPerformance.reduce((sum, printer) => {
+              const rate = parseFloat(printer.completionRate);
+              return sum + (isNaN(rate) ? 0 : rate);
+            }, 0) / printerPerformance.length
+          ).toFixed(2) + "%"
           : "0%",
       avgCompletionDays:
         printerPerformance.length > 0
           ? (
-              printerPerformance.reduce((sum, printer) => {
-                const days = parseFloat(printer.avgCompletionDays);
-                return sum + (isNaN(days) ? 0 : days);
-              }, 0) / printerPerformance.length
-            ).toFixed(2) + " days"
+            printerPerformance.reduce((sum, printer) => {
+              const days = parseFloat(printer.avgCompletionDays);
+              return sum + (isNaN(days) ? 0 : days);
+            }, 0) / printerPerformance.length
+          ).toFixed(2) + " days"
           : "0 days",
     };
 
@@ -2351,20 +2385,20 @@ const getscBinder = async (req, res) => {
       avgCompletionRate:
         binderPerformance.length > 0
           ? (
-              binderPerformance.reduce((sum, binder) => {
-                const rate = parseFloat(binder.completionRate);
-                return sum + (isNaN(rate) ? 0 : rate);
-              }, 0) / binderPerformance.length
-            ).toFixed(2) + "%"
+            binderPerformance.reduce((sum, binder) => {
+              const rate = parseFloat(binder.completionRate);
+              return sum + (isNaN(rate) ? 0 : rate);
+            }, 0) / binderPerformance.length
+          ).toFixed(2) + "%"
           : "0%",
       avgCompletionDays:
         binderPerformance.length > 0
           ? (
-              binderPerformance.reduce((sum, binder) => {
-                const days = parseFloat(binder.avgCompletionDays);
-                return sum + (isNaN(days) ? 0 : days);
-              }, 0) / binderPerformance.length
-            ).toFixed(2) + " days"
+            binderPerformance.reduce((sum, binder) => {
+              const days = parseFloat(binder.avgCompletionDays);
+              return sum + (isNaN(days) ? 0 : days);
+            }, 0) / binderPerformance.length
+          ).toFixed(2) + " days"
           : "0 days",
     };
 
@@ -2683,8 +2717,8 @@ const getscBookletBinder = async (req, res) => {
         completionRate:
           orders.length > 0
             ? ((bookletBindingCompletedCount / orders.length) * 100).toFixed(
-                2
-              ) + "%"
+              2
+            ) + "%"
             : "0%",
         avgCompletionDays: avgCompletionDays.toFixed(2) + " days",
         avgPendingDays: avgPendingDays.toFixed(2) + " days",
@@ -2709,8 +2743,8 @@ const getscBookletBinder = async (req, res) => {
           efficiency:
             orders.length > 0
               ? ((bookletBindingCompletedCount / orders.length) * 100).toFixed(
-                  2
-                ) + "%"
+                2
+              ) + "%"
               : "0%",
           avgProcessingTime: avgCompletionDays.toFixed(2) + " days",
         },
@@ -2767,20 +2801,20 @@ const getscBookletBinder = async (req, res) => {
       avgCompletionRate:
         bookletBinderPerformance.length > 0
           ? (
-              bookletBinderPerformance.reduce((sum, binder) => {
-                const rate = parseFloat(binder.completionRate);
-                return sum + (isNaN(rate) ? 0 : rate);
-              }, 0) / bookletBinderPerformance.length
-            ).toFixed(2) + "%"
+            bookletBinderPerformance.reduce((sum, binder) => {
+              const rate = parseFloat(binder.completionRate);
+              return sum + (isNaN(rate) ? 0 : rate);
+            }, 0) / bookletBinderPerformance.length
+          ).toFixed(2) + "%"
           : "0%",
       avgCompletionDays:
         bookletBinderPerformance.length > 0
           ? (
-              bookletBinderPerformance.reduce((sum, binder) => {
-                const days = parseFloat(binder.avgCompletionDays);
-                return sum + (isNaN(days) ? 0 : days);
-              }, 0) / bookletBinderPerformance.length
-            ).toFixed(2) + " days"
+            bookletBinderPerformance.reduce((sum, binder) => {
+              const days = parseFloat(binder.avgCompletionDays);
+              return sum + (isNaN(days) ? 0 : days);
+            }, 0) / bookletBinderPerformance.length
+          ).toFixed(2) + " days"
           : "0 days",
     };
 
@@ -2822,7 +2856,7 @@ const getscProductItem = async (req, res) => {
     }).select("_id");
 
     const salesRoleIds = salesRoles.map((role) => role._id);
-    
+
     // Get all sales staff
     const staffList = await Staff.find({
       role: { $in: salesRoleIds },
@@ -2837,26 +2871,26 @@ const getscProductItem = async (req, res) => {
     }
 
     const staffIds = staffList.map(staff => staff._id);
-    
+
     // Get orders
     const orders = await Order.find({
       createdBy: { $in: staffIds },
       createdAt: { $gte: start, $lte: end }
     })
-    .populate('productItem', 'itemName')
-    .populate('createdBy', 'firstName lastName')
-    .select('orderNumber productItem createdBy')
-    .lean();
+      .populate('productItem', 'itemName')
+      .populate('createdBy', 'firstName lastName')
+      .select('orderNumber productItem createdBy')
+      .lean();
 
     // Create simple count map
     const resultMap = {};
-    
+
     orders.forEach(order => {
       const staffId = order.createdBy._id.toString();
       const staffName = `${order.createdBy.firstName} ${order.createdBy.lastName}`;
       const productId = order.productItem?._id?.toString();
       const productName = order.productItem?.itemName || 'Unknown';
-      
+
       if (!resultMap[staffId]) {
         resultMap[staffId] = {
           staffId: staffId,
@@ -2864,7 +2898,7 @@ const getscProductItem = async (req, res) => {
           products: {}
         };
       }
-      
+
       if (!resultMap[staffId].products[productId]) {
         resultMap[staffId].products[productId] = {
           productId: productId,
@@ -2872,7 +2906,7 @@ const getscProductItem = async (req, res) => {
           orderCount: 0
         };
       }
-      
+
       resultMap[staffId].products[productId].orderCount += 1;
     });
 
@@ -2892,13 +2926,13 @@ const getscProductItem = async (req, res) => {
       data: formattedResult,
       message: "Sales staff product item count retrieved successfully",
     });
-    
+
   } catch (error) {
     console.error("Error in getscProductItem:", error);
-    return res.status(500).json({ 
+    return res.status(500).json({
       success: false,
-      message: "Internal server error", 
-      error: error.message 
+      message: "Internal server error",
+      error: error.message
     });
   }
 };
@@ -2969,8 +3003,8 @@ const getscsalescredit = async (req, res) => {
         $group: {
           _id: "$salecredit",
           staffName: {
-            $first: { 
-              $concat: ["$staffDetails.firstName", " ", "$staffDetails.lastName"] 
+            $first: {
+              $concat: ["$staffDetails.firstName", " ", "$staffDetails.lastName"]
             }
           },
           // દરેક staff ના બધા orders નો total finalAmount
@@ -3098,13 +3132,13 @@ const getQpsalescredit = async (req, res) => {
         $group: {
           _id: "$createdBy",
           staffName: {
-            $first: { 
-              $concat: ["$staffDetails.firstName", " ", "$staffDetails.lastName"] 
+            $first: {
+              $concat: ["$staffDetails.firstName", " ", "$staffDetails.lastName"]
             }
           },
           // totalKg sum કરો (જો string હોય તો number માં convert કરો)
-          totalKgSum: { 
-            $sum: { 
+          totalKgSum: {
+            $sum: {
               $cond: {
                 if: { $eq: [{ $type: "$totalKg" }, "string"] },
                 then: { $toDouble: "$totalKg" },

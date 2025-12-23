@@ -1,5 +1,6 @@
 const express = require("express");
 const LeadController = require("../controllers/lead.controller");
+const ExcelDownloadController = require("../controllers/exccelDownload.controller");
 
 const router = express.Router();
 
@@ -27,5 +28,7 @@ router.delete("/delete/:id", LeadController.deleteLead);
 router.get("/party-names", LeadController.getPartyNamesByCompany);
 
 router.post("/add-callhistory/:id", LeadController.addLeadCallHistory);
+
+router.post("/download-excel", ExcelDownloadController.exportLeadsToExcel);
 
 module.exports = router;
