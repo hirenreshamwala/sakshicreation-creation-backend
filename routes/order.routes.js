@@ -17,11 +17,13 @@ const {
   getAllOrdersPagination
 } = require("../controllers/order.controller");
 const { authenticateToken } = require("../middleware/auth");
+const ExcelDownloadController = require("../controllers/exccelDownload.controller");
 
 router.post("/create", authenticateToken, createOrder);
 
 router.post("/all", getAllOrders);
 router.post("/all-pagination", getAllOrdersPagination);
+router.post("/download-excel",authenticateToken, ExcelDownloadController.exportOrdersToExcel);
 
 router.post("/getbystaffid/:id", getOrdersByStaffId);
 

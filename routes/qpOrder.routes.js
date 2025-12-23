@@ -1,6 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const QpOrderController = require("../controllers/qpOrder.controller");
+const ExcelDownloadController = require("../controllers/exccelDownload.controller");
 const { authenticateToken } = require("../middleware/auth");
 
 router.post("/create", authenticateToken, QpOrderController.createQpOrder);
@@ -17,4 +18,6 @@ router.post('/driverselection/:id',QpOrderController.driverSelectionAndInventory
 router.post('/mark-urgent/:id',QpOrderController.updateMarkUrgent)
 router.post('/filter-options/:field',QpOrderController.getQpFilterOptionsData);
 router.post('/getalldriver',QpOrderController.getAllQpOrdersForDriver);
+router.post('/driver-download-excel',ExcelDownloadController.exportDriverReportToExcel);
+
 module.exports = router;
