@@ -297,11 +297,24 @@ exports.getAllLeads = async (req, res) => {
     // Search across multiple fields
     if (search) {
       matchConditions.$or = [
+        { createdAt: { $regex: search, $options: 'i' } },
         { 'partyData.partyName': { $regex: search, $options: 'i' } },
         { 'partyData.ownerName': { $regex: search, $options: 'i' } },
         { 'partyData.ownerMobileNo': { $regex: search, $options: 'i' } },
         { 'partyData.ownerWhatsAppNo': { $regex: search, $options: 'i' } },
         { 'companyData.companyName': { $regex: search, $options: 'i' } },
+        { 'partyData.address.marketName': { $regex: search, $options: 'i' } },
+        { 'partyData.address.area': { $regex: search, $options: 'i' } },
+        { 'partyData.address.unitNo': { $regex: search, $options: 'i' } },
+        {
+          $expr: {
+            $regexMatch: {
+              input: { $concat: ["$assignedTo.firstName", " ", "$assignedTo.lastName"] },
+              regex: search,
+              options: "i"
+            }
+          }
+        },
         { reason: { $regex: search, $options: 'i' } },
       ];
     }
@@ -1657,7 +1670,7 @@ exports.getDataByPartyAndAccountMaster = async (req, res) => {
     let leadsData;
 
     if (result) {
-      console.log( 'result in oif')
+      console.log('result in oif')
       leadsData = await Lead.find({
         partyName: result?.party,
       }).populate("companyName")
