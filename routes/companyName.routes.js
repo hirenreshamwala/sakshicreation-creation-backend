@@ -1,6 +1,6 @@
 const express = require("express");
 const CompanyNameController = require("../controllers/companyName.controller");
-
+const { authenticateToken } = require("../middleware/auth");
 const router = express.Router();
 
 // Create a new company name
@@ -14,7 +14,7 @@ router.get("/getallCompany", CompanyNameController.getAllCompanyNames);
 // Get a single company name by ID
 router.get("/getbyid/:id", CompanyNameController.getCompanyNameById);
 
-router.get("/get-party-with-company-id/:id", CompanyNameController.getPartywithCompany);
+router.get("/get-party-with-company-id/:id",authenticateToken, CompanyNameController.getPartywithCompany);
 
 
 // Update a company name by ID
