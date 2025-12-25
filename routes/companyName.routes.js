@@ -14,7 +14,7 @@ router.get("/getallCompany", CompanyNameController.getAllCompanyNames);
 // Get a single company name by ID
 router.get("/getbyid/:id", CompanyNameController.getCompanyNameById);
 
-router.get("/get-party-with-company-id/:id",authenticateToken, CompanyNameController.getPartywithCompany);
+router.get("/get-party-with-company-id/:id", CompanyNameController.getPartywithCompany);
 
 
 // Update a company name by ID
