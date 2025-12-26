@@ -2,8 +2,8 @@ const mongoose = require("mongoose");
 const PaymentFolder = require("../models/paymentFolder.model");
 const AssignTask = require("../models/assignTask.model")
 const Company = require("../models/companyName.model");
-const Party = require("../models/Party.model"); 
-const Staff = require("../models/staff.model"); 
+const Party = require("../models/Party.model");
+const Staff = require("../models/staff.model");
 exports.createPaymentFolder = async (req, res) => {
   try {
     const {
@@ -124,7 +124,7 @@ exports.getPaymentFolders = async (req, res) => {
       pageSize,
       isPagination
     });
-    
+
     // Build query object
     const query = {};
 
@@ -133,13 +133,13 @@ exports.getPaymentFolders = async (req, res) => {
       if (!searchStr || !searchStr.trim()) return [];
       const parts = searchStr.trim().split(/\s+/).filter(p => p.length > 0);
       if (parts.length === 0) return [];
-      
+
       const partConditions = parts.map(part => ({
         $or: fields.map(field => ({
           [field]: { $regex: part, $options: "i" }
         }))
       }));
-      
+
       if (parts.length === 1) {
         return partConditions[0].$or;
       } else {
@@ -381,17 +381,17 @@ exports.getPaymentFolderFilterOptions = async (req, res) => {
     }
     console.log("PaymentFolder Filter Options - Field:", field, "Filters:", otherFilters);
     const validFields = ['company', 'party', 'area', 'month', 'assignTo', 'paymentAmount', 'receivedAmount', 'pendingAmount', 'assignedDate', 'remarks'];
-   
+
     if (!validFields.includes(field)) {
       return res.status(400).json({
         success: false,
         message: `Invalid field parameter. Valid fields are: ${validFields.join(', ')}`
       });
     }
-   
+
     // Build main query - SAME AS getPaymentFolders
     const query = {};
-   
+
     // Apply filters from request (same as before)
     if (otherFilters.company && otherFilters.company.length > 0) {
       const companies = await Company.find({
@@ -432,7 +432,7 @@ exports.getPaymentFolderFilterOptions = async (req, res) => {
     if (otherFilters.month && otherFilters.month.length > 0) {
       query.month = { $in: otherFilters.month };
     }
-   
+
     let uniqueValues = [];
     // Field-specific queries
     switch (field) {
@@ -499,16 +499,16 @@ exports.getPaymentFolderFilterOptions = async (req, res) => {
           message: "Invalid field parameter"
         });
     }
-   
+
     // Apply search filter
     if (search && search.trim()) {
       const regex = new RegExp(search, 'i');
       uniqueValues = uniqueValues.filter(val => regex.test(String(val)));
     }
-   
+
     // Remove duplicates and sort (already handled in cases)
     // uniqueValues = uniqueValues.slice(0, 100); // Limit for safety
-   
+
     console.log(`✅ PaymentFolder Filter options for ${field}:`, uniqueValues.length, "items");
     res.status(200).json({
       success: true,
@@ -739,7 +739,7 @@ exports.deleteMultiplePaymentFolder = async (req, res) => {
 exports.addPaymentToFolder = async (req, res) => {
   try {
     const { id } = req.params;
-    const { amount, date, note, paymentMethod, receivedBy } = req.body;
+    const { amount, date, note, paymentMethod, receivedBy, remark } = req.body;
 
     // Validate required fields
     if (!amount || !receivedBy) {
@@ -766,13 +766,13 @@ exports.addPaymentToFolder = async (req, res) => {
     const newPayment = {
       date: date || new Date(),
       amount: amount,
-      note: note || "",
+      note: remark || "",
       paymentMethod: paymentMethod || "Cash",
       receivedBy: receivedBy,
     };
 
-    // Add payment to payments array
-    existingFolder.payments.push(newPayment);
+    // Add payment to the beginning of payments array (latest first)
+    existingFolder.payments.unshift(newPayment);
 
     // Calculate new received amount from all payments
     const totalReceived = existingFolder.payments.reduce(
@@ -794,26 +794,10 @@ exports.addPaymentToFolder = async (req, res) => {
         path: "party",
         select: "-__v",
         populate: [
-          {
-            path: "address.marketName",
-            model: "Market",
-            select: "marketName",
-          },
-          {
-            path: "address.landMark",
-            model: "Market",
-            select: "landmark",
-          },
-          {
-            path: "address.area",
-            model: "Market",
-            select: "area",
-          },
-          {
-            path: "address.pincode",
-            model: "Market",
-            select: "pincode",
-          },
+          { path: "address.marketName", model: "Market", select: "marketName" },
+          { path: "address.landMark", model: "Market", select: "landmark" },
+          { path: "address.area", model: "Market", select: "area" },
+          { path: "address.pincode", model: "Market", select: "pincode" },
         ],
       })
       .populate("assignedTo", "firstName lastName email")
@@ -822,7 +806,7 @@ exports.addPaymentToFolder = async (req, res) => {
         path: "payments.receivedBy",
         select: "firstName lastName",
       })
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 }); // Ensures folder-level sorting if needed
 
     res.status(200).json({
       message: "Payment added successfully",
