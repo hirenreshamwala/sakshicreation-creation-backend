@@ -753,6 +753,7 @@ exports.exportAssignTasksToExcel = async (req, res) => {
             { header: 'CONTACT P', key: 'CONTACT P', width: 20 },
             { header: 'MOBILE NO', key: 'MOBILE NO', width: 15 },
             { header: 'TAG', key: 'TAG', width: 10 },
+            { header: 'REASON FOR VISIT', key: 'REASON FOR VISIT', width: 20 },
             { header: 'STATUS', key: 'STATUS', width: 12 },
             { header: 'REMARKS', key: 'REMARKS', width: 25 },
             { header: 'FEEDBACK', key: 'FEEDBACK', width: 25 }
@@ -772,6 +773,7 @@ exports.exportAssignTasksToExcel = async (req, res) => {
                 'CONTACT P': task['CONTACT P'] || '',
                 'MOBILE NO': task['MOBILE NO'] || '',
                 TAG: task.TAG || '',
+                'REASON FOR VISIT': task['REASON FOR VISIT'] || '',
                 STATUS: task.STATUS || '',
                 REMARKS: task.REMARKS || '',
                 FEEDBACK: task.FEEDBACK || ''
@@ -1518,8 +1520,8 @@ exports.exportLeadsToExcel = async (req, res) => {
             { header: 'CONTACT PERSON', key: 'CONTACT PERSON', width: 20 },
             { header: 'MOBILE NO', key: 'MOBILE NO', width: 15 },
             { header: 'TAG', key: 'TAG', width: 10 },
+            { header: 'REASON', key: 'REASON', width: 20 },
             { header: 'STATUS', key: 'STATUS', width: 12 },
-            // { header: 'REASON', key: 'REASON', width: 20 },
             // { header: 'ASSIGNED TO', key: 'ASSIGNED TO', width: 20 },
             // { header: 'CREATED BY', key: 'CREATED BY', width: 20 },
             { header: 'REMARKS', key: 'REMARKS', width: 25 },
