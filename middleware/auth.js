@@ -68,7 +68,6 @@ exports.authenticateToken = async (req, res, next) => {
 
   const authHeader = req.headers["authorization"];
   const token = authHeader && authHeader.split(" ")[1]; // Bearer TOKEN
-  console.log("token----", token);
   
   if (!token) {
     return res.status(401).json({
@@ -80,11 +79,9 @@ exports.authenticateToken = async (req, res, next) => {
   try {
     // Verify JWT
     const decoded = jwt.verify(token, process.env.JWT_SECRET || "your_jwt_secret_key");
-    console.log("decoded----", decoded);
     
     // Check staff existence
     const staff = await Staff.findById(decoded.id);
-    console.log("staff----", staff);
     
     if (!staff) {
       return res.status(403).json({
