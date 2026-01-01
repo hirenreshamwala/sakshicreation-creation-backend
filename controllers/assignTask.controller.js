@@ -31,6 +31,21 @@ exports.createAssignTask = async (req, res) => {
       });
     }
 
+    const existingTask = await AssignTask.findOne({
+      partyName: partyName,
+      date: {
+        $gte: new Date(new Date(date).setHours(0, 0, 0, 0)), // Start of day
+        $lt: new Date(new Date(date).setHours(23, 59, 59, 999)) // End of day
+      }
+    });
+
+    if (existingTask) {
+      return res.status(400).json({
+        success: false,
+        message: "Task already exists for this party on the same date",
+      });
+    }
+
     const newAssignTask = new AssignTask({
       companyName,
       partyName,
@@ -228,6 +243,29 @@ exports.bulkCreateTasks = async (req, res) => {
           }
         }
 
+        // NEW: Check if task already exists for same party and same date
+        const existingTask = await AssignTask.findOne({
+          partyName: partyName,
+          date: {
+            $gte: new Date(new Date(normalizedDate).setHours(0, 0, 0, 0)), // Start of day
+            $lt: new Date(new Date(normalizedDate).setHours(23, 59, 59, 999)) // End of day
+          }
+        });
+
+        if (existingTask) {
+          errors.push({
+            partyName,
+            message: `Task already exists for this party on date: ${date}`,
+            partyDetails: {
+              partyId: partyName,
+              partyName: party.partyName || "N/A",
+              existingTaskId: existingTask._id
+            }
+          });
+          console.log(`Task already exists for party: ${partyName} on date: ${date}`);
+          continue; // Skip this party, continue with next
+        }
+
         // Create task
         const task = new AssignTask({
           companyName,
@@ -257,12 +295,26 @@ exports.bulkCreateTasks = async (req, res) => {
       }
     }
 
+    // Prepare response message based on results
+    let message = "";
+    if (createdTasks.length === tasksData.length) {
+      message = `All ${createdTasks.length} tasks created successfully`;
+    } else if (createdTasks.length > 0 && errors.length > 0) {
+      message = `${createdTasks.length} tasks created successfully, ${errors.length} failed`;
+    } else if (createdTasks.length === 0) {
+      message = "No tasks were created";
+    }
+
     return res.status(201).json({
-      success: true,
-      message: "Bulk task creation completed",
+      success: createdTasks.length > 0,
+      message: message,
       data: createdTasks,
       errors: errors.length > 0 ? errors : undefined,
-      count: createdTasks.length,
+      count: {
+        total: tasksData.length,
+        created: createdTasks.length,
+        failed: errors.length
+      },
     });
   } catch (error) {
     console.error("Error in bulk task creation:", error);
@@ -429,6 +481,7 @@ exports.updateAssignTask = async (req, res) => {
     }
 
     // 4. Date validation and formatting
+    let normalizedDate = null;
     if (updateData.date) {
       const date = new Date(updateData.date);
       if (isNaN(date.getTime())) {
@@ -437,6 +490,7 @@ exports.updateAssignTask = async (req, res) => {
           message: "Invalid date format",
         });
       }
+      normalizedDate = date;
       updateData.date = date;
     }
 
@@ -451,25 +505,42 @@ exports.updateAssignTask = async (req, res) => {
       updateData.visitDate = visitDate;
     }
 
-    // 5. Time format validation
-    if (
-      updateData.time &&
-      !/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/.test(updateData.time)
-    ) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid time format. Use HH:MM (24-hour format)",
-      });
-    }
 
-    if (
-      updateData.visitTime &&
-      !/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/.test(updateData.visitTime)
-    ) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid visit time format. Use HH:MM (24-hour format)",
+
+    // NEW: Check for duplicate task (only if partyName or date is being updated)
+    if (updateData.partyName || updateData.date) {
+      // Determine which party and date to check
+      const checkPartyId = updateData.partyName || existingTask.partyName;
+      const checkDate = normalizedDate || existingTask.date;
+
+      // Create date range for the day
+      const startOfDay = new Date(checkDate);
+      startOfDay.setHours(0, 0, 0, 0);
+      
+      const endOfDay = new Date(checkDate);
+      endOfDay.setHours(23, 59, 59, 999);
+
+      // Check for existing task for same party on same date (excluding current task)
+      const duplicateTask = await AssignTask.findOne({
+        _id: { $ne: id }, // Exclude current task
+        partyName: checkPartyId,
+        date: {
+          $gte: startOfDay,
+          $lt: endOfDay
+        }
       });
+
+      if (duplicateTask) {
+        return res.status(400).json({
+          success: false,
+          message: `Task already exists for this party on date: ${checkDate.toISOString().split('T')[0]}`,
+          details: {
+            existingTaskId: duplicateTask._id,
+            partyId: checkPartyId,
+            date: checkDate
+          }
+        });
+      }
     }
 
     // 6. Status and rescheduleDate validation
@@ -509,6 +580,34 @@ exports.updateAssignTask = async (req, res) => {
           });
         }
         updateData.rescheduleDate = rescheduleDate;
+
+        // NEW: Check if rescheduled task would create a duplicate
+        const rescheduleStartOfDay = new Date(rescheduleDate);
+        rescheduleStartOfDay.setHours(0, 0, 0, 0);
+        
+        const rescheduleEndOfDay = new Date(rescheduleDate);
+        rescheduleEndOfDay.setHours(23, 59, 59, 999);
+
+        const existingRescheduledTask = await AssignTask.findOne({
+          partyName: existingTask.partyName,
+          date: {
+            $gte: rescheduleStartOfDay,
+            $lt: rescheduleEndOfDay
+          },
+          isRescheduledTask: false // Check only non-rescheduled tasks
+        });
+
+        if (existingRescheduledTask) {
+          return res.status(400).json({
+            success: false,
+            message: `Cannot reschedule: Task already exists for this party on rescheduled date: ${rescheduleDate.toISOString().split('T')[0]}`,
+            details: {
+              existingTaskId: existingRescheduledTask._id,
+              partyId: existingTask.partyName,
+              rescheduleDate: rescheduleDate
+            }
+          });
+        }
 
         // Find the original task's createdAt by tracing back through originalTaskId
         let rootTask = existingTask;
@@ -550,9 +649,9 @@ exports.updateAssignTask = async (req, res) => {
             path: "assignTo",
             populate: {
               path: "role",
-              select: "roleName" // yaha jitne fields chahiye wo add kar sakte ho
+              select: "roleName"
             }
-          })
+          });
       } else {
         updateData.rescheduleDate = null;
       }
@@ -573,9 +672,9 @@ exports.updateAssignTask = async (req, res) => {
         path: "assignTo",
         populate: {
           path: "role",
-          select: "roleName" // yaha jitne fields chahiye wo add kar sakte ho
+          select: "roleName"
         }
-      })
+      });
 
     if (!updatedAssignTask) {
       return res.status(404).json({
