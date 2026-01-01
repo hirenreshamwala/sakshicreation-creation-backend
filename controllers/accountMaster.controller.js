@@ -252,8 +252,40 @@ exports.getAllAccountMasters = async (req, res) => {
     // ===== STEP 1: Build base query for AccountMaster (filter BEFORE lookups) =====
     const baseQuery = {};
 
-    // Date range filter - apply early
-    if (startDate || endDate) {
+    // FIXED: Date range filter - handle both formats
+    // Check if date is in filters.createdAt array (dd-mm-yyyy hh:mm:ss format)
+    if (filters.createdAt && filters.createdAt.length > 0) {
+      baseQuery.createdAt = {};
+
+      filters.createdAt.forEach(dateStr => {
+        // Parse dd-mm-yyyy hh:mm:ss format
+        const [datePart, timePart] = dateStr.split(' ');
+        const [day, month, year] = datePart.split('-');
+        const [hours, minutes, seconds] = timePart ? timePart.split(':') : ['0', '0', '0'];
+
+        const parsedDate = new Date(year, month - 1, day, hours, minutes, seconds);
+
+        // Create date range for the entire day if only date is provided
+        // or exact timestamp if time is included
+        if (!timePart || timePart === '00:00:00') {
+          // If no time specified, match entire day
+          const startOfDay = new Date(year, month - 1, day, 0, 0, 0, 0);
+          const endOfDay = new Date(year, month - 1, day, 23, 59, 59, 999);
+          baseQuery.createdAt.$gte = startOfDay;
+          baseQuery.createdAt.$lte = endOfDay;
+        } else {
+          // If specific time provided, match exact timestamp (with some tolerance)
+          const startTime = new Date(parsedDate);
+          startTime.setSeconds(0, 0);
+          const endTime = new Date(parsedDate);
+          endTime.setSeconds(59, 999);
+          baseQuery.createdAt.$gte = startTime;
+          baseQuery.createdAt.$lte = endTime;
+        }
+      });
+    }
+    // Original date range filter using startDate/endDate
+    else if (startDate || endDate) {
       baseQuery.createdAt = {};
       if (startDate) {
         const start = new Date(startDate);
@@ -356,7 +388,7 @@ exports.getAllAccountMasters = async (req, res) => {
       partyQuery.ownerMobileNo = { $in: filters.mobile };
     }
 
-    // FIXED: Unit No filter - properly handle as array
+    // Unit No filter - properly handle as array
     if (filters.unitNo && filters.unitNo.length > 0) {
       partyQuery["address.unitNo"] = { $in: filters.unitNo };
     }
@@ -610,7 +642,7 @@ exports.getAllAccountMasters = async (req, res) => {
       });
     }
 
-    // ===== STEP 6: FIXED - Get accurate status counts based on FILTERED AccountMasters =====
+    // ===== STEP 6: Get accurate status counts based on FILTERED AccountMasters =====
     let counts = { approved: 0, pending: 0, total: totalCount };
 
     if (includeCounts) {
@@ -854,7 +886,7 @@ exports.getAllAccountMasters = async (req, res) => {
     // Execute the aggregation
     const enrichedAccountMasters = await AccountMaster.aggregate(pipeline);
 
-    // FIXED: Prepare proper pagination information with accurate counts
+    // Prepare proper pagination information with accurate counts
     const totalPages = Math.ceil(totalCount / pageSize);
     const pagination = isPagination ? {
       currentPage: page,

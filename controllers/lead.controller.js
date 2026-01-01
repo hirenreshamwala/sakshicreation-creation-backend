@@ -175,6 +175,7 @@ exports.getAllLeads = async (req, res) => {
       createdBy,
       assignedToFilter,
       reason,
+      createdAt,
     } = req.body;
 
     // Build aggregation pipeline
@@ -231,29 +232,7 @@ exports.getAllLeads = async (req, res) => {
       }
     });
 
-    // 1. Party lookup
-    pipeline.push({
-      $lookup: {
-        from: "parties",
-        localField: "partyName",
-        foreignField: "_id",
-        as: "partyData"
-      }
-    });
-    pipeline.push({ $unwind: "$partyData" });
-
-    // 2. Company lookup
-    pipeline.push({
-      $lookup: {
-        from: "companynames",
-        localField: "companyName",
-        foreignField: "_id",
-        as: "companyData"
-      }
-    });
-    pipeline.push({ $unwind: "$companyData" });
-
-    // ✅ 3. ACCOUNT MASTER LOOKUP (for createdBy)
+    // ✅ ACCOUNT MASTER LOOKUP (for createdBy)
     pipeline.push({
       $lookup: {
         from: "accountmasters",
@@ -290,33 +269,139 @@ exports.getAllLeads = async (req, res) => {
       }
     });
 
-
     // Step 5: Build match conditions
     const matchConditions = {};
 
+    /* ================================
+       CREATED AT FILTER - FIXED
+    ================================ */
+    if (createdAt) {
+      // Check if createdAt contains comma-separated values
+      if (typeof createdAt === 'string' && createdAt.includes(',')) {
+        const dates = createdAt.split(',').map(d => d.trim()).filter(d => d);
+        const dateConditions = [];
+
+        dates.forEach(dateStr => {
+          // Check if date is in dd-mm-yyyy format
+          if (dateStr.includes('-')) {
+            const parts = dateStr.split('-');
+            if (parts.length === 3 && parts[0].length <= 2) {
+              // dd-mm-yyyy format
+              const [day, month, year] = parts;
+              const parsedDate = new Date(year, month - 1, day);
+
+              const startOfDay = new Date(parsedDate);
+              startOfDay.setHours(0, 0, 0, 0);
+              const endOfDay = new Date(parsedDate);
+              endOfDay.setHours(23, 59, 59, 999);
+
+              dateConditions.push({
+                createdAt: {
+                  $gte: startOfDay,
+                  $lte: endOfDay
+                }
+              });
+            } else {
+              // ISO format or yyyy-mm-dd
+              const parsedDate = new Date(dateStr);
+              const startOfDay = new Date(parsedDate);
+              startOfDay.setHours(0, 0, 0, 0);
+              const endOfDay = new Date(parsedDate);
+              endOfDay.setHours(23, 59, 59, 999);
+
+              dateConditions.push({
+                createdAt: {
+                  $gte: startOfDay,
+                  $lte: endOfDay
+                }
+              });
+            }
+          } else {
+            // Try parsing as ISO date
+            const parsedDate = new Date(dateStr);
+            const startOfDay = new Date(parsedDate);
+            startOfDay.setHours(0, 0, 0, 0);
+            const endOfDay = new Date(parsedDate);
+            endOfDay.setHours(23, 59, 59, 999);
+
+            dateConditions.push({
+              createdAt: {
+                $gte: startOfDay,
+                $lte: endOfDay
+              }
+            });
+          }
+        });
+
+        if (dateConditions.length > 0) {
+          matchConditions.$or = matchConditions.$or || [];
+          matchConditions.$or.push(...dateConditions);
+        }
+      } else {
+        // Single date
+        let parsedDate;
+
+        // Check if date is in dd-mm-yyyy format
+        if (typeof createdAt === 'string' && createdAt.includes('-')) {
+          const parts = createdAt.split('-');
+          if (parts.length === 3 && parts[0].length <= 2) {
+            // dd-mm-yyyy format
+            const [day, month, year] = parts;
+            parsedDate = new Date(year, month - 1, day);
+          } else {
+            // ISO format or yyyy-mm-dd
+            parsedDate = new Date(createdAt);
+          }
+        } else {
+          parsedDate = new Date(createdAt);
+        }
+
+        const startOfDay = new Date(parsedDate);
+        startOfDay.setHours(0, 0, 0, 0);
+        const endOfDay = new Date(parsedDate);
+        endOfDay.setHours(23, 59, 59, 999);
+
+        matchConditions.createdAt = {
+          $gte: startOfDay,
+          $lte: endOfDay,
+        };
+      }
+    }
+
     // Search across multiple fields
     if (search) {
-      matchConditions.$or = [
-        { createdAt: { $regex: search, $options: 'i' } },
-        { 'partyData.partyName': { $regex: search, $options: 'i' } },
-        { 'partyData.ownerName': { $regex: search, $options: 'i' } },
-        { 'partyData.ownerMobileNo': { $regex: search, $options: 'i' } },
-        { 'partyData.ownerWhatsAppNo': { $regex: search, $options: 'i' } },
-        { 'companyData.companyName': { $regex: search, $options: 'i' } },
-        { 'partyData.address.marketName': { $regex: search, $options: 'i' } },
-        { 'partyData.address.area': { $regex: search, $options: 'i' } },
-        { 'partyData.address.unitNo': { $regex: search, $options: 'i' } },
-        {
-          $expr: {
-            $regexMatch: {
-              input: { $concat: ["$assignedTo.firstName", " ", "$assignedTo.lastName"] },
-              regex: search,
-              options: "i"
+      const searchConditions = {
+        $or: [
+          { 'partyData.partyName': { $regex: search, $options: 'i' } },
+          { 'partyData.ownerName': { $regex: search, $options: 'i' } },
+          { 'partyData.ownerMobileNo': { $regex: search, $options: 'i' } },
+          { 'partyData.ownerWhatsAppNo': { $regex: search, $options: 'i' } },
+          { 'companyData.companyName': { $regex: search, $options: 'i' } },
+          { 'partyData.address.unitNo': { $regex: search, $options: 'i' } },
+          { 'marketNameData.marketName': { $regex: search, $options: 'i' } },
+          { 'areaData.area': { $regex: search, $options: 'i' } },
+          {
+            $expr: {
+              $regexMatch: {
+                input: { $concat: ["$assignedToData.firstName", " ", "$assignedToData.lastName"] },
+                regex: search,
+                options: "i"
+              }
             }
-          }
-        },
-        { reason: { $regex: search, $options: 'i' } },
-      ];
+          },
+          { reason: { $regex: search, $options: 'i' } },
+        ]
+      };
+
+      // Merge with existing $or conditions if any
+      if (matchConditions.$or) {
+        matchConditions.$and = matchConditions.$and || [];
+        matchConditions.$and.push({ $or: matchConditions.$or });
+        matchConditions.$and.push(searchConditions);
+        delete matchConditions.$or;
+      } else {
+        Object.assign(matchConditions, searchConditions);
+      }
     }
 
     // Mobile filter - handle comma-separated values
@@ -339,15 +424,39 @@ exports.getAllLeads = async (req, res) => {
       }
     }
 
+    // Created By filter
     if (createdBy) {
-      matchConditions.$or = matchConditions.$or || [];
+      const createdByNames = typeof createdBy === 'string' ?
+        createdBy.split(',').map(name => name.trim()).filter(name => name) :
+        [createdBy];
 
-      matchConditions.$or.push(
-        { "accountData.createdByData.firstName": { $regex: createdBy.split(' ')[0], $options: "i" } },
-        { "accountData.createdByData.lastName": { $regex: createdBy.split(' ')[1], $options: "i" } },
-      );
+      const createdByConditions = [];
+
+      createdByNames.forEach(name => {
+        const parts = name.split(' ').filter(Boolean);
+        const firstNamePart = parts[0] || "";
+        const lastNamePart = parts.slice(1).join(" ") || "";
+
+        if (firstNamePart && lastNamePart) {
+          createdByConditions.push({
+            $and: [
+              { "accountData.createdByData.firstName": { $regex: firstNamePart, $options: "i" } },
+              { "accountData.createdByData.lastName": { $regex: lastNamePart, $options: "i" } }
+            ]
+          });
+        } else if (firstNamePart) {
+          createdByConditions.push(
+            { "accountData.createdByData.firstName": { $regex: firstNamePart, $options: "i" } },
+            { "accountData.createdByData.lastName": { $regex: firstNamePart, $options: "i" } }
+          );
+        }
+      });
+
+      if (createdByConditions.length > 0) {
+        matchConditions.$and = matchConditions.$and || [];
+        matchConditions.$and.push({ $or: createdByConditions });
+      }
     }
-
 
     // Market Name filter - handle comma-separated values
     if (marketName) {
@@ -379,23 +488,38 @@ exports.getAllLeads = async (req, res) => {
       }
     }
 
-    // Assigned To filter by name/email - handle comma-separated values
+    // Assigned To filter by name/email
     if (assignedToFilter) {
-      if (assignedToFilter.includes(',')) {
-        const names = assignedToFilter.split(',').map(n => n.trim()).filter(n => n);
-        const regexArray = names.map(n => new RegExp(n, 'i'));
-        matchConditions.$or = matchConditions.$or || [];
-        matchConditions.$or.push(
-          { 'assignedToData.firstName': { $in: regexArray } },
-          { 'assignedToData.lastName': { $in: regexArray } },
-          { 'assignedToData.email': { $in: regexArray } }
-        );
-      } else {
-        matchConditions.$or = matchConditions.$or || [];
-        matchConditions.$or.push(
-          { 'assignedToData.firstName': { $regex: assignedToFilter.split(' ')[0], $options: 'i' } },
-          { 'assignedToData.lastName': { $regex: assignedToFilter.split(' ')[1], $options: 'i' } },
-        );
+      const assignToNames = typeof assignedToFilter === 'string' ?
+        assignedToFilter.split(',').map(name => name.trim()).filter(name => name) :
+        [assignedToFilter];
+
+      const assignToConditions = [];
+
+      assignToNames.forEach(name => {
+        const parts = name.split(' ').filter(Boolean);
+        const firstNamePart = parts[0] || "";
+        const lastNamePart = parts.slice(1).join(" ") || "";
+
+        if (firstNamePart && lastNamePart) {
+          assignToConditions.push({
+            $and: [
+              { "assignedToData.firstName": { $regex: firstNamePart, $options: "i" } },
+              { "assignedToData.lastName": { $regex: lastNamePart, $options: "i" } }
+            ]
+          });
+        } else if (firstNamePart) {
+          assignToConditions.push(
+            { "assignedToData.firstName": { $regex: firstNamePart, $options: "i" } },
+            { "assignedToData.lastName": { $regex: firstNamePart, $options: "i" } },
+            { "assignedToData.email": { $regex: firstNamePart, $options: "i" } }
+          );
+        }
+      });
+
+      if (assignToConditions.length > 0) {
+        matchConditions.$and = matchConditions.$and || [];
+        matchConditions.$and.push({ $or: assignToConditions });
       }
     }
 
@@ -419,14 +543,11 @@ exports.getAllLeads = async (req, res) => {
     // Party filter - handle both ObjectId and comma-separated names
     if (partyName) {
       if (partyName.includes(',')) {
-        // Comma-separated list of party names
         const names = partyName.split(',').map(n => n.trim()).filter(n => n);
         matchConditions['partyData.partyName'] = { $in: names };
       } else if (mongoose.Types.ObjectId.isValid(partyName)) {
-        // Single ObjectId
         matchConditions.partyName = new mongoose.Types.ObjectId(partyName);
       } else {
-        // Single party name
         matchConditions['partyData.partyName'] = partyName;
       }
     }
@@ -436,7 +557,6 @@ exports.getAllLeads = async (req, res) => {
       if (mongoose.Types.ObjectId.isValid(companyName)) {
         matchConditions.companyName = new mongoose.Types.ObjectId(companyName);
       } else {
-        // If not a valid ObjectId, filter by company name
         matchConditions['companyData.companyName'] = companyName;
       }
     }
@@ -453,15 +573,74 @@ exports.getAllLeads = async (req, res) => {
       }
     }
 
-    // Date filter
+    // Date filter (for 'date' field, not createdAt)
     if (date) {
-      // Format: DD/MM/YYYY
-      const [day, month, year] = date.split('/');
-      const startOfDay = new Date(`${year}-${month}-${day}`);
-      startOfDay.setHours(0, 0, 0, 0);
-      const endOfDay = new Date(`${year}-${month}-${day}`);
-      endOfDay.setHours(23, 59, 59, 999);
-      matchConditions.date = { $gte: startOfDay, $lte: endOfDay };
+      // Check if date contains comma-separated values
+      if (typeof date === 'string' && date.includes(',')) {
+        const dates = date.split(',').map(d => d.trim()).filter(d => d);
+        const dateConditions = [];
+
+        dates.forEach(dateStr => {
+          let parsedDate;
+          // Check format
+          if (dateStr.includes('/')) {
+            // DD/MM/YYYY format
+            const [day, month, year] = dateStr.split('/');
+            parsedDate = new Date(year, month - 1, day);
+          } else if (dateStr.includes('-')) {
+            const parts = dateStr.split('-');
+            if (parts[0].length <= 2) {
+              // dd-mm-yyyy format
+              const [day, month, year] = parts;
+              parsedDate = new Date(year, month - 1, day);
+            } else {
+              parsedDate = new Date(dateStr);
+            }
+          } else {
+            parsedDate = new Date(dateStr);
+          }
+
+          const startOfDay = new Date(parsedDate);
+          startOfDay.setHours(0, 0, 0, 0);
+          const endOfDay = new Date(parsedDate);
+          endOfDay.setHours(23, 59, 59, 999);
+
+          dateConditions.push({
+            date: {
+              $gte: startOfDay,
+              $lte: endOfDay
+            }
+          });
+        });
+
+        if (dateConditions.length > 0) {
+          matchConditions.$and = matchConditions.$and || [];
+          matchConditions.$and.push({ $or: dateConditions });
+        }
+      } else {
+        // Single date
+        let parsedDate;
+        if (date.includes('/')) {
+          const [day, month, year] = date.split('/');
+          parsedDate = new Date(year, month - 1, day);
+        } else if (date.includes('-')) {
+          const parts = date.split('-');
+          if (parts[0].length <= 2) {
+            const [day, month, year] = parts;
+            parsedDate = new Date(year, month - 1, day);
+          } else {
+            parsedDate = new Date(date);
+          }
+        } else {
+          parsedDate = new Date(date);
+        }
+
+        const startOfDay = new Date(parsedDate);
+        startOfDay.setHours(0, 0, 0, 0);
+        const endOfDay = new Date(parsedDate);
+        endOfDay.setHours(23, 59, 59, 999);
+        matchConditions.date = { $gte: startOfDay, $lte: endOfDay };
+      }
     } else if (startDate && endDate) {
       const start = new Date(startDate);
       start.setHours(0, 0, 0, 0);
@@ -492,7 +671,6 @@ exports.getAllLeads = async (req, res) => {
 
       const dateGroups = await Lead.aggregate(pipeline);
 
-      // Format the response
       const formattedDates = dateGroups.map(item => ({
         date: item._id,
         count: item.count

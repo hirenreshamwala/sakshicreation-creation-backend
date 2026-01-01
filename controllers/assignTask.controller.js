@@ -655,18 +655,99 @@ exports.getAllAssignTasks = async (req, res) => {
     const matchConditions = {};
 
     /* ================================
-       DATE RANGE FILTER
+       DATE RANGE FILTER - FIXED
     ================================ */
     if (date) {
-      const startOfDay = new Date(date);
-      startOfDay.setHours(0, 0, 0, 0);
-      const endOfDay = new Date(date);
-      endOfDay.setHours(23, 59, 59, 999);
+      // Check if date contains comma-separated values
+      if (typeof date === 'string' && date.includes(',')) {
+        const dates = date.split(',').map(d => d.trim()).filter(d => d);
+        const dateConditions = [];
 
-      matchConditions.date = {
-        $gte: startOfDay,
-        $lte: endOfDay,
-      };
+        dates.forEach(dateStr => {
+          // Check if date is in dd-mm-yyyy format
+          if (dateStr.includes('-')) {
+            const parts = dateStr.split('-');
+            if (parts.length === 3 && parts[0].length <= 2) {
+              // dd-mm-yyyy format
+              const [day, month, year] = parts;
+              const parsedDate = new Date(year, month - 1, day);
+
+              const startOfDay = new Date(parsedDate);
+              startOfDay.setHours(0, 0, 0, 0);
+              const endOfDay = new Date(parsedDate);
+              endOfDay.setHours(23, 59, 59, 999);
+
+              dateConditions.push({
+                date: {
+                  $gte: startOfDay,
+                  $lte: endOfDay
+                }
+              });
+            } else {
+              // ISO format or yyyy-mm-dd
+              const parsedDate = new Date(dateStr);
+              const startOfDay = new Date(parsedDate);
+              startOfDay.setHours(0, 0, 0, 0);
+              const endOfDay = new Date(parsedDate);
+              endOfDay.setHours(23, 59, 59, 999);
+
+              dateConditions.push({
+                date: {
+                  $gte: startOfDay,
+                  $lte: endOfDay
+                }
+              });
+            }
+          } else {
+            // Try parsing as ISO date
+            const parsedDate = new Date(dateStr);
+            const startOfDay = new Date(parsedDate);
+            startOfDay.setHours(0, 0, 0, 0);
+            const endOfDay = new Date(parsedDate);
+            endOfDay.setHours(23, 59, 59, 999);
+
+            dateConditions.push({
+              date: {
+                $gte: startOfDay,
+                $lte: endOfDay
+              }
+            });
+          }
+        });
+
+        if (dateConditions.length > 0) {
+          matchConditions.$or = matchConditions.$or || [];
+          matchConditions.$or.push(...dateConditions);
+        }
+      } else {
+        // Single date
+        let parsedDate;
+
+        // Check if date is in dd-mm-yyyy format
+        if (typeof date === 'string' && date.includes('-')) {
+          const parts = date.split('-');
+          if (parts.length === 3 && parts[0].length <= 2) {
+            // dd-mm-yyyy format
+            const [day, month, year] = parts;
+            parsedDate = new Date(year, month - 1, day);
+          } else {
+            // ISO format or yyyy-mm-dd
+            parsedDate = new Date(date);
+          }
+        } else {
+          parsedDate = new Date(date);
+        }
+
+        const startOfDay = new Date(parsedDate);
+        startOfDay.setHours(0, 0, 0, 0);
+        const endOfDay = new Date(parsedDate);
+        endOfDay.setHours(23, 59, 59, 999);
+
+        matchConditions.date = {
+          $gte: startOfDay,
+          $lte: endOfDay,
+        };
+      }
     } else if (startDate && endDate) {
       matchConditions.date = {
         $gte: new Date(startDate),
