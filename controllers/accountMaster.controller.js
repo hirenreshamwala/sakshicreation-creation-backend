@@ -249,13 +249,17 @@ exports.getAllAccountMasters = async (req, res) => {
       includeCounts = false
     } = req.body;
 
-    // ===== STEP 1: Build base query for AccountMaster (filter BEFORE lookups) =====
+    // ===== STEP 1: Build queries =====
+    // baseQuery: Used for the main results (respects ALL filters including status)
+    // countQuery: Used for counting stats (respects all filters EXCEPT status)
     const baseQuery = {};
+    const countQuery = {};
 
     // FIXED: Date range filter - handle both formats
     // Check if date is in filters.createdAt array (dd-mm-yyyy hh:mm:ss format)
     if (filters.createdAt && filters.createdAt.length > 0) {
       baseQuery.createdAt = {};
+      countQuery.createdAt = {};
 
       filters.createdAt.forEach(dateStr => {
         // Parse dd-mm-yyyy hh:mm:ss format
@@ -271,37 +275,50 @@ exports.getAllAccountMasters = async (req, res) => {
           // If no time specified, match entire day
           const startOfDay = new Date(year, month - 1, day, 0, 0, 0, 0);
           const endOfDay = new Date(year, month - 1, day, 23, 59, 59, 999);
+
           baseQuery.createdAt.$gte = startOfDay;
           baseQuery.createdAt.$lte = endOfDay;
+
+          countQuery.createdAt.$gte = startOfDay;
+          countQuery.createdAt.$lte = endOfDay;
         } else {
           // If specific time provided, match exact timestamp (with some tolerance)
           const startTime = new Date(parsedDate);
           startTime.setSeconds(0, 0);
           const endTime = new Date(parsedDate);
           endTime.setSeconds(59, 999);
+
           baseQuery.createdAt.$gte = startTime;
           baseQuery.createdAt.$lte = endTime;
+
+          countQuery.createdAt.$gte = startTime;
+          countQuery.createdAt.$lte = endTime;
         }
       });
     }
     // Original date range filter using startDate/endDate
     else if (startDate || endDate) {
       baseQuery.createdAt = {};
+      countQuery.createdAt = {};
+
       if (startDate) {
         const start = new Date(startDate);
         start.setHours(0, 0, 0, 0);
         baseQuery.createdAt.$gte = start;
+        countQuery.createdAt.$gte = start;
       }
       if (endDate) {
         const end = new Date(endDate);
         end.setHours(23, 59, 59, 999);
         baseQuery.createdAt.$lte = end;
+        countQuery.createdAt.$lte = end;
       }
     }
 
     // Reason filter - apply early
     if (filters.reason && filters.reason.length > 0) {
       baseQuery.reasonToVisit = { $in: filters.reason };
+      countQuery.reasonToVisit = { $in: filters.reason };
     }
 
     // ===== STEP 2: Pre-fetch related IDs for filters =====
@@ -323,7 +340,9 @@ exports.getAllAccountMasters = async (req, res) => {
 
       const staffMatched = await Staff.find({ $or: finalCond }).select('_id').lean();
       if (staffMatched.length > 0) {
-        baseQuery.createdBy = { $in: staffMatched.map(s => s._id) };
+        const staffIds = staffMatched.map(s => s._id);
+        baseQuery.createdBy = { $in: staffIds };
+        countQuery.createdBy = { $in: staffIds };
       } else {
         // No matching staff found, return empty result
         return res.status(200).json({
@@ -353,6 +372,7 @@ exports.getAllAccountMasters = async (req, res) => {
       if (companies.length > 0) {
         companyIds = companies.map(c => c._id);
         baseQuery.companyName = { $in: companyIds };
+        countQuery.companyName = { $in: companyIds };
       } else {
         return res.status(200).json({
           success: true,
@@ -393,9 +413,7 @@ exports.getAllAccountMasters = async (req, res) => {
       partyQuery["address.unitNo"] = { $in: filters.unitNo };
     }
 
-    if (filters.status && filters.status.length > 0) {
-      partyQuery.statusApproval = { $in: filters.status };
-    }
+    // NOTE: Status is NOT added to partyQuery yet, because we need unlimited parties for counts
 
     // Market filter
     if (filters.market && filters.market.length > 0) {
@@ -405,7 +423,6 @@ exports.getAllAccountMasters = async (req, res) => {
       if (markets.length > 0) {
         partyQuery["address.marketName"] = { $in: markets.map(m => m._id) };
       } else {
-        // No markets found, return empty
         return res.status(200).json({
           success: true,
           data: [],
@@ -431,7 +448,6 @@ exports.getAllAccountMasters = async (req, res) => {
       if (areas.length > 0) {
         partyQuery["address.area"] = { $in: areas.map(a => a._id) };
       } else {
-        // No areas found, return empty
         return res.status(200).json({
           success: true,
           data: [],
@@ -467,13 +483,18 @@ exports.getAllAccountMasters = async (req, res) => {
       ];
     }
 
-    // If we have party filters or search, get matching party IDs
-    if (Object.keys(partyQuery).length > 0) {
-      const matchingParties = await Party.find(partyQuery).select('_id statusApproval').lean();
-      if (matchingParties.length > 0) {
-        partyIds = matchingParties.map(p => p._id);
-        baseQuery.party = { $in: partyIds };
-      } else {
+    // Calculate Party IDs
+    let allMatchingPartyIds = null;
+
+    // Check if we need to filter by party at all (either filters/search OR status filter is present)
+    const hasStatusFilter = filters.status && filters.status.length > 0;
+    const hasOtherPartyFilters = Object.keys(partyQuery).length > 0;
+
+    if (hasOtherPartyFilters) {
+      // Find particles matching attributes/search
+      const parties = await Party.find(partyQuery).select('_id statusApproval').lean();
+
+      if (parties.length === 0) {
         return res.status(200).json({
           success: true,
           data: [],
@@ -489,9 +510,40 @@ exports.getAllAccountMasters = async (req, res) => {
           counts: { approved: 0, pending: 0, total: 0 }
         });
       }
+
+      allMatchingPartyIds = parties.map(p => p._id);
+
+      // Apply to countQuery (ALL statuses)
+      countQuery.party = { $in: allMatchingPartyIds };
+
+      // Apply to baseQuery (Specific statuses if filtered)
+      if (hasStatusFilter) {
+        const statusFiltered = parties.filter(p => filters.status.includes(p.statusApproval));
+        if (statusFiltered.length === 0) {
+          // No parties match the status filter
+          // Force baseQuery to fail safely
+          baseQuery.party = { $in: [] };
+        } else {
+          baseQuery.party = { $in: statusFiltered.map(p => p._id) };
+        }
+      } else {
+        baseQuery.party = { $in: allMatchingPartyIds };
+      }
+    } else {
+      // No attribute filters.
+      // If status filter exists, we must only restrict baseQuery. countQuery remains open for all parties.
+      if (hasStatusFilter) {
+        const statusParties = await Party.find({ statusApproval: { $in: filters.status } }).select('_id').lean();
+        if (statusParties.length > 0) {
+          baseQuery.party = { $in: statusParties.map(p => p._id) };
+        } else {
+          baseQuery.party = { $in: [] };
+        }
+      }
     }
 
-    // ===== STEP 4: Handle assignedTo and remarks filters (requires task lookup) =====
+
+    // ===== STEP 4: Handle assignedTo and remarks filters =====
     let taskFilteredAccountMasterIds = null;
 
     if ((filters.assignedTo && filters.assignedTo.length > 0) ||
@@ -548,9 +600,10 @@ exports.getAllAccountMasters = async (req, res) => {
         taskQuery.companyName = { $in: companyIds };
       }
 
-      // If we have party filter, add it to task query
-      if (partyIds) {
-        taskQuery.partyName = { $in: partyIds };
+      // If we have party filter (the broad one), add it to task query
+      // This is important: we want tasks relevant to "All Parties" matching criteria
+      if (allMatchingPartyIds) {
+        taskQuery.partyName = { $in: allMatchingPartyIds };
       }
 
       // Get latest tasks that match the criteria
@@ -572,9 +625,9 @@ exports.getAllAccountMasters = async (req, res) => {
           company: t._id.companyName
         }));
 
-        // Find AccountMasters with these combinations
+        // Find AccountMasters with these combinations using countQuery (broadest scope)
         const accountMastersWithTasks = await AccountMaster.find({
-          ...baseQuery,
+          ...countQuery,
           $or: partyCompanyCombos.map(combo => ({
             party: combo.party,
             companyName: combo.company
@@ -584,6 +637,7 @@ exports.getAllAccountMasters = async (req, res) => {
         if (accountMastersWithTasks.length > 0) {
           taskFilteredAccountMasterIds = accountMastersWithTasks.map(am => am._id);
         } else {
+          // No account masters match the tasks even with broad filters
           return res.status(200).json({
             success: true,
             data: [],
@@ -617,37 +671,23 @@ exports.getAllAccountMasters = async (req, res) => {
       }
     }
 
-    // Add task-filtered IDs to base query if applicable
+    // Add task-filtered IDs to BOTH queries
     if (taskFilteredAccountMasterIds) {
       baseQuery._id = { $in: taskFilteredAccountMasterIds };
+      countQuery._id = { $in: taskFilteredAccountMasterIds };
     }
 
     // ===== STEP 5: Get total count with ALL filters applied =====
     const totalCount = await AccountMaster.countDocuments(baseQuery);
 
-    if (totalCount === 0) {
-      return res.status(200).json({
-        success: true,
-        data: [],
-        pagination: isPagination ? {
-          currentPage: page,
-          pageSize: pageSize,
-          totalCount: 0,
-          totalPages: 0,
-          hasNext: false,
-          hasPrev: false,
-          counts: { approved: 0, pending: 0, total: 0 }
-        } : null,
-        counts: { approved: 0, pending: 0, total: 0 }
-      });
-    }
+    // Don't return early if totalCount is 0, because we might need to return counts
 
-    // ===== STEP 6: Get accurate status counts based on FILTERED AccountMasters =====
+    // ===== STEP 6: Get accurate status counts based on Broad (Count) Query =====
     let counts = { approved: 0, pending: 0, total: totalCount };
 
     if (includeCounts) {
-      // Get all AccountMaster IDs that match the current filters
-      const filteredAccountMasterIds = await AccountMaster.find(baseQuery)
+      // Use countQuery which EXCLUDES status filter but INCLUDES all other filters
+      const filteredAccountMasterIds = await AccountMaster.find(countQuery)
         .select('party')
         .lean();
 
@@ -669,7 +709,29 @@ exports.getAllAccountMasters = async (req, res) => {
           if (sc._id === "APPROVED") counts.approved = sc.count;
           if (sc._id === "PENDING") counts.pending = sc.count;
         });
+        // Override total with the broad total if desired, usually frontend wants total of current view.
+        // But often in tabs (Approved (5) | Pending (2)), the total is 7.
+        // Let's set 'total' to the sum of approved and pending for the "Counts" object.
+        // The Pagination total should remain 'totalCount' (filtered items).
+        counts.total = counts.approved + counts.pending;
       }
+    }
+
+    if (totalCount === 0) {
+      return res.status(200).json({
+        success: true,
+        data: [],
+        pagination: isPagination ? {
+          currentPage: page,
+          pageSize: pageSize,
+          totalCount: 0,
+          totalPages: 0,
+          hasNext: false,
+          hasPrev: false,
+          counts: counts
+        } : null,
+        counts: counts
+      });
     }
 
     // ===== STEP 7: Build aggregation pipeline with pagination =====
