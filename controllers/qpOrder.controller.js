@@ -491,19 +491,28 @@ exports.getAllQpOrdersForDriver = async (req, res) => {
       query.deliveryStatus = { $in: filters.deliveryStatus };
     }
     if (filters.driver && filters.driver.length > 0) {
-      const drivers = await Staff.find({
-        $or: [
-          { email: { $regex: `^${filters.driver[0]}`, $options: "i" } },
-          {
-            $or: filters.driver.map(name => ({
-              $or: [
-                { firstName: { $regex: `^${name.split(' ')[0] || ''}`, $options: "i" } },
-                { lastName: { $regex: (name.split(' ')[1] || ''), $options: "i" } }
-              ]
-            }))
-          }
-        ]
-      }).select('_id').lean();
+      const orConditions = filters.driver.flatMap(value => [
+        { email: { $regex: `^${value}@`, $options: "i" } },
+        { firstName: { $regex: `^${value}`, $options: "i" } },
+        { lastName: { $regex: `^${value}`, $options: "i" } },
+        { $and: value.split(' ').map((part, index) => ({
+          [index === 0 ? 'firstName' : 'lastName']: { $regex: `^${part}`, $options: "i" }
+        })) }
+      ]);
+      const drivers = await Staff.find({ $or: orConditions }).select('_id').lean();
+      if (drivers.length > 0) {
+        query.driver = { $in: drivers.map(d => d._id) };
+      }
+    }
+    if (filters.driverName && filters.driverName.length > 0) {
+      const orConditions = filters.driverName.flatMap(value => [
+        { $and: value.split(' ').map((part, index) => ({
+          [index === 0 ? 'firstName' : 'lastName']: { $regex: `^${part}`, $options: "i" }
+        })) },
+        { firstName: { $regex: `^${value}`, $options: "i" } },
+        { lastName: { $regex: `^${value}`, $options: "i" } }
+      ]);
+      const drivers = await Staff.find({ $or: orConditions }).select('_id').lean();
       if (drivers.length > 0) {
         query.driver = { $in: drivers.map(d => d._id) };
       }
@@ -726,6 +735,7 @@ exports.getQpFilterOptionsData = async (req, res) => {
           .filter(name => name !== "");
         break;
       case "date":
+      case "createdAt": // Added for createdAt handling
         const dates = await QpData.distinct("createdAt", query);
         uniqueValues = dates
           .map(d => moment(d).format("DD-MM-YYYY"))
@@ -778,8 +788,11 @@ exports.getQpFilterOptionsData = async (req, res) => {
       uniqueValues = uniqueValues.filter(val => regex.test(String(val)));
       console.log(`Filtered ${field} options by search "${search}": ${uniqueValues.length} remaining`);
     }
-
-    // FIXED: Removed broken/incomplete SEARCH FILTER block (directOr not defined) - not needed here
+    if (search && search.trim()) {
+      const regex = new RegExp(search, 'i');
+      uniqueValues = uniqueValues.filter(val => regex.test(String(val)));
+      console.log(`Filtered ${field} options by search "${search}": ${uniqueValues.length} remaining`);
+    }
     // REMOVE DUPLICATES + SORT
     // FIXED: Handle both string and number values properly
     uniqueValues = uniqueValues

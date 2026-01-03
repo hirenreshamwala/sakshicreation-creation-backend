@@ -243,7 +243,10 @@ exports.getPaymentFolders = async (req, res) => {
     if (filters.month && filters.month.length > 0) {
       query.month = { $in: filters.month };
     }
-
+    
+    if (filters.remarks && filters.remarks.length > 0) {
+      query.remarks = { $in: filters.remarks };
+    }
     // Assigned to filter
     if (filters.assignTo && filters.assignTo.length > 0) {
       const nameConditions = filters.assignTo.map(name => {
