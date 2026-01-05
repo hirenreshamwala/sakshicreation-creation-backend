@@ -2472,14 +2472,12 @@ exports.getFilterOptionsData = async (req, res) => {
 
       case "unitNo":
         const partyIds3 = await AccountMaster.distinct("party", query);
-        console.log(partyIds3, 'partyIds3');
 
         const partiess = await Party.find(
           { _id: { $in: partyIds3 } },
           "address.unitNo"   // <-- Only this nested field
         );
 
-        console.log(partiess, 'parties');
 
         uniqueValues = partiess.map(p => p.address?.unitNo).filter(v => v);
         break;

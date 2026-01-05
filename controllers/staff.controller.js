@@ -18,7 +18,6 @@ const encryptData = (text) => {
 
 // Decrypt function
 const decryptData = (ciphertext) => {
-  console.log(originalText, "originalText");
   var bytes = CryptoJS.AES.decrypt(ciphertext, SECRET_KEY);
   var originalText = bytes.toString(CryptoJS.enc.Utf8);
   return originalText;
@@ -531,7 +530,6 @@ async function updateAllRoleUserCounts() {
     });
     // 4. Execute all updates
     await Promise.all(updates);
-    console.log("All role user counts updated successfully.");
   } catch (error) {
     console.error("Error updating role user counts:", error);
   }
@@ -620,7 +618,6 @@ exports.bulkCreateStaff = async (req, res) => {
     // Process CSV
     const csvFilePath = path.join(uploadDir, `csv-${Date.now()}-${Math.round(Math.random() * 1e9)}.csv`);
     fs.writeFileSync(csvFilePath, file[0].buffer);
-    console.log(`Saved CSV file: ${csvFilePath}`);
 
     if (!fs.existsSync(csvFilePath)) {
       return res.status(400).json({
@@ -886,7 +883,6 @@ exports.getStaffPermission = async (req, res) => {
 
 exports.updateStaffAttachments = async (req, res) => {
   try {
-    console.log("Api caled for update attachments");
     const updatedStaff = await Staff.findByIdAndUpdate(
       req.params.id,
       req.body,

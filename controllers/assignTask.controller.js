@@ -107,7 +107,6 @@ exports.createAssignTask = async (req, res) => {
 exports.bulkCreateTasks = async (req, res) => {
   try {
     const tasksData = req.body;
-    console.log("Received tasksData:", tasksData);
 
     if (!Array.isArray(tasksData) || tasksData.length === 0) {
       return res.status(400).json({
@@ -132,21 +131,12 @@ exports.bulkCreateTasks = async (req, res) => {
           status = "Pending",
         } = taskData;
 
-        console.log(`Processing task for partyName: ${partyName}`);
-
         // Validate required fields
         if (!companyName || !partyName || !date || !reasonForVisit || !assignTo) {
           errors.push({
             partyName,
             message: "Missing required fields",
             missingFields: { companyName, partyName, date, reasonForVisit, assignTo },
-          });
-          console.log(`Validation failed for partyName: ${partyName}`, {
-            companyName,
-            partyName,
-            date,
-            reasonForVisit,
-            assignTo,
           });
           continue;
         }
@@ -161,11 +151,6 @@ exports.bulkCreateTasks = async (req, res) => {
             partyName,
             message: "Invalid ID format",
             invalidFields: { companyName, partyName, assignTo },
-          });
-          console.log(`Invalid ID format for partyName: ${partyName}`, {
-            companyName,
-            partyName,
-            assignTo,
           });
           continue;
         }
@@ -182,7 +167,6 @@ exports.bulkCreateTasks = async (req, res) => {
             partyName,
             message: `Company not found for ID: ${companyName}`,
           });
-          console.log(`Company not found for ID: ${companyName}`);
           continue;
         }
 
@@ -191,7 +175,6 @@ exports.bulkCreateTasks = async (req, res) => {
             partyName,
             message: `Party not found for ID: ${partyName}`,
           });
-          console.log(`Party not found for ID: ${partyName}`);
           continue;
         }
 
@@ -200,7 +183,6 @@ exports.bulkCreateTasks = async (req, res) => {
             partyName,
             message: `Staff not found for ID: ${assignTo}`,
           });
-          console.log(`Staff not found for ID: ${assignTo}`);
           continue;
         }
 
@@ -213,7 +195,6 @@ exports.bulkCreateTasks = async (req, res) => {
               partyName,
               message: "Invalid date format. Use DD-MM-YYYY or YYYY-MM-DD.",
             });
-            console.log(`Invalid date format for partyName: ${partyName}`, { date });
             continue;
           }
 
@@ -225,7 +206,6 @@ exports.bulkCreateTasks = async (req, res) => {
 
           if (isNaN(normalizedDate.getTime())) {
             errors.push({ partyName, message: "Invalid date provided" });
-            console.log(`Invalid date provided for partyName: ${partyName}`, { date });
             continue;
           }
         }
@@ -238,7 +218,6 @@ exports.bulkCreateTasks = async (req, res) => {
               partyName,
               message: "Invalid time format. Use HH:MM in 24-hour format.",
             });
-            console.log(`Invalid time format for partyName: ${partyName}`, { time });
             continue;
           }
         }
@@ -262,7 +241,6 @@ exports.bulkCreateTasks = async (req, res) => {
               existingTaskId: existingTask._id
             }
           });
-          console.log(`Task already exists for party: ${partyName} on date: ${date}`);
           continue; // Skip this party, continue with next
         }
 
@@ -285,7 +263,6 @@ exports.bulkCreateTasks = async (req, res) => {
 
         const savedTask = await task.save();
         createdTasks.push(savedTask);
-        console.log(`Successfully created task for partyName: ${partyName}`);
       } catch (error) {
         console.error(`Error processing task:`, error);
         errors.push({

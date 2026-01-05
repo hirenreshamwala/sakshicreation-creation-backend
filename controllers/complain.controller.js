@@ -20,15 +20,7 @@ exports.getAllComplains = async (req, res) => {
             pageSize = 10,
             includeCounts = true
         } = req.body;
-        console.log("📊 Complains API - Request:", {
-            filters,
-            search,
-            startDate,
-            endDate,
-            page,
-            pageSize,
-            isPagination
-        });
+        
         // Build query object
         const query = {};
         
@@ -249,11 +241,10 @@ exports.getAllComplains = async (req, res) => {
             query.subject = { $in: filters.subject };
         }
         
-        console.log("📊 Complains - Final query:", JSON.stringify(query, null, 2));
+        
         
         // Get total count
         const totalCount = await Complain.countDocuments(query);
-        console.log("📊 Complains - Total count:", totalCount);
         
         // Common populate options
         const commonPopulate = [
@@ -328,7 +319,6 @@ exports.getComplainFilterOptions = async (req, res) => {
                 message: "Field parameter is required"
             });
         }
-        console.log("Complain Filter Options - Field:", field, "Filters:", otherFilters);
         const validFields = ['company', 'party', 'status', 'orderNo', 'subject', 'createdBy'];
       
         if (!validFields.includes(field)) {
@@ -531,7 +521,6 @@ exports.getComplainFilterOptions = async (req, res) => {
             // uniqueValues = uniqueValues.slice(0, 100); // Limit for safety
         }
         
-        console.log(`✅ Complain Filter options for ${field}:`, uniqueValues.length, "items");
         res.status(200).json({
             success: true,
             data: uniqueValues,

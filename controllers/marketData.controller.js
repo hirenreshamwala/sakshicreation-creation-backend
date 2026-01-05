@@ -106,7 +106,6 @@ exports.deleteMarket = async (req, res) => {
 
     const deletedMarket = await Market.findByIdAndDelete(id);
 
-    console.log(deletedMarket,'deletedMarket')
     if (!deletedMarket) {
       return res.status(404).json({ message: "Market not found" });
     }

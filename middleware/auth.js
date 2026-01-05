@@ -79,10 +79,10 @@ exports.authenticateToken = async (req, res, next) => {
   try {
     // Verify JWT
     const decoded = jwt.verify(token, process.env.JWT_SECRET || "your_jwt_secret_key");
-    
+
     // Check staff existence
-    const staff = await Staff.findById(decoded.id);
-    
+    const staff = await Staff.findById(decoded.id).select("_id").lean();
+
     if (!staff) {
       return res.status(403).json({
         success: false,

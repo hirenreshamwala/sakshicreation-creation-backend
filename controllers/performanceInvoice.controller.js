@@ -5,7 +5,6 @@ const Party = require("../models/Party.model");
 const Order = require("../models/order.model");
 
 exports.createPerformanceInvoice = async (req, res) => {
-  console.log("Creating performance invoice with data:", req.body);
   try {
     const {
       orderNumber,

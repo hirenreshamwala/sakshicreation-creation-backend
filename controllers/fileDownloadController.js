@@ -135,11 +135,9 @@ exports.downloadFile = async (req, res) => {
 
     // 2. Decode and sanitize file path
     const decodedFilePath = decodeURIComponent(filePath);
-    console.log("Decoded file path:", decodedFilePath);
 
     // 3. Construct absolute file path (Assuming your upload folder is in project root)
     const fullFilePath = path.join(__dirname, "../", decodedFilePath);
-    console.log("✅ Full file path:", fullFilePath);
 
     // 4. Check if file exists
     if (!fs.existsSync(fullFilePath)) {
@@ -162,7 +160,6 @@ exports.downloadFile = async (req, res) => {
 
     const fileName = path.basename(fullFilePath);
     const fileExtension = path.extname(fileName).toLowerCase();
-    console.log("📄 File details:", { fileName, size: stats.size });
 
     // 6. Determine content type
     const contentTypeMap = {

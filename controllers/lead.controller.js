@@ -51,7 +51,6 @@ exports.createLead = async (req, res) => {
       date,
       time,
     } = req.body;
-    console.log(req.body, "body");
     // Validate required fields
     if (!companyName || !partyName || !reason || !assignedTo) {
       return res.status(400).json({
@@ -799,7 +798,6 @@ exports.getAllLeads = async (req, res) => {
 exports.bulkCreateLeads = async (req, res) => {
   try {
     const leadsData = req.body;
-    console.log("Received leadsData:", leadsData);
 
     if (!Array.isArray(leadsData) || leadsData.length === 0) {
       return res.status(400).json({
@@ -827,8 +825,6 @@ exports.bulkCreateLeads = async (req, res) => {
           rescheduleDate,
         } = leadData;
 
-        console.log(`Processing lead for partyName: ${partyName}`);
-
         // Validate required fields
         if (!companyName || !partyName || !reason || !assignedTo || !date) {
           errors.push({
@@ -836,13 +832,7 @@ exports.bulkCreateLeads = async (req, res) => {
             message: "Missing required fields",
             missingFields: { companyName, partyName, reason, assignedTo, date },
           });
-          console.log(`Validation failed for partyName: ${partyName}`, {
-            companyName,
-            partyName,
-            reason,
-            assignedTo,
-            date,
-          });
+
           continue;
         }
 
@@ -856,11 +846,6 @@ exports.bulkCreateLeads = async (req, res) => {
             partyName,
             message: "Invalid ID format",
             invalidFields: { companyName, partyName, assignedTo },
-          });
-          console.log(`Invalid ID format for partyName: ${partyName}`, {
-            companyName,
-            partyName,
-            assignedTo,
           });
           continue;
         }
@@ -877,7 +862,6 @@ exports.bulkCreateLeads = async (req, res) => {
             partyName,
             message: `Company not found for ID: ${companyName}`,
           });
-          console.log(`Company not found for ID: ${companyName}`);
           continue;
         }
 
@@ -886,7 +870,6 @@ exports.bulkCreateLeads = async (req, res) => {
             partyName,
             message: `Party not found for ID: ${partyName}`,
           });
-          console.log(`Party not found for ID: ${partyName}`);
           continue;
         }
 
@@ -895,7 +878,6 @@ exports.bulkCreateLeads = async (req, res) => {
             partyName,
             message: `Staff not found for ID: ${assignedTo}`,
           });
-          console.log(`Staff not found for ID: ${assignedTo}`);
           continue;
         }
 
@@ -908,9 +890,6 @@ exports.bulkCreateLeads = async (req, res) => {
               partyName,
               message: "Invalid date format. Use DD-MM-YYYY or YYYY-MM-DD.",
             });
-            console.log(`Invalid date format for partyName: ${partyName}`, {
-              date,
-            });
             continue;
           }
 
@@ -922,9 +901,6 @@ exports.bulkCreateLeads = async (req, res) => {
 
           if (isNaN(normalizedDate.getTime())) {
             errors.push({ partyName, message: "Invalid date provided" });
-            console.log(`Invalid date provided for partyName: ${partyName}`, {
-              date,
-            });
             continue;
           }
         }
@@ -946,7 +922,6 @@ exports.bulkCreateLeads = async (req, res) => {
 
         const savedLead = await lead.save();
         createdLeads.push(savedLead);
-        console.log(`Successfully created lead for partyName: ${partyName}`);
       } catch (error) {
         console.error(`Error processing lead:`, error);
         errors.push({
@@ -1790,8 +1765,6 @@ exports.getPartyFilterOptionsData = async (req, res) => {
           staff.map(s => `${s.firstName} ${s.lastName}`)
         )];
 
-        console.log(uniqueValues, 'uniqueValues')
-
         break;
       }
 
@@ -1848,7 +1821,6 @@ exports.getDataByPartyAndAccountMaster = async (req, res) => {
     let leadsData;
 
     if (result) {
-      console.log('result in oif')
       leadsData = await Lead.find({
         partyName: result?.party,
       }).populate("companyName")
@@ -1883,7 +1855,6 @@ exports.getDataByPartyAndAccountMaster = async (req, res) => {
         .lean();
     }
     else {
-      console.log('result in else')
       leadsData = await Lead.find({
         partyName: partyId,
       }).populate("companyName")
@@ -1917,7 +1888,6 @@ exports.getDataByPartyAndAccountMaster = async (req, res) => {
         .populate("assignedTo")
         .lean();
     }
-    console.log(leadsData, 'leadsData')
 
     return res.status(200).json({
       success: true,

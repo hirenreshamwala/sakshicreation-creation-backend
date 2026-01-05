@@ -74,8 +74,6 @@ exports.exportAccountMastersToExcel = async (req, res) => {
 
         // Format and add data rows
         responseData.data.forEach((account, index) => {
-            console.log("DEBUG : account:", account);
-
             worksheet.addRow({
                 srNo: index + 1,
                 company: account.companyName?.companyName || '',
@@ -94,7 +92,6 @@ exports.exportAccountMastersToExcel = async (req, res) => {
                 assign: `${account.latestTask?.assignTo?.firstName || ''} ${account.latestTask?.assignTo?.lastName || ''}`.trim()
             });
         });
-        console.log("DEBUG : responseData:", responseData);
 
 
         // Style the header row
@@ -761,8 +758,6 @@ exports.exportAssignTasksToExcel = async (req, res) => {
 
         // Add data rows with only required fields
         tasks.forEach((task, index) => {
-            console.log("DEBUG : task:", task);
-
             worksheet.addRow({
                 'Sr no': index + 1,
                 DATE: formatDate(task.DATE) || '', // यहाँ formatting apply करें
@@ -847,8 +842,6 @@ const getLeadsDataForExcel = async (req) => {
             assignedToFilter,
             reason,
         } = req.body;
-
-        console.log("DEBUG : req.body:", req.body);
 
         // Build match conditions
         const matchConditions = {};
@@ -1502,7 +1495,6 @@ exports.exportLeadsToExcel = async (req, res) => {
         }
 
         const leads = result.data;
-        console.log("DEBUG : leads:", leads);
 
         // Create Excel workbook
         const workbook = new ExcelJS.Workbook();
@@ -1674,7 +1666,6 @@ exports.exportOrdersToExcel = async (req, res) => {
 
         // Format and add data rows
         responseData.data.forEach((order, index) => {
-            console.log("DEBUG : order:", order);
 
             const grandTotal = order.finalAmount;
 
@@ -1845,7 +1836,6 @@ exports.exportDriverReportToExcel = async (req, res) => {
    
             const unitNo = order.party?.address?.unitNo || '';
 
-            console.log("DEBUG : order:", order.deliveryStatus,order.orderNo);
             worksheet.addRow({
                 serialNo: index + 1,
                 orderNo: order.orderNo || '',
@@ -1893,8 +1883,6 @@ exports.exportDriverReportToExcel = async (req, res) => {
 
         await workbook.xlsx.write(res);
         res.end();
-
-        console.log(`✅ Driver Report exported: ${responseData.data.length} records`);
 
     } catch (error) {
         console.error("❌ Error exporting driver report to Excel:", error);

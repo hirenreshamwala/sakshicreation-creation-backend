@@ -90,9 +90,6 @@ exports.uploadMultipleFiles = async (req, res) => {
     const folderName = req.body.folder || "";
     const baseUrl = process.env.BACK_URL || "";
 
-    console.log(`📁 Folder specified: ${folderName}`);
-    console.log(`📄 Files count: ${req.files.length}`);
-
     const uploadedFiles = req.files.map((file, index) => {
       const uploadedAbsolutePath = file.path;
 
@@ -121,7 +118,6 @@ exports.uploadMultipleFiles = async (req, res) => {
     const folderPath = path.join(uploadsRoot, folderName);
     if (fs.existsSync(folderPath)) {
       const filesInFolder = fs.readdirSync(folderPath);
-      console.log(`📂 Files in ${folderName} folder:`, filesInFolder);
     }
 
     res.status(200).json({
@@ -147,8 +143,6 @@ exports.deleteFile = async (req, res) => {
     // allow both nested folder paths and simple folder names
     const filePathResolved = resolveWithinUploads(...(folder ? [folder, filename] : [filename]));
 
-    console.log(`🗑️ Attempting to delete file: ${filePathResolved}`);
-
     if (!fs.existsSync(filePathResolved)) {
       return res.status(404).json({
         success: false,
@@ -157,7 +151,6 @@ exports.deleteFile = async (req, res) => {
     }
 
     fs.unlinkSync(filePathResolved);
-    console.log(`✅ File deleted successfully: ${filePathResolved}`);
 
     res.status(200).json({
       success: true,

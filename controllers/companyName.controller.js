@@ -71,7 +71,7 @@ exports.createCompanyName = async (req, res) => {
 exports.getAllCompanyNames = async (req, res) => {
   try {
     // Get all company names sorted by newest first
-    const companyNames = await CompanyName.find().select("companyName avatar default").sort({ createdAt: -1 });
+    const companyNames = await CompanyName.find().select("companyName avatar default").lean().sort({ createdAt: -1 });
 
     // Return success response
     res.status(200).json({
@@ -274,16 +274,11 @@ exports.getPartywithCompany = async (req, res) => {
     }
 
     const user = req.user;
-    console.log("DEBUG : user:", user);
 
     let query = { companyName: id };
-    console.log("DEBUG : query:", query);
-
-
 
     if (!["admin", "manager", "factory manager", "godown manager", "driver"].includes(user.roleData?.roleName?.toLowerCase())) {
       query.createdBy = user.id;
-      console.log("DEBUG : query.createdBy:", query.createdBy);
 
     }
 

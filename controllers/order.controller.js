@@ -1338,8 +1338,6 @@ exports.updateOrder = async (req, res) => {
       .populate("createdBy")
       .populate("designer", "firstName lastName");
 
-    console.log(req.user.role, "req.user.role");
-
     const staffRole = await Staff.findById(req.user.id);
     if (
       req.body.printerStatus === "Done" &&
@@ -2287,9 +2285,7 @@ exports.updateStaffStatus = async (req, res) => {
       }
     }
 
-    console.log("✅ Order found:", currentOrder._id);
-
-    console.log("🔍 Fetching staff role:", req.user.id);
+  
     const staffRole = await Staff.findById(req.user.id);
     if (!staffRole) {
       console.log("❌ Staff not found:", req.user.id);

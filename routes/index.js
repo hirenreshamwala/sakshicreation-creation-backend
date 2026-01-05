@@ -32,20 +32,18 @@ const complain = require("./complain.routes");
 const report = require("./report.routes");
 const factoryArrival = require("./factoryReturn.routes");
 const paymentFolder = require("./paymentFolder.routes");
-
-
 const PartyRouter = require("./party.routes");
 
 router.use("/staff", StaffRouter);
 router.use("/party", PartyRouter);
 router.use("/filedownload", filedownloadRouter);
-router.use(authenticateToken);
 router.use("/company", CompanyRouter);
-router.use("/report", report);
 router.use("/account-master", AccountMasterRouter);
 router.use("/assign-task", AssignTaskRouter);
-router.use("/orders", Order);
 router.use("/lead", Lead);
+// router.use(authenticateToken);
+router.use("/report", report);
+router.use("/orders", Order);
 router.use("/binderType", BinderTypeRoutes);
 router.use("/purchase", Purchase);
 router.use("/qppurchase", QpPurchase);
@@ -56,7 +54,6 @@ router.use("/productItem", productItem);
 router.use("/fileUpload", fileUpload);
 router.use("/status", status);
 router.use("/role", Roles);
-router.use("/qporder", QpOrderRoutes);
 router.use("/qporder", QpOrderRoutes);
 router.use("/saleqporder", SaleQpOrderRoutes);
 router.use("/packagingOptions", packagingOptions);

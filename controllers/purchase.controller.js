@@ -46,12 +46,8 @@ exports.getStaffByRole = async (req, res) => {
   try {
     const { roleId } = req.params;
 
-    // Log the roleId for debugging
-    console.log('Received roleId:', roleId);
-
     // Check if roleId is a valid ObjectId
     if (!mongoose.Types.ObjectId.isValid(roleId)) {
-      console.log('Invalid roleId format:', roleId);
       return res.status(400).json({
         success: false,
         message: 'Invalid role ID format'
@@ -61,7 +57,6 @@ exports.getStaffByRole = async (req, res) => {
     // Verify role exists
     const role = await Role.findById(roleId);
     if (!role || role.isDelete) {
-      console.log('Role not found or deleted:', roleId);
       return res.status(404).json({
         success: false,
         message: 'Role not found or has been deleted'

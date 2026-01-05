@@ -602,11 +602,6 @@ qpDataSchema.pre("save", function (next) {
 
 // ✅ UPDATED: Enhanced status change detection middleware with proper history tracking
 qpDataSchema.pre("save", function (next) {
-  console.log(
-    `🔍 Save Middleware - Status modified: ${this.isModified(
-      "status"
-    )}, DeliveryStatus modified: ${this.isModified("deliveryStatus")}`
-  );
 
   // Case 1: If deliveryStatus is being changed to "Delivered", set lastStatusChangeDate to null
   if (
@@ -614,9 +609,6 @@ qpDataSchema.pre("save", function (next) {
     this.deliveryStatus === "Delivered"
   ) {
     this.lastStatusChangeDate = null;
-    console.log(
-      `✅ DeliveryStatus changed to "Delivered", setting lastStatusChangeDate to null`
-    );
   }
   // Case 2: If status is being changed to "Completed" AND deliveryStatus exists but is not "Delivered"
   else if (
@@ -626,9 +618,6 @@ qpDataSchema.pre("save", function (next) {
     this.deliveryStatus !== "Delivered"
   ) {
     this.lastStatusChangeDate = new Date();
-    console.log(
-      `✅ Status changed to "Completed" and deliveryStatus is not "Delivered", updating lastStatusChangeDate`
-    );
   }
   // Case 3: If deliveryStatus is being changed (and it's not "Delivered") after status is "Completed"
   else if (
@@ -637,9 +626,6 @@ qpDataSchema.pre("save", function (next) {
     this.deliveryStatus !== "Delivered"
   ) {
     this.lastStatusChangeDate = new Date();
-    console.log(
-      `✅ DeliveryStatus changed while status is "Completed", updating lastStatusChangeDate`
-    );
   }
   // Case 4: Regular status change (when status is not "Completed")
   else if (this.isModified("status") && this.status !== "Completed") {
@@ -648,13 +634,6 @@ qpDataSchema.pre("save", function (next) {
 
     if (previousStatus !== newStatus) {
       this.lastStatusChangeDate = new Date();
-      console.log(
-        `✅ Regular status change: ${previousStatus} -> ${newStatus}, updating lastStatusChangeDate`
-      );
-    } else {
-      console.log(
-        `ℹ️ Status same (${newStatus}), not updating lastStatusChangeDate`
-      );
     }
   }
 
@@ -681,9 +660,6 @@ qpDataSchema.pre("save", function (next) {
       }
 
       this.statusHistory.push(statusChange);
-      console.log(
-        `📝 Status History: ${previousStatus} -> ${newStatus} at ${statusChange.changedAt}`
-      );
     }
 
     // Reset the original status
@@ -696,8 +672,6 @@ qpDataSchema.pre("save", function (next) {
 qpDataSchema.pre("findOneAndUpdate", function (next) {
   const update = this.getUpdate();
   const setUpdate = update.$set || {};
-
-  console.log(`🔍 FindOneAndUpdate - Update:`, setUpdate);
 
   // Only proceed if status is being modified
   if (!setUpdate.status) {
@@ -722,9 +696,6 @@ qpDataSchema.pre("findOneAndUpdate", function (next) {
       // Case 1: If deliveryStatus is being changed to "Delivered", set lastStatusChangeDate to null
       if (newDeliveryStatus === "Delivered") {
         updateSet.lastStatusChangeDate = null;
-        console.log(
-          `✅ DeliveryStatus changing to "Delivered", setting lastStatusChangeDate to null`
-        );
       }
       // Case 2: If status is being changed to "Completed" AND deliveryStatus exists but is not "Delivered"
       else if (
@@ -733,9 +704,6 @@ qpDataSchema.pre("findOneAndUpdate", function (next) {
         newDeliveryStatus !== "Delivered"
       ) {
         updateSet.lastStatusChangeDate = new Date();
-        console.log(
-          `✅ Status changing to "Completed" and deliveryStatus is not "Delivered", updating lastStatusChangeDate`
-        );
       }
       // Case 3: If deliveryStatus is being changed (and it's not "Delivered") after status is "Completed"
       else if (
@@ -744,9 +712,6 @@ qpDataSchema.pre("findOneAndUpdate", function (next) {
         newDeliveryStatus !== "Delivered"
       ) {
         updateSet.lastStatusChangeDate = new Date();
-        console.log(
-          `✅ DeliveryStatus changing while status is "Completed", updating lastStatusChangeDate`
-        );
       }
       // Case 4: Regular status change (when status is not "Completed")
       else if (
@@ -755,9 +720,6 @@ qpDataSchema.pre("findOneAndUpdate", function (next) {
         currentStatus !== newStatus
       ) {
         updateSet.lastStatusChangeDate = new Date();
-        console.log(
-          `✅ Regular status change: ${currentStatus} -> ${newStatus}, updating lastStatusChangeDate`
-        );
       }
 
       // ✅ FIXED: ADD STATUS HISTORY ONLY WHEN BOTH STATUSES ARE PRESENT AND DIFFERENT
@@ -775,9 +737,6 @@ qpDataSchema.pre("findOneAndUpdate", function (next) {
         }
 
         update.$push.statusHistory = statusChange;
-        console.log(
-          `📝 Update Status History: ${currentStatus} -> ${newStatus} at ${statusChange.changedAt}`
-        );
       }
 
       // Update the $set object with our changes

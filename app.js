@@ -15,7 +15,7 @@ var app = express();
 app.set('views', path.join(__dirname, 'views'));
 app.set('view engine', 'ejs');
 
-app.use(logger('dev'));
+// app.use(logger('dev'));
 app.use("/uploads", express.static(path.join(__dirname, "uploads")))
 
 const allowedOrigins = process.env.CORS_ORIGIN
