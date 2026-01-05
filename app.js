@@ -6,6 +6,7 @@ var cookieParser = require('cookie-parser');
 const { connectDB } = require("./db/connectDB");
 require("dotenv").config();
 const cors = require("cors");
+const compression = require("compression"); // ✅ Add compression
 
 var app = express();
 
