@@ -6,32 +6,33 @@ const marketSchema = new mongoose.Schema(
       type: String,
       required: true,
       trim: true,
-      set: (v) => v.toUpperCase(), 
+      set: (v) => v.toUpperCase(),
+      index: true,
     },
     area: {
       type: String,
       required: true,
       trim: true,
-      set: (v) => v.toUpperCase(), 
+      set: (v) => v.toUpperCase(),
+      index: true,
     },
-    // streetAddress: {
-    //   type: String,
-    //   trim: true,
-    // },
     landmark: {
       type: String,
       trim: true,
-      set: (v) => v.toUpperCase(), 
+      set: (v) => v.toUpperCase(),
+      index: true,
     },
     pincode: {
       type: String,
       required: true,
-      match: /^[0-9]{6}$/, // ✅ Indian pincode (6 digits)
+      match: /^[0-9]{6}$/,
+      index: true,
     },
   },
   { timestamps: true }
 );
 marketSchema.index({ createdAt: -1 });
+marketSchema.index({ marketName: 1, area: 1 });
 
 const Market = mongoose.model("Market", marketSchema);
 module.exports = Market;

@@ -29,6 +29,7 @@ const accountMasterSchema = new mongoose.Schema(
 accountMasterSchema.index({ companyName: 1 });
 accountMasterSchema.index({ party: 1 });
 accountMasterSchema.index({ createdBy: 1 });
+accountMasterSchema.index({ companyName: 1, createdBy: 1 });
 accountMasterSchema.index({ companyName: 1, createdAt: -1 });
 accountMasterSchema.index({ party: 1, createdAt: -1 });
 accountMasterSchema.index({ createdBy: 1, createdAt: -1 });

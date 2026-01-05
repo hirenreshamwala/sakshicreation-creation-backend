@@ -189,7 +189,7 @@ exports.updateCompanyName = async (req, res) => {
     // If setting this company as default, find and update the current default company
     if (req.body.default === true) {
       const currentDefaultCompany = await CompanyName.findOne({ default: true });
-      
+
       // If there's an existing default company and it's not the one being updated
       if (currentDefaultCompany && currentDefaultCompany._id.toString() !== req.params.id) {
         // Update the previous default company to false
@@ -264,7 +264,7 @@ exports.deleteCompanyName = async (req, res) => {
 exports.getPartywithCompany = async (req, res) => {
   try {
     const { id } = req.params;
- 
+
     // Validate ObjectId
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({
@@ -272,21 +272,21 @@ exports.getPartywithCompany = async (req, res) => {
         message: "Invalid company ID format",
       });
     }
- 
+
     const user = req.user;
     console.log("DEBUG : user:", user);
- 
+
     let query = { companyName: id };
     console.log("DEBUG : query:", query);
- 
- 
- 
-    if (!["admin", "manager","factory manager","godown manager", "driver"].includes(user.roleData?.roleName?.toLowerCase())) {
+
+
+
+    if (!["admin", "manager", "factory manager", "godown manager", "driver"].includes(user.roleData?.roleName?.toLowerCase())) {
       query.createdBy = user.id;
       console.log("DEBUG : query.createdBy:", query.createdBy);
- 
+
     }
- 
+
     // Find all account masters that belong to the specified company
     const accountMasters = await AccountMaster.find(query)
       .populate({
@@ -294,18 +294,20 @@ exports.getPartywithCompany = async (req, res) => {
         match: { statusApproval: "APPROVED" },
         select: "partyName _id statusApproval address.unitNo address.marketName",
         populate: {
-          path: "address.marketName", // nested populate
+          path: "address.marketName",
           model: "Market",
           select: "marketName _id",
         },
       })
+      .lean() // 🔥 ADD THIS
       .sort({ "party.partyName": 1 });
- 
+
+
     // Filter out null parties (due to match)
     const filteredAccounts = accountMasters.filter(
       (account) => account.party !== null
     );
- 
+
     // Transform data
     const parties = filteredAccounts.map((account) => ({
       _id: account.party._id,
@@ -313,7 +315,7 @@ exports.getPartywithCompany = async (req, res) => {
       unitNo: account.party.address.unitNo,
       marketName: account.party.address.marketName?.marketName || "",
     }));
- 
+
     res.status(200).json({
       success: true,
       data: parties,
