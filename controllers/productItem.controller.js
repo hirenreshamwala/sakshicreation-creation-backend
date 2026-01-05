@@ -54,7 +54,7 @@ exports.createProductItem = async (req, res) => {
 exports.getAllProductItems = async (req, res) => {
   try {
     // Get all items sorted by newest first
-    const productItems = await ProductItem.find().sort({ createdAt: -1 });
+    const productItems = await ProductItem.find().select("itemName").sort({ createdAt: -1 }).lean();
 
     // Return success response
     res.status(200).json({

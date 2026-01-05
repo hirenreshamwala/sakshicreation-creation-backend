@@ -1,4 +1,3 @@
-const { connectNativeDB } = require("../db/mongo.native");
 const Market = require("../models/marketData.model");
 const Papa = require("papaparse");
 // ✅ Create a new Market
@@ -59,20 +58,7 @@ exports.createMarket = async (req, res) => {
 // ✅ Get all Markets (Native MongoDB)
 exports.getAllMarkets = async (req, res) => {
   try {
-    const db = await connectNativeDB();
-
-    const markets = await db
-      .collection("markets") // ⚠️ collection name (usually plural)
-      .find({}, {
-        projection: {
-          marketName: 1,
-          area: 1,
-          landmark: 1,
-          pincode: 1,
-        },
-      })
-      .sort({ createdAt: -1 })
-      .toArray();
+    const markets = await Market.find().select("marketName area landmark pincode").sort({ createdAt: -1 }).lean();
 
     return res.status(200).json({ data: markets });
   } catch (error) {

@@ -159,9 +159,14 @@ exports.createStaff = async (req, res) => {
 exports.getStaff = async (req, res) => {
   try {
     const staff = await Staff.find()
-      .populate("role")
+      .populate({
+        path: "role",
+        select: "-permissions", // ❌ exclude permissions
+      })
       .populate("CompanyName")
-      .select("-password");
+      .select("-password")
+      .lean(); // ⚡ recommended
+
     res.status(200).json({
       success: true,
       data: staff,
@@ -173,6 +178,7 @@ exports.getStaff = async (req, res) => {
     });
   }
 };
+
 
 // Get a single Staff by ID
 exports.getStaffById = async (req, res) => {

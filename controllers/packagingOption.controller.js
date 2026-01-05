@@ -72,9 +72,9 @@ exports.createPackagingOption = async (req, res) => {
 exports.getAllPackagingOptions = async (req, res) => {
   try {
     const options = await PackagingOption.find()
-      .populate("party")
+      .populate("party",'partyName')
       .populate("kantan", "kantanName") // NEW: populate kantan
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 }).lean();
     return res.status(200).json({ data: options });
   } catch (error) {
     return res

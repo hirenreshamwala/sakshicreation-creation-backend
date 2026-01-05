@@ -7,7 +7,6 @@ const { connectDB } = require("./db/connectDB");
 require("dotenv").config();
 const cors = require("cors");
 const compression = require("compression"); // ✅ Add compression
-const { connectNativeDB } = require("./db/mongo.native");
 var app = express();
 
 // view engine setup
@@ -58,7 +57,6 @@ app.get("/", (request, response) => {
 });
 
 connectDB();
-connectNativeDB();
 
 // catch 404 and forward to error handler
 app.use(function(req, res, next) {

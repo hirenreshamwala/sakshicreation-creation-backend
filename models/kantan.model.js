@@ -9,7 +9,10 @@ const kantanSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
-kantanSchema.index({ createdAt: -1 });
+kantanSchema.index({
+  createdAt: -1,
+  kantanName: 1
+});
 
 const Kantan = mongoose.model("Kantan", kantanSchema);
 module.exports = Kantan;
