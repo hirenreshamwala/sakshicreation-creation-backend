@@ -294,7 +294,7 @@ exports.getPartywithCompany = async (req, res) => {
           select: "marketName _id",
         },
       })
-      .lean() // 🔥 ADD THIS
+      .lean()
       .sort({ "party.partyName": 1 });
 
 

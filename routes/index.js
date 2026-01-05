@@ -1,4 +1,3 @@
-const { authenticateToken } = require("../middleware/auth");
 const express = require("express");
 const router = express.Router();
 const CompanyRouter = require("./companyName.routes");
@@ -41,7 +40,6 @@ router.use("/company", CompanyRouter);
 router.use("/account-master", AccountMasterRouter);
 router.use("/assign-task", AssignTaskRouter);
 router.use("/lead", Lead);
-// router.use(authenticateToken);
 router.use("/report", report);
 router.use("/orders", Order);
 router.use("/binderType", BinderTypeRoutes);

@@ -59,7 +59,8 @@ partySchema.index({
   contactPerson: "text",
   GSTNo: "text",
 });
-
+partySchema.index({ _id: 1, statusApproval: 1 });
+partySchema.index({ "_id": 1, "address.marketName": 1 });
 
 // Middleware to make all string fields uppercase
 partySchema.pre("save", function (next) {
