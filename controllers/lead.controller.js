@@ -1638,6 +1638,23 @@ exports.getPartyFilterOptionsData = async (req, res) => {
         uniqueValues = parties.map(p => p.partyName).filter(Boolean);
         break;
       }
+      case "partyTag": {
+        // 1. Get all party IDs from Lead
+        const partyIds = await mongoose.model("Lead").distinct("partyName");
+
+        // 2. Fetch parties with only partyTag
+        const parties = await Party.find(
+          { _id: { $in: partyIds } },
+          { partyTag: 1, _id: 0 }
+        ).lean();
+
+        // 3. Get unique, non-empty tags
+        uniqueValues = [...new Set(
+          parties.map(p => p.partyTag).filter(Boolean)
+        )];
+
+        break;
+      }
 
       /* ✅ MOBILE NO (ONLY PARTIES IN LEAD) */
       case "mobile": {

@@ -160,6 +160,7 @@ exports.createAccountMaster = async (req, res) => {
       contactForPaymentEmail: req.body.contactForPaymentEmail || null,
       GSTNo: req.body.GSTNo || null,
       partyTag: req.body.partyTag || "New",
+      partyType: req.body.partyType,
       address: req.body.address,
       reference: req.body.reference,
       statusApproval: req.body.isRequestMode ? "Pending" : "Approved", // Set based on isRequestMode
@@ -403,6 +404,9 @@ exports.getAllAccountMasters = async (req, res) => {
     }
     if (filters.partyTag && filters.partyTag.length > 0) {
       partyQuery.partyTag = { $in: filters.partyTag };
+    }
+    if (filters.partyType && filters.partyType.length > 0) {
+      partyQuery.partyType = { $in: filters.partyType };
     }
     if (filters.mobile && filters.mobile.length > 0) {
       partyQuery.ownerMobileNo = { $in: filters.mobile };
@@ -752,6 +756,7 @@ exports.getAllAccountMasters = async (req, res) => {
               $project: {
                 partyName: 1,
                 partyTag: 1,
+                partyType:1,
                 ownerMobileNo: 1,
                 ownerWhatsAppNo: 1,
                 contactPerson: 1,
@@ -2449,8 +2454,12 @@ exports.getFilterOptionsData = async (req, res) => {
 
         break;
 
+      case "partyType":
+        uniqueValues = ['STATIONERY','OTHER','BOOKLET']
+        break;
+
       case "mobile":
-        const partyIds8 = await AccountMaster.distinct("party", query);
+        const partyIds8 = await AccountMaster.distinct("party", query); 
 
         const partyMobiles = await Party.find(
           { _id: { $in: partyIds8 } },
@@ -2461,8 +2470,6 @@ exports.getFilterOptionsData = async (req, res) => {
           .map(p => p.ownerMobileNo)
           .filter(Boolean);
         break;
-
-
 
       case "partyTag":
         const partyIds2 = await AccountMaster.distinct("party", query);
