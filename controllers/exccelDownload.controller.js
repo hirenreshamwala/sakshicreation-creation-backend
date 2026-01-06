@@ -77,7 +77,7 @@ exports.exportAccountMastersToExcel = async (req, res) => {
             worksheet.addRow({
                 srNo: index + 1,
                 company: account.companyName?.companyName || '',
-                createdDate: new Date(account.createdAt).toLocaleDateString(),
+                createdDate: moment(account.createdAt).format('DD-MM-YYYY'),
                 party: account.party?.partyName || '',
                 contactPerson: account.party?.contactPerson || '',
                 partyTag: account.party?.partyTag || '',
@@ -760,7 +760,7 @@ exports.exportAssignTasksToExcel = async (req, res) => {
         tasks.forEach((task, index) => {
             worksheet.addRow({
                 'Sr no': index + 1,
-                DATE: formatDate(task.DATE) || '', // यहाँ formatting apply करें
+                DATE: moment(task.DATE).format('DD-MM-YYYY') || '', // यहाँ formatting apply करें
                 'PARTY NAME': task['PARTY NAME'] || '',
                 'UNIT NO': task['UNIT NO'] || '',
                 'MKT NAME': task['MKT NAME'] || '',
@@ -1535,7 +1535,7 @@ exports.exportLeadsToExcel = async (req, res) => {
         leads.forEach((lead, index) => {
             worksheet.addRow({
                 'Sr no': index + 1,
-                DATE: formatDate(lead.DATE) || '', // यहाँ formatting apply करें
+                DATE: moment(lead.DATE).format('DD-MM-YYYY') || '', // यहाँ formatting apply करें
                 'PARTY NAME': lead['PARTY NAME'] || '',
                 'COMPANY NAME': lead['COMPANY NAME'] || '',
                 'UNIT NO': lead['UNIT NO'] || '',
@@ -1681,7 +1681,7 @@ exports.exportOrdersToExcel = async (req, res) => {
 
             worksheet.addRow({
                 srNo: index + 1,
-                orderDate: order.orderDate ? new Date(order.orderDate).toLocaleDateString() : '',
+                orderDate: moment(order.orderDate).format('DD-MM-YYYY') || '',
                 orderNumber: order.orderNumber || '',
                 company: order.companyName?.companyName || '',
                 party: partyDetails.partyName || '',
@@ -1704,7 +1704,7 @@ exports.exportOrdersToExcel = async (req, res) => {
                 binder: getStaffName(order.binder),
                 bookletBinder: getStaffName(order.bookletBinder),
                 remarks: order.remarks || '',
-                createdDate: order.createdAt ? new Date(order.createdAt).toLocaleDateString() : ''
+                createdDate: moment(order.createdAt).format('DD-MM-YYYY') || ''
             });
         });
 
