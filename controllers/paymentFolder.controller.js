@@ -115,15 +115,6 @@ exports.getPaymentFolders = async (req, res) => {
       pageSize = 10,
       includeCounts = true
     } = req.body;
-    console.log("📊 PaymentFolders API - Request:", {
-      filters,
-      search,
-      startDate,
-      endDate,
-      page,
-      pageSize,
-      isPagination
-    });
 
     // Build query object
     const query = {};
@@ -285,11 +276,8 @@ exports.getPaymentFolders = async (req, res) => {
       }
     }
 
-    console.log("📊 PaymentFolders - Final query:", JSON.stringify(query, null, 2));
-
     // Get total count
     const totalCount = await PaymentFolder.countDocuments(query);
-    console.log("📊 PaymentFolders - Total count:", totalCount);
 
     // Common populate options (same as existing controller)
     const commonPopulate = [
@@ -382,7 +370,7 @@ exports.getPaymentFolderFilterOptions = async (req, res) => {
         message: "Field parameter is required"
       });
     }
-    console.log("PaymentFolder Filter Options - Field:", field, "Filters:", otherFilters);
+
     const validFields = ['company', 'party', 'area', 'month', 'assignTo', 'paymentAmount', 'receivedAmount', 'pendingAmount', 'assignedDate', 'remarks'];
 
     if (!validFields.includes(field)) {
@@ -512,7 +500,6 @@ exports.getPaymentFolderFilterOptions = async (req, res) => {
     // Remove duplicates and sort (already handled in cases)
     // uniqueValues = uniqueValues.slice(0, 100); // Limit for safety
 
-    console.log(`✅ PaymentFolder Filter options for ${field}:`, uniqueValues.length, "items");
     res.status(200).json({
       success: true,
       data: uniqueValues,

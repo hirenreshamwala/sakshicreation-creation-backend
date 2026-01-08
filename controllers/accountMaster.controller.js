@@ -2602,3 +2602,314 @@ exports.getFilterOptionsData = async (req, res) => {
   }
 };
 
+
+
+// exports.getFilterOptionsData = async (req, res) => {
+//   try {
+//     const { field } = req.params;
+//     const filters = req.body || {};
+//     const { search, ...otherFilters } = filters;
+
+//     if (!field) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Field parameter is required"
+//       });
+//     }
+
+//     // BUILD QUERY
+//     const query = buildQuery(otherFilters);
+
+//     let uniqueValues = [];
+
+//     // OPTIMIZED FIELD HANDLERS
+//     switch (field) {
+//       case "company":
+//         uniqueValues = await getCompanyOptions(query);
+//         break;
+
+//       case "party":
+//         uniqueValues = await getPartyOptions(query);
+//         break;
+
+//       case "contactPerson":
+//         uniqueValues = await getContactPersonOptions(query);
+//         break;
+
+//       case "createdAt":
+//         uniqueValues = await getDateOptions(query);
+//         break;
+
+//       case "partyType":
+//         uniqueValues = ['STATIONERY', 'OTHER', 'BOOKLET'];
+//         break;
+
+//       case "mobile":
+//         uniqueValues = await getMobileOptions(query);
+//         break;
+
+//       case "partyTag":
+//         uniqueValues = await getPartyTagOptions(query);
+//         break;
+
+//       case "unitNo":
+//         uniqueValues = await getUnitNoOptions(query);
+//         break;
+
+//       case "mobileNo":
+//         uniqueValues = await getAllMobileOptions(query);
+//         break;
+
+//       case "market":
+//         uniqueValues = await getMarketOptions(query);
+//         break;
+
+//       case "area":
+//         uniqueValues = await getAreaOptions(query);
+//         break;
+
+//       case "reason":
+//         uniqueValues = await getReasonOptions(query);
+//         break;
+
+//       case "createdBy":
+//         uniqueValues = await getCreatedByOptions(query);
+//         break;
+
+//       case "status":
+//         uniqueValues = await getStatusOptions(query);
+//         break;
+
+//       case "assignedTo":
+//         uniqueValues = await getAssignedToOptions();
+//         break;
+
+//       default:
+//         return res.status(400).json({
+//           success: false,
+//           message: "Invalid field parameter"
+//         });
+//     }
+
+//     // APPLY SEARCH
+//     if (search) {
+//       const searchLower = search.toLowerCase();
+//       uniqueValues = uniqueValues.filter(v =>
+//         v?.toString().toLowerCase().includes(searchLower)
+//       );
+//     }
+
+//     // DEDUPLICATE & SORT
+//     uniqueValues = [...new Set(uniqueValues)]
+//       .filter(Boolean)
+//       .sort();
+
+//     res.status(200).json({
+//       success: true,
+//       data: uniqueValues,
+//       count: uniqueValues.length
+//     });
+
+//   } catch (err) {
+//     res.status(500).json({
+//       success: false,
+//       message: "Error loading filter options",
+//       error: err.message
+//     });
+//   }
+// };
+
+// // ==================== HELPER FUNCTIONS ====================
+
+// function buildQuery(filters) {
+//   const query = {};
+
+//   if (filters.companyName) {
+//     query.companyName = filters.companyName;
+//   }
+
+//   if (filters.staffId) {
+//     query.createdBy = filters.staffId;
+//   }
+
+//   if (filters.startDate || filters.endDate) {
+//     query.createdAt = {};
+//     if (filters.startDate) {
+//       const start = new Date(filters.startDate);
+//       start.setHours(0, 0, 0, 0);
+//       query.createdAt.$gte = start;
+//     }
+//     if (filters.endDate) {
+//       const end = new Date(filters.endDate);
+//       end.setHours(23, 59, 59, 999);
+//       query.createdAt.$lte = end;
+//     }
+//   }
+
+//   return query;
+// }
+
+// async function getCompanyOptions(query) {
+//   const companyIds = await AccountMaster.distinct("companyName", query).lean();
+//   const companies = await CompanyName.find(
+//     { _id: { $in: companyIds } },
+//     { companyName: 1, _id: 0 }
+//   ).lean();
+//   return companies.map(c => c.companyName);
+// }
+
+// async function getPartyOptions(query) {
+//   const partyIds = await AccountMaster.distinct("party", query).lean();
+//   const parties = await Party.find(
+//     { _id: { $in: partyIds } },
+//     { partyName: 1, _id: 0 }
+//   ).lean();
+//   return parties.map(p => p.partyName);
+// }
+
+// async function getContactPersonOptions(query) {
+//   const partyIds = await AccountMaster.distinct("party", query).lean();
+//   const persons = await Party.find(
+//     { _id: { $in: partyIds } },
+//     { contactPerson: 1, _id: 0 }
+//   ).lean();
+//   return persons.map(p => p.contactPerson);
+// }
+
+// async function getDateOptions(query) {
+//   const dates = await AccountMaster.distinct("createdAt", query).lean();
+//   return dates
+//     .sort((a, b) => new Date(b) - new Date(a))
+//     .map(d => moment(d).format("DD-MM-YYYY HH:mm:ss"));
+// }
+
+// async function getMobileOptions(query) {
+//   const partyIds = await AccountMaster.distinct("party", query).lean();
+//   const mobiles = await Party.find(
+//     { _id: { $in: partyIds } },
+//     { ownerMobileNo: 1, _id: 0 }
+//   ).lean();
+//   return mobiles
+//     .map(p => p.ownerMobileNo)
+//     .filter(Boolean);
+// }
+
+// async function getPartyTagOptions(query) {
+//   const partyIds = await AccountMaster.distinct("party", query).lean();
+//   const tags = await Party.find(
+//     { _id: { $in: partyIds } },
+//     { partyTag: 1, _id: 0 }
+//   ).lean();
+//   return tags.map(p => p.partyTag);
+// }
+
+// async function getUnitNoOptions(query) {
+//   const partyIds = await AccountMaster.distinct("party", query).lean();
+//   const parties = await Party.find(
+//     { _id: { $in: partyIds } },
+//     { "address.unitNo": 1, _id: 0 }
+//   ).lean();
+//   return parties
+//     .map(p => p.address?.unitNo)
+//     .filter(Boolean);
+// }
+
+// async function getAllMobileOptions(query) {
+//   const partyIds = await AccountMaster.distinct("party", query).lean();
+//   const numbers = await Party.find(
+//     { _id: { $in: partyIds } },
+//     {
+//       ownerMobileNo: 1,
+//       ownerWhatsAppNo: 1,
+//       personMobileNo: 1,
+//       personWhatsAppNo: 1,
+//       contactMobileNo: 1,
+//       contactWhatsAppNo: 1,
+//       _id: 0
+//     }
+//   ).lean();
+
+//   return [
+//     ...new Set(
+//       numbers.flatMap(n => [
+//         n.ownerMobileNo,
+//         n.ownerWhatsAppNo,
+//         n.personMobileNo,
+//         n.personWhatsAppNo,
+//         n.contactMobileNo,
+//         n.contactWhatsAppNo,
+//       ]).filter(Boolean)
+//     )
+//   ];
+// }
+
+// async function getMarketOptions(query) {
+//   const partyIds = await AccountMaster.distinct("party", query).lean();
+
+//   // Find parties and populate marketName to get the actual market name
+//   const parties = await Party.find(
+//     { _id: { $in: partyIds } },
+//     { "address.marketName": 1, _id: 0 }
+//   )
+//     .populate("address.marketName", "marketName") // Populate marketName field
+//     .lean();
+
+//   return [
+//     ...new Set(
+//       parties
+//         .map(p => p.address?.marketName?.marketName) // Access nested marketName
+//         .filter(Boolean)
+//     )
+//   ];
+// }
+
+// async function getAreaOptions(query) {
+//   const partyIds = await AccountMaster.distinct("party", query).lean();
+
+//   // FIXED: Treat area as a string field, not a reference
+//   const areas = await Party.find(
+//     { _id: { $in: partyIds } },
+//     { "address.area": 1, _id: 0 }
+//   ).populate("address.area", "area").lean();
+
+//   return [
+//     ...new Set(
+//       areas
+//         .map(a => a.address?.area?.area)
+//         .filter(Boolean)
+//     )
+//   ];
+// }
+
+// async function getReasonOptions(query) {
+//   return await AccountMaster.distinct("reasonToVisit", query).lean();
+// }
+
+// async function getCreatedByOptions(query) {
+//   const createdByIds = await AccountMaster.distinct("createdBy", query).lean();
+//   const staff = await Staff.find(
+//     { _id: { $in: createdByIds } },
+//     { firstName: 1, lastName: 1, _id: 0 }
+//   ).lean();
+//   return staff.map(u => `${u.firstName} ${u.lastName}`);
+// }
+
+// async function getStatusOptions(query) {
+//   const partyIds = await AccountMaster.distinct("party", query).lean();
+//   const statuses = await Party.find(
+//     { _id: { $in: partyIds } },
+//     { statusApproval: 1, _id: 0 }
+//   ).lean();
+//   return statuses.map(s => s.statusApproval);
+// }
+
+// async function getAssignedToOptions() {
+//   const tasks = await AssignTask.distinct("assignTo", {
+//     assignTo: { $exists: true, $ne: null }
+//   }).lean();
+//   const users = await Staff.find(
+//     { _id: { $in: tasks } },
+//     { firstName: 1, lastName: 1, _id: 0 }
+//   ).lean();
+//   return users.map(u => `${u.firstName} ${u.lastName}`);
+// }

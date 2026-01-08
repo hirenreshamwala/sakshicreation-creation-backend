@@ -710,8 +710,8 @@ exports.getAllAssignTasks = async (req, res) => {
       limit = 10,
       status,
       companyName,
-      assignTo,           // Original parameter
-      assignedTo,         // NEW: Frontend is sending this
+      assignTo,
+      assignedTo,
       priority,
       getDatesOnly = false,
       startDate,
@@ -721,105 +721,80 @@ exports.getAllAssignTasks = async (req, res) => {
       marketName,
       mobile,
       reason,
-      createdBy,
+      // createdBy,
       assignToFilter,
       party,
       area,
       search,
     } = req.body;
-
+    const createdBy = req.body.assignBy;
     const skip = (page - 1) * limit;
-    const matchConditions = {};
+    
+    // Filters that can be applied BEFORE lookups (direct fields on AssignTask)
+    const preMatchConditions = {};
+    
+    // Filters that need to be applied AFTER lookups (nested/populated fields)
+    const postMatchConditions = {};
 
     /* ================================
-       DATE RANGE FILTER
+       DATE RANGE FILTER - APPLIED BEFORE LOOKUPS
     ================================ */
     if (date) {
+      
       if (typeof date === 'string' && date.includes(',')) {
+        // Multiple dates
         const dates = date.split(',').map(d => d.trim()).filter(d => d);
         const dateConditions = [];
 
         dates.forEach(dateStr => {
-          if (dateStr.includes('-')) {
-            const parts = dateStr.split('-');
-            if (parts.length === 3 && parts[0].length <= 2) {
-              const [day, month, year] = parts;
-              const parsedDate = new Date(year, month - 1, day);
-              const startOfDay = new Date(parsedDate);
-              startOfDay.setHours(0, 0, 0, 0);
-              const endOfDay = new Date(parsedDate);
-              endOfDay.setHours(23, 59, 59, 999);
+          const parsedDate = parseDateString(dateStr);
+          const startOfDay = new Date(parsedDate);
+          startOfDay.setHours(0, 0, 0, 0);
+          const endOfDay = new Date(parsedDate);
+          endOfDay.setHours(23, 59, 59, 999);
 
-              dateConditions.push({
-                date: { $gte: startOfDay, $lte: endOfDay }
-              });
-            } else {
-              const parsedDate = new Date(dateStr);
-              const startOfDay = new Date(parsedDate);
-              startOfDay.setHours(0, 0, 0, 0);
-              const endOfDay = new Date(parsedDate);
-              endOfDay.setHours(23, 59, 59, 999);
-
-              dateConditions.push({
-                date: { $gte: startOfDay, $lte: endOfDay }
-              });
-            }
-          } else {
-            const parsedDate = new Date(dateStr);
-            const startOfDay = new Date(parsedDate);
-            startOfDay.setHours(0, 0, 0, 0);
-            const endOfDay = new Date(parsedDate);
-            endOfDay.setHours(23, 59, 59, 999);
-
-            dateConditions.push({
-              date: { $gte: startOfDay, $lte: endOfDay }
-            });
-          }
+          dateConditions.push({
+            date: { $gte: startOfDay, $lte: endOfDay }
+          });
         });
 
         if (dateConditions.length > 0) {
-          matchConditions.$or = matchConditions.$or || [];
-          matchConditions.$or.push(...dateConditions);
+          preMatchConditions.$or = preMatchConditions.$or || [];
+          preMatchConditions.$or.push(...dateConditions);
         }
       } else {
-        let parsedDate;
-        if (typeof date === 'string' && date.includes('-')) {
-          const parts = date.split('-');
-          if (parts.length === 3 && parts[0].length <= 2) {
-            const [day, month, year] = parts;
-            parsedDate = new Date(year, month - 1, day);
-          } else {
-            parsedDate = new Date(date);
-          }
-        } else {
-          parsedDate = new Date(date);
-        }
-
+        // Single date
+        const parsedDate = parseDateString(date);
         const startOfDay = new Date(parsedDate);
         startOfDay.setHours(0, 0, 0, 0);
         const endOfDay = new Date(parsedDate);
         endOfDay.setHours(23, 59, 59, 999);
 
-        matchConditions.date = {
+        preMatchConditions.date = {
           $gte: startOfDay,
           $lte: endOfDay,
         };
       }
-    } else if (startDate && endDate) {
-      matchConditions.date = {
+    } 
+    
+    // Apply startDate and endDate if date is not provided OR if you want range alongside specific date
+    if (startDate && endDate && !date) {
+      preMatchConditions.date = {
         $gte: new Date(startDate),
         $lte: new Date(endDate),
       };
     }
 
     /* ================================
-       COMPANY FILTER
+       COMPANY FILTER - APPLIED BEFORE LOOKUPS
     ================================ */
     if (companyName) {
+      
       if (mongoose.Types.ObjectId.isValid(companyName)) {
-        matchConditions.companyName = new mongoose.Types.ObjectId(companyName);
+        preMatchConditions.companyName = new mongoose.Types.ObjectId(companyName);
       } else {
-        matchConditions["companyData.companyName"] = {
+        // Name-based filter will be applied after lookup
+        postMatchConditions["companyData.companyName"] = {
           $regex: companyName,
           $options: "i",
         };
@@ -827,65 +802,27 @@ exports.getAllAssignTasks = async (req, res) => {
     }
 
     /* ================================
-       STATUS FILTER
+       STATUS FILTER - APPLIED BEFORE LOOKUPS
     ================================ */
     if (status && status.length > 0) {
       const statusArray = Array.isArray(status) ? status : status.split(",");
-      matchConditions.status = {
+      preMatchConditions.status = {
         $in: statusArray.map((s) => new RegExp(`^${s}$`, "i")),
       };
     }
 
     /* ================================
-       PRIORITY FILTER
+       PRIORITY FILTER - APPLIED BEFORE LOOKUPS
     ================================ */
     if (priority) {
-      matchConditions.priority = new RegExp(`^${priority}$`, "i");
+      preMatchConditions.priority = new RegExp(`^${priority}$`, "i");
     }
 
     /* ================================
-       UNIT NO FILTER
-    ================================ */
-    if (unitNo) {
-      const unitNos = unitNo.split(',').map(u => u.trim()).filter(u => u);
-      if (unitNos.length > 0) {
-        matchConditions["partyData.address.unitNo"] = {
-          $in: unitNos.map(unit => new RegExp(`^${unit}$`, "i"))
-        };
-      }
-    }
-
-    /* ================================
-       MARKET NAME FILTER
-    ================================ */
-    if (marketName) {
-      const marketNames = marketName.split(',').map(m => m.trim()).filter(m => m);
-      if (marketNames.length > 0) {
-        matchConditions["marketNameData.marketName"] = {
-          $in: marketNames.map(name => new RegExp(name, "i"))
-        };
-      }
-    }
-
-    /* ================================
-       MOBILE NUMBER FILTER
-    ================================ */
-    if (mobile) {
-      matchConditions.$or = matchConditions.$or || [];
-      matchConditions.$or.push(
-        { "partyData.ownerMobileNo": { $regex: mobile, $options: "i" } },
-        { "partyData.personMobileNo": { $regex: mobile, $options: "i" } },
-        { "partyData.contactMobileNo": { $regex: mobile, $options: "i" } },
-        { "partyData.ownerWhatsAppNo": { $regex: mobile, $options: "i" } },
-        { "partyData.personWhatsAppNo": { $regex: mobile, $options: "i" } },
-        { "partyData.contactWhatsAppNo": { $regex: mobile, $options: "i" } }
-      );
-    }
-
-    /* ================================
-       REASON FOR VISIT FILTER
+       REASON FOR VISIT FILTER - APPLIED BEFORE LOOKUPS
     ================================ */
     if (reason) {
+      
       const predefinedReasons = ['delivery', 'get payment', 'visit', 'order', 'complain', 'sample approval'];
       const reasons = reason.split(',').map(r => r.trim().toLowerCase()).filter(r => r);
       
@@ -894,12 +831,14 @@ exports.getAllAssignTasks = async (req, res) => {
         const specificReasons = reasons.filter(r => r !== 'other');
 
         if (otherIncluded && specificReasons.length === 0) {
-          matchConditions.reasonForVisit = {
+          // Only "other" selected
+          preMatchConditions.reasonForVisit = {
             $nin: predefinedReasons.map(r => new RegExp(`^${r}$`, "i"))
           };
         } else if (otherIncluded && specificReasons.length > 0) {
-          matchConditions.$or = matchConditions.$or || [];
-          matchConditions.$or.push(
+          // "other" + specific reasons
+          preMatchConditions.$or = preMatchConditions.$or || [];
+          preMatchConditions.$or.push(
             {
               reasonForVisit: {
                 $in: specificReasons.map(r => new RegExp(`^${r}$`, "i"))
@@ -912,7 +851,8 @@ exports.getAllAssignTasks = async (req, res) => {
             }
           );
         } else {
-          matchConditions.reasonForVisit = {
+          // Only specific reasons
+          preMatchConditions.reasonForVisit = {
             $in: specificReasons.map(r => new RegExp(`^${r}$`, "i"))
           };
         }
@@ -920,238 +860,12 @@ exports.getAllAssignTasks = async (req, res) => {
     }
 
     /* ================================
-       CREATED BY FILTER
-    ================================ */
-    if (createdBy) {
-      const createdByNames = createdBy.split(',').map(name => name.trim()).filter(name => name);
-      const createdByConditions = [];
-
-      createdByNames.forEach(name => {
-        const parts = name.split(' ').filter(Boolean);
-        const firstNamePart = parts[0] || "";
-        const lastNamePart = parts.slice(1).join(" ") || "";
-
-        const nameCondition = {
-          $or: []
-        };
-
-        if (firstNamePart) {
-          nameCondition.$or.push(
-            { "accountData.createdByData.firstName": { $regex: firstNamePart, $options: "i" } }
-          );
-        }
-
-        if (lastNamePart) {
-          nameCondition.$or.push(
-            { "accountData.createdByData.lastName": { $regex: lastNamePart, $options: "i" } }
-          );
-        }
-
-        if (firstNamePart && lastNamePart) {
-          nameCondition.$or.push({
-            $expr: {
-              $regexMatch: {
-                input: {
-                  $concat: [
-                    "$accountData.createdByData.firstName",
-                    " ",
-                    "$accountData.createdByData.lastName",
-                  ],
-                },
-                regex: name,
-                options: "i",
-              },
-            },
-          });
-        }
-
-        if (nameCondition.$or.length > 0) {
-          createdByConditions.push(nameCondition);
-        }
-      });
-
-      if (createdByConditions.length > 0) {
-        matchConditions.$and = matchConditions.$and || [];
-        matchConditions.$and.push({ $or: createdByConditions });
-      }
-    }
-
-    /* ================================
-       ASSIGN TO FILTER - COMPLETELY FIXED
-       Handles: assignTo, assignedTo, assignToFilter
-       यह filter database की assignTo field पर apply होगा
-    ================================ */
-    
-    // Use assignedTo if provided, otherwise use assignTo
-    const assignToValue = assignedTo || assignTo;
-    
-    let finalAssignToIds = [];
-
-    // Handle single assignTo/assignedTo parameter
-    if (assignToValue && assignToValue.trim() !== '') {
-      console.log('🔍 Processing assignTo value:', assignToValue);
-      
-      if (mongoose.Types.ObjectId.isValid(assignToValue)) {
-        // Direct ObjectId
-        finalAssignToIds.push(new mongoose.Types.ObjectId(assignToValue));
-        console.log('✅ Valid ObjectId provided');
-      } else {
-        // Name search - search by firstName, lastName, or full name
-        const staffs = await mongoose.model("Staff").find({
-          $or: [
-            { firstName: { $regex: assignToValue, $options: "i" } },
-            { lastName: { $regex: assignToValue, $options: "i" } },
-            {
-              $expr: {
-                $regexMatch: {
-                  input: { $concat: ["$firstName", " ", "$lastName"] },
-                  regex: assignToValue,
-                  options: "i"
-                }
-              }
-            }
-          ]
-        }).select("_id firstName lastName");
-
-        console.log('🔍 Found staffs:', staffs.map(s => ({ id: s._id, name: `${s.firstName} ${s.lastName}` })));
-
-        if (staffs.length > 0) {
-          finalAssignToIds = staffs.map(staff => staff._id);
-          console.log('✅ Matched staff IDs:', finalAssignToIds);
-        } else {
-          console.log('❌ No staff found, returning empty result');
-          return res.status(200).json({
-            success: true,
-            data: [],
-            count: 0,
-            pagination: {
-              total: 0,
-              page: parseInt(page),
-              limit: parseInt(limit),
-              totalPages: 0
-            }
-          });
-        }
-      }
-    }
-
-    // Handle assignToFilter parameter (comma-separated)
-    if (assignToFilter && assignToFilter.trim() !== '') {
-      console.log('🔍 Processing assignToFilter:', assignToFilter);
-      
-      const assignToNames = assignToFilter.split(',').map(name => name.trim()).filter(name => name !== '');
-      let filterStaffIds = [];
-
-      for (const name of assignToNames) {
-        if (mongoose.Types.ObjectId.isValid(name)) {
-          filterStaffIds.push(new mongoose.Types.ObjectId(name));
-        } else {
-          const staffs = await mongoose.model("Staff").find({
-            $or: [
-              { firstName: { $regex: name, $options: "i" } },
-              { lastName: { $regex: name, $options: "i" } },
-              {
-                $expr: {
-                  $regexMatch: {
-                    input: { $concat: ["$firstName", " ", "$lastName"] },
-                    regex: name,
-                    options: "i"
-                  }
-                }
-              }
-            ]
-          }).select("_id firstName lastName");
-
-          console.log(`🔍 Found staffs for "${name}":`, staffs.map(s => ({ id: s._id, name: `${s.firstName} ${s.lastName}` })));
-
-          const staffIds = staffs.map(staff => staff._id);
-          filterStaffIds = [...filterStaffIds, ...staffIds];
-        }
-      }
-
-      // Remove duplicates
-      filterStaffIds = [...new Set(filterStaffIds.map(id => id.toString()))].map(id => new mongoose.Types.ObjectId(id));
-      console.log('✅ Filter staff IDs after deduplication:', filterStaffIds);
-
-      if (filterStaffIds.length === 0) {
-        console.log('❌ No staff found in filter, returning empty result');
-        return res.status(200).json({
-          success: true,
-          data: [],
-          count: 0,
-          pagination: {
-            total: 0,
-            page: parseInt(page),
-            limit: parseInt(limit),
-            totalPages: 0
-          }
-        });
-      }
-
-      // Merge with assignTo results
-      if (finalAssignToIds.length > 0) {
-        // Intersection (AND logic)
-        const intersection = finalAssignToIds.filter(id => 
-          filterStaffIds.some(filterId => filterId.toString() === id.toString())
-        );
-        console.log('🔗 Intersection result:', intersection);
-        
-        if (intersection.length === 0) {
-          console.log('❌ No intersection, returning empty result');
-          return res.status(200).json({
-            success: true,
-            data: [],
-            count: 0,
-            pagination: {
-              total: 0,
-              page: parseInt(page),
-              limit: parseInt(limit),
-              totalPages: 0
-            }
-          });
-        }
-        finalAssignToIds = intersection;
-      } else {
-        finalAssignToIds = filterStaffIds;
-      }
-    }
-
-    // Apply the final assignTo filter to matchConditions
-    if (finalAssignToIds.length > 0) {
-      console.log('🎯 Applying assignTo filter with IDs:', finalAssignToIds);
-      matchConditions.assignTo = { $in: finalAssignToIds };
-    } else {
-      console.log('ℹ️ No assignTo filter applied');
-    }
-
-    /* ================================
-       PARTY FILTER
-    ================================ */
-    if (party) {
-      const partyNames = party.split(',').map(p => p.trim()).filter(p => p);
-      if (partyNames.length > 0) {
-        matchConditions["partyData.partyName"] = {
-          $in: partyNames.map(name => new RegExp(name, "i"))
-        };
-      }
-    }
-
-    /* ================================
-       AREA FILTER
-    ================================ */
-    if (area) {
-      const areaNames = area.split(',').map(a => a.trim()).filter(a => a);
-      if (areaNames.length > 0) {
-        matchConditions["areaData.area"] = {
-          $in: areaNames.map(name => new RegExp(name, "i"))
-        };
-      }
-    }
-
-    /* ================================
-       BASE PIPELINE WITH SUB POPULATE
+       BASE PIPELINE WITH ALL LOOKUPS
     ================================ */
     const basePipeline = [
+      // Apply pre-match conditions FIRST (before lookups for better performance)
+      ...(Object.keys(preMatchConditions).length > 0 ? [{ $match: preMatchConditions }] : []),
+
       // 1. TASK → COMPANY
       {
         $lookup: {
@@ -1299,10 +1013,225 @@ exports.getAllAssignTasks = async (req, res) => {
         }
       },
       { $unwind: { path: "$originalTaskData", preserveNullAndEmptyArrays: true } },
-
-      // Apply all match conditions
-      { $match: matchConditions },
     ];
+
+    /* ================================
+       POST-LOOKUP FILTERS (Applied after all lookups)
+    ================================ */
+
+    // UNIT NO FILTER
+    if (unitNo) {
+      const unitNos = unitNo.split(',').map(u => u.trim()).filter(u => u);
+      if (unitNos.length > 0) {
+        postMatchConditions["partyData.address.unitNo"] = {
+          $in: unitNos.map(unit => new RegExp(`^${unit}$`, "i"))
+        };
+      }
+    }
+
+    // MARKET NAME FILTER
+    if (marketName) {
+      const marketNames = marketName.split(',').map(m => m.trim()).filter(m => m);
+      if (marketNames.length > 0) {
+        postMatchConditions["marketNameData.marketName"] = {
+          $in: marketNames.map(name => new RegExp(name, "i"))
+        };
+      }
+    }
+
+    // MOBILE NUMBER FILTER
+    if (mobile) {
+      postMatchConditions.$or = postMatchConditions.$or || [];
+      postMatchConditions.$or.push(
+        { "partyData.ownerMobileNo": { $regex: mobile, $options: "i" } },
+        { "partyData.personMobileNo": { $regex: mobile, $options: "i" } },
+        { "partyData.contactMobileNo": { $regex: mobile, $options: "i" } },
+        { "partyData.ownerWhatsAppNo": { $regex: mobile, $options: "i" } },
+        { "partyData.personWhatsAppNo": { $regex: mobile, $options: "i" } },
+        { "partyData.contactWhatsAppNo": { $regex: mobile, $options: "i" } }
+      );
+    }
+
+    // CREATED BY FILTER
+    if (createdBy) {
+      const createdByNames = createdBy.split(',').map(name => name.trim()).filter(name => name);
+      const createdByConditions = [];
+
+      createdByNames.forEach(name => {
+        const parts = name.split(' ').filter(Boolean);
+        const firstNamePart = parts[0] || "";
+        const lastNamePart = parts.slice(1).join(" ") || "";
+
+        const nameCondition = { $or: [] };
+
+        if (firstNamePart) {
+          nameCondition.$or.push(
+            { "accountData.createdByData.firstName": { $regex: firstNamePart, $options: "i" } }
+          );
+        }
+
+        if (lastNamePart) {
+          nameCondition.$or.push(
+            { "accountData.createdByData.lastName": { $regex: lastNamePart, $options: "i" } }
+          );
+        }
+
+        if (firstNamePart && lastNamePart) {
+          nameCondition.$or.push({
+            $expr: {
+              $regexMatch: {
+                input: {
+                  $concat: [
+                    "$accountData.createdByData.firstName",
+                    " ",
+                    "$accountData.createdByData.lastName",
+                  ],
+                },
+                regex: name,
+                options: "i",
+              },
+            },
+          });
+        }
+
+        if (nameCondition.$or.length > 0) {
+          createdByConditions.push(nameCondition);
+        }
+      });
+
+      if (createdByConditions.length > 0) {
+        postMatchConditions.$and = postMatchConditions.$and || [];
+        postMatchConditions.$and.push({ $or: createdByConditions });
+      }
+    }
+
+    // ASSIGN TO FILTER
+    const assignToValue = assignedTo || assignTo;
+    let finalAssignToIds = [];
+
+    if (assignToValue && assignToValue.trim() !== '') {
+      
+      if (mongoose.Types.ObjectId.isValid(assignToValue)) {
+        finalAssignToIds.push(new mongoose.Types.ObjectId(assignToValue));
+      } else {
+        const staffs = await mongoose.model("Staff").find({
+          $or: [
+            { firstName: { $regex: assignToValue, $options: "i" } },
+            { lastName: { $regex: assignToValue, $options: "i" } },
+            {
+              $expr: {
+                $regexMatch: {
+                  input: { $concat: ["$firstName", " ", "$lastName"] },
+                  regex: assignToValue,
+                  options: "i"
+                }
+              }
+            }
+          ]
+        }).select("_id firstName lastName");
+
+        if (staffs.length > 0) {
+          finalAssignToIds = staffs.map(staff => staff._id);
+        } else {
+          return res.status(200).json({
+            success: true,
+            data: [],
+            count: 0,
+            pagination: { total: 0, page: parseInt(page), limit: parseInt(limit), totalPages: 0 }
+          });
+        }
+      }
+    }
+
+    // ASSIGN TO FILTER (comma-separated)
+    if (assignToFilter && assignToFilter.trim() !== '') {
+      
+      const assignToNames = assignToFilter.split(',').map(name => name.trim()).filter(name => name !== '');
+      let filterStaffIds = [];
+
+      for (const name of assignToNames) {
+        if (mongoose.Types.ObjectId.isValid(name)) {
+          filterStaffIds.push(new mongoose.Types.ObjectId(name));
+        } else {
+          const staffs = await mongoose.model("Staff").find({
+            $or: [
+              { firstName: { $regex: name, $options: "i" } },
+              { lastName: { $regex: name, $options: "i" } },
+              {
+                $expr: {
+                  $regexMatch: {
+                    input: { $concat: ["$firstName", " ", "$lastName"] },
+                    regex: name,
+                    options: "i"
+                  }
+                }
+              }
+            ]
+          }).select("_id firstName lastName");
+
+          const staffIds = staffs.map(staff => staff._id);
+          filterStaffIds = [...filterStaffIds, ...staffIds];
+        }
+      }
+
+      filterStaffIds = [...new Set(filterStaffIds.map(id => id.toString()))].map(id => new mongoose.Types.ObjectId(id));
+
+      if (filterStaffIds.length === 0) {
+        return res.status(200).json({
+          success: true,
+          data: [],
+          count: 0,
+          pagination: { total: 0, page: parseInt(page), limit: parseInt(limit), totalPages: 0 }
+        });
+      }
+
+      if (finalAssignToIds.length > 0) {
+        const intersection = finalAssignToIds.filter(id => 
+          filterStaffIds.some(filterId => filterId.toString() === id.toString())
+        );
+        
+        if (intersection.length === 0) {
+          return res.status(200).json({
+            success: true,
+            data: [],
+            count: 0,
+            pagination: { total: 0, page: parseInt(page), limit: parseInt(limit), totalPages: 0 }
+          });
+        }
+        finalAssignToIds = intersection;
+      } else {
+        finalAssignToIds = filterStaffIds;
+      }
+    }
+
+    if (finalAssignToIds.length > 0) {
+      postMatchConditions["assignToData._id"] = { $in: finalAssignToIds };
+    }
+
+    // PARTY FILTER
+    if (party) {
+      const partyNames = party.split(',').map(p => p.trim()).filter(p => p);
+      if (partyNames.length > 0) {
+        postMatchConditions["partyData.partyName"] = {
+          $in: partyNames.map(name => new RegExp(name, "i"))
+        };
+      }
+    }
+
+    // AREA FILTER
+    if (area) {
+      const areaNames = area.split(',').map(a => a.trim()).filter(a => a);
+      if (areaNames.length > 0) {
+        postMatchConditions["areaData.area"] = {
+          $in: areaNames.map(name => new RegExp(name, "i"))
+        };
+      }
+    }
+
+    // Apply post-match conditions
+    if (Object.keys(postMatchConditions).length > 0) {
+      basePipeline.push({ $match: postMatchConditions });
+    }
 
     /* ================================
        SEARCH FUNCTIONALITY
@@ -1356,8 +1285,6 @@ exports.getAllAssignTasks = async (req, res) => {
     // Add sorting
     basePipeline.push({ $sort: { createdAt: -1 } });
 
-    console.log('📋 Final match conditions:', JSON.stringify(matchConditions, null, 2));
-
     /* ================================
        ONLY DATES
     ================================ */
@@ -1372,6 +1299,7 @@ exports.getAllAssignTasks = async (req, res) => {
         },
         { $group: { _id: "$date", count: { $sum: 1 } } },
         { $project: { _id: 0, date: "$_id", count: 1 } },
+        { $sort: { date: 1 } }
       ]);
 
       return res.status(200).json({
@@ -1499,8 +1427,6 @@ exports.getAllAssignTasks = async (req, res) => {
     const countResult = await AssignTask.aggregate(countPipeline);
     const total = countResult.length > 0 ? countResult[0].total : 0;
 
-    console.log(`✅ Query complete: Found ${total} tasks`);
-
     return res.status(200).json({
       success: true,
       data: tasks,
@@ -1514,7 +1440,7 @@ exports.getAllAssignTasks = async (req, res) => {
     });
 
   } catch (error) {
-    console.error("getAllAssignTasks Error:", error);
+    console.error("❌ getAllAssignTasks Error:", error);
     return res.status(500).json({
       success: false,
       message: "Something went wrong",
@@ -1522,6 +1448,19 @@ exports.getAllAssignTasks = async (req, res) => {
     });
   }
 };
+
+// Helper function to parse date strings in various formats
+function parseDateString(dateStr) {
+  if (typeof dateStr === 'string' && dateStr.includes('-')) {
+    const parts = dateStr.split('-');
+    // Check if it's DD-MM-YYYY format
+    if (parts.length === 3 && parts[0].length <= 2) {
+      const [day, month, year] = parts;
+      return new Date(year, month - 1, day);
+    }
+  }
+  return new Date(dateStr);
+}
 
 exports.updateAssignTaskStatus = async (req, res) => {
   try {
