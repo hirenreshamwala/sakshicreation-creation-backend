@@ -493,7 +493,7 @@ exports.updateAssignTask = async (req, res) => {
       // Create date range for the day
       const startOfDay = new Date(checkDate);
       startOfDay.setHours(0, 0, 0, 0);
-      
+
       const endOfDay = new Date(checkDate);
       endOfDay.setHours(23, 59, 59, 999);
 
@@ -561,7 +561,7 @@ exports.updateAssignTask = async (req, res) => {
         // NEW: Check if rescheduled task would create a duplicate
         const rescheduleStartOfDay = new Date(rescheduleDate);
         rescheduleStartOfDay.setHours(0, 0, 0, 0);
-        
+
         const rescheduleEndOfDay = new Date(rescheduleDate);
         rescheduleEndOfDay.setHours(23, 59, 59, 999);
 
@@ -729,10 +729,10 @@ exports.getAllAssignTasks = async (req, res) => {
     } = req.body;
     const createdBy = req.body.assignBy;
     const skip = (page - 1) * limit;
-    
+
     // Filters that can be applied BEFORE lookups (direct fields on AssignTask)
     const preMatchConditions = {};
-    
+
     // Filters that need to be applied AFTER lookups (nested/populated fields)
     const postMatchConditions = {};
 
@@ -740,7 +740,7 @@ exports.getAllAssignTasks = async (req, res) => {
        DATE RANGE FILTER - APPLIED BEFORE LOOKUPS
     ================================ */
     if (date) {
-      
+
       if (typeof date === 'string' && date.includes(',')) {
         // Multiple dates
         const dates = date.split(',').map(d => d.trim()).filter(d => d);
@@ -775,8 +775,8 @@ exports.getAllAssignTasks = async (req, res) => {
           $lte: endOfDay,
         };
       }
-    } 
-    
+    }
+
     // Apply startDate and endDate if date is not provided OR if you want range alongside specific date
     if (startDate && endDate && !date) {
       preMatchConditions.date = {
@@ -789,7 +789,7 @@ exports.getAllAssignTasks = async (req, res) => {
        COMPANY FILTER - APPLIED BEFORE LOOKUPS
     ================================ */
     if (companyName) {
-      
+
       if (mongoose.Types.ObjectId.isValid(companyName)) {
         preMatchConditions.companyName = new mongoose.Types.ObjectId(companyName);
       } else {
@@ -822,10 +822,10 @@ exports.getAllAssignTasks = async (req, res) => {
        REASON FOR VISIT FILTER - APPLIED BEFORE LOOKUPS
     ================================ */
     if (reason) {
-      
+
       const predefinedReasons = ['delivery', 'get payment', 'visit', 'order', 'complain', 'sample approval'];
       const reasons = reason.split(',').map(r => r.trim().toLowerCase()).filter(r => r);
-      
+
       if (reasons.length > 0) {
         const otherIncluded = reasons.includes('other');
         const specificReasons = reasons.filter(r => r !== 'other');
@@ -1054,63 +1054,51 @@ exports.getAllAssignTasks = async (req, res) => {
 
     // CREATED BY FILTER
     if (createdBy) {
-      const createdByNames = createdBy.split(',').map(name => name.trim()).filter(name => name);
+      const createdByNames = createdBy
+        .split(',')
+        .map(name => name.trim())
+        .filter(Boolean);
+
       const createdByConditions = [];
 
       createdByNames.forEach(name => {
         const parts = name.split(' ').filter(Boolean);
-        const firstNamePart = parts[0] || "";
-        const lastNamePart = parts.slice(1).join(" ") || "";
 
-        const nameCondition = { $or: [] };
+        // FULL NAME (First + Last)
+        if (parts.length >= 2) {
+          const firstName = parts[0];
+          const lastName = parts.slice(1).join(" ");
 
-        if (firstNamePart) {
-          nameCondition.$or.push(
-            { "accountData.createdByData.firstName": { $regex: firstNamePart, $options: "i" } }
-          );
-        }
-
-        if (lastNamePart) {
-          nameCondition.$or.push(
-            { "accountData.createdByData.lastName": { $regex: lastNamePart, $options: "i" } }
-          );
-        }
-
-        if (firstNamePart && lastNamePart) {
-          nameCondition.$or.push({
-            $expr: {
-              $regexMatch: {
-                input: {
-                  $concat: [
-                    "$accountData.createdByData.firstName",
-                    " ",
-                    "$accountData.createdByData.lastName",
-                  ],
-                },
-                regex: name,
-                options: "i",
-              },
-            },
+          createdByConditions.push({
+            $and: [
+              { "accountData.createdByData.firstName": { $regex: `^${firstName}$`, $options: "i" } },
+              { "accountData.createdByData.lastName": { $regex: `^${lastName}$`, $options: "i" } }
+            ]
           });
         }
-
-        if (nameCondition.$or.length > 0) {
-          createdByConditions.push(nameCondition);
+        // ONLY FIRST NAME
+        else {
+          createdByConditions.push({
+            "accountData.createdByData.firstName": {
+              $regex: `^${parts[0]}$`,
+              $options: "i"
+            }
+          });
         }
       });
 
       if (createdByConditions.length > 0) {
-        postMatchConditions.$and = postMatchConditions.$and || [];
-        postMatchConditions.$and.push({ $or: createdByConditions });
+        postMatchConditions.$or = createdByConditions;
       }
     }
+
 
     // ASSIGN TO FILTER
     const assignToValue = assignedTo || assignTo;
     let finalAssignToIds = [];
 
     if (assignToValue && assignToValue.trim() !== '') {
-      
+
       if (mongoose.Types.ObjectId.isValid(assignToValue)) {
         finalAssignToIds.push(new mongoose.Types.ObjectId(assignToValue));
       } else {
@@ -1145,7 +1133,7 @@ exports.getAllAssignTasks = async (req, res) => {
 
     // ASSIGN TO FILTER (comma-separated)
     if (assignToFilter && assignToFilter.trim() !== '') {
-      
+
       const assignToNames = assignToFilter.split(',').map(name => name.trim()).filter(name => name !== '');
       let filterStaffIds = [];
 
@@ -1186,10 +1174,10 @@ exports.getAllAssignTasks = async (req, res) => {
       }
 
       if (finalAssignToIds.length > 0) {
-        const intersection = finalAssignToIds.filter(id => 
+        const intersection = finalAssignToIds.filter(id =>
           filterStaffIds.some(filterId => filterId.toString() === id.toString())
         );
-        
+
         if (intersection.length === 0) {
           return res.status(200).json({
             success: true,
@@ -1861,7 +1849,7 @@ exports.getAssignTaskFilterOptionsData = async (req, res) => {
       /* ✅ REASON TO VISIT */
       case "reason":
       case "reasonForVisit": {
-        uniqueValues = ['delivery', 'get payment', 'visit','order','complain','sample approval','other']
+        uniqueValues = ['delivery', 'get payment', 'visit', 'order', 'complain', 'sample approval', 'other']
         break;
       }
 
