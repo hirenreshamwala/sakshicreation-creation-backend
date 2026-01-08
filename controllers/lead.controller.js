@@ -510,40 +510,54 @@ exports.getAllLeads = async (req, res) => {
 
     // CREATED BY FILTER
     // CREATED BY FILTER (STRICT FULL NAME MATCH)
+    // CREATED BY FILTER (OBJECTID BASED - STRICT FULL NAME)
     if (createdBy) {
-      const createdByNames = typeof createdBy === 'string'
-        ? createdBy.split(',').map(n => n.trim()).filter(Boolean)
-        : [createdBy];
+      const names = createdBy.split(',').map(n => n.trim()).filter(Boolean);
+      let createdByIds = [];
 
-      const createdByConditions = [];
-
-      createdByNames.forEach(name => {
+      for (const name of names) {
         const parts = name.split(' ').filter(Boolean);
 
+        let staffQuery = {};
+
         if (parts.length >= 2) {
-          // ✅ FULL NAME → firstName AND lastName
-          const firstName = parts[0];
-          const lastName = parts.slice(1).join(' ');
-
-          createdByConditions.push({
+          // ✅ FULL NAME (firstName AND lastName)
+          staffQuery = {
             $and: [
-              { "accountData.createdByData.firstName": { $regex: `^${firstName}$`, $options: "i" } },
-              { "accountData.createdByData.lastName": { $regex: `^${lastName}$`, $options: "i" } }
+              { firstName: { $regex: `^${parts[0]}$`, $options: 'i' } },
+              { lastName: { $regex: `^${parts.slice(1).join(' ')}$`, $options: 'i' } }
             ]
-          });
-
+          };
         } else {
-          // ✅ SINGLE WORD → ONLY firstName
-          createdByConditions.push({
-            "accountData.createdByData.firstName": { $regex: `^${parts[0]}$`, $options: "i" }
-          });
+          // ✅ SINGLE WORD → firstName only
+          staffQuery = {
+            firstName: { $regex: `^${parts[0]}$`, $options: 'i' }
+          };
         }
-      });
 
-      if (createdByConditions.length > 0) {
-        postMatchConditions.$or = createdByConditions;
+        const staffs = await mongoose.model("Staff")
+          .find(staffQuery)
+          .select("_id");
+
+        createdByIds.push(...staffs.map(s => s._id));
       }
+
+      createdByIds = [...new Set(createdByIds.map(id => id.toString()))]
+        .map(id => new mongoose.Types.ObjectId(id));
+
+      if (createdByIds.length === 0) {
+        return res.status(200).json({
+          success: true,
+          data: [],
+          count: 0,
+          pagination: { total: 0, page: Number(page), limit: Number(limit), totalPages: 0 }
+        });
+      }
+
+      // ✅ APPLY OBJECTID FILTER
+      postMatchConditions["accountData.createdBy"] = { $in: createdByIds };
     }
+
 
 
     // ASSIGNED TO FILTER (FULL NAME STRICT MATCH)
