@@ -179,7 +179,7 @@ exports.getAllLeads = async (req, res) => {
 
     // Filters to apply BEFORE lookups (direct fields)
     const preMatchConditions = {};
-    
+
     // Filters to apply AFTER lookups (populated fields)
     const postMatchConditions = {};
 
@@ -210,8 +210,8 @@ exports.getAllLeads = async (req, res) => {
     if (partyName) {
       if (partyName.includes(',')) {
         const names = partyName.split(',').map(n => n.trim()).filter(n => n);
-        postMatchConditions['partyData.partyName'] = { 
-          $in: names.map(name => new RegExp(name, 'i')) 
+        postMatchConditions['partyData.partyName'] = {
+          $in: names.map(name => new RegExp(name, 'i'))
         };
       } else if (mongoose.Types.ObjectId.isValid(partyName)) {
         preMatchConditions.partyName = new mongoose.Types.ObjectId(partyName);
@@ -238,7 +238,7 @@ exports.getAllLeads = async (req, res) => {
        DATE FILTER - BEFORE LOOKUPS
     ================================ */
     if (date) {
-      
+
       if (typeof date === 'string' && date.includes(',')) {
         // Multiple dates
         const dates = date.split(',').map(d => d.trim()).filter(d => d);
@@ -281,7 +281,7 @@ exports.getAllLeads = async (req, res) => {
        CREATED AT FILTER - BEFORE LOOKUPS
     ================================ */
     if (createdAt) {
-      
+
       if (typeof createdAt === 'string' && createdAt.includes(',')) {
         // Multiple dates
         const dates = createdAt.split(',').map(d => d.trim()).filter(d => d);
@@ -324,8 +324,8 @@ exports.getAllLeads = async (req, res) => {
     if (reason) {
       if (reason.includes(',')) {
         const reasons = reason.split(',').map(r => r.trim()).filter(r => r);
-        preMatchConditions.reason = { 
-          $in: reasons.map(r => new RegExp(`^${r}$`, 'i')) 
+        preMatchConditions.reason = {
+          $in: reasons.map(r => new RegExp(`^${r}$`, 'i'))
         };
       } else {
         preMatchConditions.reason = new RegExp(`^${reason}$`, 'i');
@@ -464,8 +464,8 @@ exports.getAllLeads = async (req, res) => {
     if (unitNo) {
       if (unitNo.includes(',')) {
         const unitNos = unitNo.split(',').map(u => u.trim()).filter(u => u);
-        postMatchConditions['partyData.address.unitNo'] = { 
-          $in: unitNos.map(unit => new RegExp(`^${unit}$`, 'i')) 
+        postMatchConditions['partyData.address.unitNo'] = {
+          $in: unitNos.map(unit => new RegExp(`^${unit}$`, 'i'))
         };
       } else {
         postMatchConditions['partyData.address.unitNo'] = new RegExp(`^${unitNo}$`, 'i');
@@ -476,8 +476,8 @@ exports.getAllLeads = async (req, res) => {
     if (marketName) {
       if (marketName.includes(',')) {
         const markets = marketName.split(',').map(m => m.trim()).filter(m => m);
-        postMatchConditions['marketNameData.marketName'] = { 
-          $in: markets.map(name => new RegExp(name, 'i')) 
+        postMatchConditions['marketNameData.marketName'] = {
+          $in: markets.map(name => new RegExp(name, 'i'))
         };
       } else {
         postMatchConditions['marketNameData.marketName'] = new RegExp(marketName, 'i');
@@ -488,8 +488,8 @@ exports.getAllLeads = async (req, res) => {
     if (area) {
       if (area.includes(',')) {
         const areas = area.split(',').map(a => a.trim()).filter(a => a);
-        postMatchConditions['areaData.area'] = { 
-          $in: areas.map(a => new RegExp(a, 'i')) 
+        postMatchConditions['areaData.area'] = {
+          $in: areas.map(a => new RegExp(a, 'i'))
         };
       } else {
         postMatchConditions['areaData.area'] = new RegExp(area, 'i');
@@ -500,8 +500,8 @@ exports.getAllLeads = async (req, res) => {
     if (partyTag) {
       if (partyTag.includes(',')) {
         const tags = partyTag.split(',').map(t => t.trim()).filter(t => t);
-        postMatchConditions['partyData.partyTag'] = { 
-          $in: tags.map(tag => new RegExp(`^${tag}$`, 'i')) 
+        postMatchConditions['partyData.partyTag'] = {
+          $in: tags.map(tag => new RegExp(`^${tag}$`, 'i'))
         };
       } else {
         postMatchConditions['partyData.partyTag'] = new RegExp(`^${partyTag}$`, 'i');
@@ -509,117 +509,79 @@ exports.getAllLeads = async (req, res) => {
     }
 
     // CREATED BY FILTER
+    // CREATED BY FILTER (STRICT FULL NAME MATCH)
     if (createdBy) {
-      const createdByNames = typeof createdBy === 'string' ?
-        createdBy.split(',').map(name => name.trim()).filter(name => name) :
-        [createdBy];
+      const createdByNames = typeof createdBy === 'string'
+        ? createdBy.split(',').map(n => n.trim()).filter(Boolean)
+        : [createdBy];
 
       const createdByConditions = [];
 
       createdByNames.forEach(name => {
         const parts = name.split(' ').filter(Boolean);
-        const firstNamePart = parts[0] || "";
-        const lastNamePart = parts.slice(1).join(" ") || "";
 
-        const nameCondition = { $or: [] };
+        if (parts.length >= 2) {
+          // ✅ FULL NAME → firstName AND lastName
+          const firstName = parts[0];
+          const lastName = parts.slice(1).join(' ');
 
-        if (firstNamePart) {
-          nameCondition.$or.push(
-            { "accountData.createdByData.firstName": { $regex: firstNamePart, $options: "i" } }
-          );
-        }
-
-        if (lastNamePart) {
-          nameCondition.$or.push(
-            { "accountData.createdByData.lastName": { $regex: lastNamePart, $options: "i" } }
-          );
-        }
-
-        if (firstNamePart && lastNamePart) {
-          nameCondition.$or.push({
-            $expr: {
-              $regexMatch: {
-                input: {
-                  $concat: [
-                    "$accountData.createdByData.firstName",
-                    " ",
-                    "$accountData.createdByData.lastName",
-                  ],
-                },
-                regex: name,
-                options: "i",
-              },
-            },
+          createdByConditions.push({
+            $and: [
+              { "accountData.createdByData.firstName": { $regex: `^${firstName}$`, $options: "i" } },
+              { "accountData.createdByData.lastName": { $regex: `^${lastName}$`, $options: "i" } }
+            ]
           });
-        }
 
-        if (nameCondition.$or.length > 0) {
-          createdByConditions.push(nameCondition);
+        } else {
+          // ✅ SINGLE WORD → ONLY firstName
+          createdByConditions.push({
+            "accountData.createdByData.firstName": { $regex: `^${parts[0]}$`, $options: "i" }
+          });
         }
       });
 
       if (createdByConditions.length > 0) {
-        postMatchConditions.$and = postMatchConditions.$and || [];
-        postMatchConditions.$and.push({ $or: createdByConditions });
+        postMatchConditions.$or = createdByConditions;
       }
     }
 
-    // ASSIGNED TO FILTER
+
+    // ASSIGNED TO FILTER (FULL NAME STRICT MATCH)
     if (assignedToFilter) {
-      const assignToNames = typeof assignedToFilter === 'string' ?
-        assignedToFilter.split(',').map(name => name.trim()).filter(name => name) :
-        [assignedToFilter];
+      const assignToNames = typeof assignedToFilter === 'string'
+        ? assignedToFilter.split(',').map(n => n.trim()).filter(Boolean)
+        : [assignedToFilter];
 
       const assignToConditions = [];
 
       assignToNames.forEach(name => {
         const parts = name.split(' ').filter(Boolean);
-        const firstNamePart = parts[0] || "";
-        const lastNamePart = parts.slice(1).join(" ") || "";
 
-        const nameCondition = { $or: [] };
+        if (parts.length >= 2) {
+          // ✅ FULL NAME → firstName AND lastName (STRICT)
+          const firstName = parts[0];
+          const lastName = parts.slice(1).join(' ');
 
-        if (firstNamePart) {
-          nameCondition.$or.push(
-            { "assignedToData.firstName": { $regex: firstNamePart, $options: "i" } },
-            { "assignedToData.email": { $regex: firstNamePart, $options: "i" } }
-          );
-        }
-
-        if (lastNamePart) {
-          nameCondition.$or.push(
-            { "assignedToData.lastName": { $regex: lastNamePart, $options: "i" } }
-          );
-        }
-
-        if (firstNamePart && lastNamePart) {
-          nameCondition.$or.push({
-            $expr: {
-              $regexMatch: {
-                input: {
-                  $concat: [
-                    "$assignedToData.firstName",
-                    " ",
-                    "$assignedToData.lastName",
-                  ],
-                },
-                regex: name,
-                options: "i",
-              },
-            },
+          assignToConditions.push({
+            $and: [
+              { "assignedToData.firstName": { $regex: `^${firstName}$`, $options: "i" } },
+              { "assignedToData.lastName": { $regex: `^${lastName}$`, $options: "i" } }
+            ]
           });
-        }
 
-        if (nameCondition.$or.length > 0) {
-          assignToConditions.push(nameCondition);
+        } else {
+          // ✅ SINGLE WORD → ONLY firstName
+          assignToConditions.push({
+            "assignedToData.firstName": { $regex: `^${parts[0]}$`, $options: "i" }
+          });
         }
       });
 
       if (assignToConditions.length > 0) {
-        postMatchConditions.$and = postMatchConditions.$and || [];
-        postMatchConditions.$and.push({ $or: assignToConditions });
+        postMatchConditions.$or = assignToConditions;
       }
     }
+
 
     // Apply post-match conditions
     if (Object.keys(postMatchConditions).length > 0) {
