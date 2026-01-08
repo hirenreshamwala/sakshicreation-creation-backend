@@ -1133,35 +1133,40 @@ exports.getAllAssignTasks = async (req, res) => {
 
     // ASSIGN TO FILTER (comma-separated)
     if (assignToFilter && assignToFilter.trim() !== '') {
+      const assignToNames = assignToFilter
+        .split(',')
+        .map(name => name.trim())
+        .filter(name => name !== '');
 
-      const assignToNames = assignToFilter.split(',').map(name => name.trim()).filter(name => name !== '');
       let filterStaffIds = [];
 
       for (const name of assignToNames) {
         if (mongoose.Types.ObjectId.isValid(name)) {
           filterStaffIds.push(new mongoose.Types.ObjectId(name));
         } else {
-          const staffs = await mongoose.model("Staff").find({
-            $or: [
-              { firstName: { $regex: name, $options: "i" } },
-              { lastName: { $regex: name, $options: "i" } },
-              {
-                $expr: {
-                  $regexMatch: {
-                    input: { $concat: ["$firstName", " ", "$lastName"] },
-                    regex: name,
-                    options: "i"
-                  }
-                }
-              }
-            ]
-          }).select("_id firstName lastName");
+          const parts = name.split(' ').filter(Boolean);
 
-          const staffIds = staffs.map(staff => staff._id);
-          filterStaffIds = [...filterStaffIds, ...staffIds];
+          let staffQuery = { $or: [] };
+
+          if (parts.length >= 2) {
+            // Full name match (AND first + last)
+            staffQuery.$or.push({
+              $and: [
+                { firstName: { $regex: `^${parts[0]}$`, $options: 'i' } },
+                { lastName: { $regex: `^${parts.slice(1).join(' ')}$`, $options: 'i' } }
+              ]
+            });
+          } else {
+            // Single word → match firstName only
+            staffQuery.$or.push({ firstName: { $regex: `^${parts[0]}$`, $options: 'i' } });
+          }
+
+          const staffs = await mongoose.model("Staff").find(staffQuery).select("_id firstName lastName");
+          filterStaffIds.push(...staffs.map(s => s._id));
         }
       }
 
+      // Remove duplicates
       filterStaffIds = [...new Set(filterStaffIds.map(id => id.toString()))].map(id => new mongoose.Types.ObjectId(id));
 
       if (filterStaffIds.length === 0) {
@@ -1173,11 +1178,11 @@ exports.getAllAssignTasks = async (req, res) => {
         });
       }
 
+      // Intersect with previously filtered assignToIds if any
       if (finalAssignToIds.length > 0) {
         const intersection = finalAssignToIds.filter(id =>
-          filterStaffIds.some(filterId => filterId.toString() === id.toString())
+          filterStaffIds.some(fid => fid.toString() === id.toString())
         );
-
         if (intersection.length === 0) {
           return res.status(200).json({
             success: true,
@@ -1190,7 +1195,10 @@ exports.getAllAssignTasks = async (req, res) => {
       } else {
         finalAssignToIds = filterStaffIds;
       }
+
+      postMatchConditions["assignToData._id"] = { $in: finalAssignToIds };
     }
+
 
     if (finalAssignToIds.length > 0) {
       postMatchConditions["assignToData._id"] = { $in: finalAssignToIds };
