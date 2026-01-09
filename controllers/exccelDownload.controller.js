@@ -2976,7 +2976,10 @@ exports.exportPendingClientApprovalOrdersToExcel = async (req, res) => {
         // File download
         res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
         const fileName = `Pending_Client_Approval_Orders_${moment().format('DDMMYYYY_HHmm')}.xlsx`;
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
         res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+        res.setHeader('Content-Transfer-Encoding', 'binary');
+        res.setHeader('Cache-Control', 'private, max-age=0');
 
         await workbook.xlsx.write(res);
         res.end();
