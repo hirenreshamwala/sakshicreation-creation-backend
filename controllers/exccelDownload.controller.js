@@ -2688,6 +2688,7 @@ exports.exportPaymentFolderToExcel = async (req, res) => {
             { header: 'AMOUNT', key: 'amount', width: 15, style: { numFmt: '#,##0.00' } },
             { header: 'RECEIVED AMOUNT', key: 'recievedAmount', width: 30, style: { numFmt: '#,##0.00' } },
             { header: 'REMAINING AMOUNT', key: 'remainingAmount', width: 30, style: { numFmt: '#,##0.00' } },
+            { header: 'PAYMENT TERMS', key: 'paymentTerms', width: 25 },
             { header: 'AREA', key: 'area', width: 15 },
             { header: 'ASSIGN TO', key: 'assignedTo', width: 25 },
             { header: 'REASON', key: 'reason', width: 40 },
@@ -2705,7 +2706,7 @@ exports.exportPaymentFolderToExcel = async (req, res) => {
         for (const comp of selectedCompanies) {
             const companyName = comp.companyName;
 
-            worksheet.mergeCells(currentRowNumber, 1, currentRowNumber, 13);
+            worksheet.mergeCells(currentRowNumber, 1, currentRowNumber, 14);
             const companyCell = worksheet.getCell(currentRowNumber, 1);
             companyCell.value = companyName;
             companyCell.font = { bold: true, size: 13 };
@@ -2851,7 +2852,7 @@ exports.exportPaymentFolderToExcel = async (req, res) => {
                         amount: Number(folder.paymentAmount) || 0,
                         recievedAmount: Number(folder.receivedAmount) || 0,
                         remainingAmount: Number(folder.pendingAmount) || 0,
-
+                        paymentTerms: folder.paymentTerms || '-',
                         area: folder.area || '-',
                         assignedTo: assignedToName,
                         reason: reason,
