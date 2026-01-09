@@ -2905,7 +2905,7 @@ exports.exportPendingClientApprovalOrdersToExcel = async (req, res) => {
             designerStatus: { $ne: "Approved" }
         };
 
-        // Date filter on createdAt (જો જોઈએ તો)
+        // Date filter on createdAt
         if (startDate || endDate) {
             query.createdAt = {};
             if (startDate) {
@@ -2925,11 +2925,17 @@ exports.exportPendingClientApprovalOrdersToExcel = async (req, res) => {
             .populate("party", "partyName")
             .populate("productItem", "itemName")
             .populate("createdBy", "firstName lastName")
-            .sort({ clientApprovalSentAt: -1 }) // Latest sent first
+            .sort({ clientApprovalSentAt: -1 })
             .lean();
 
         if (orders.length === 0) {
-            return res.status(200).json({ success: true, message: "No pending approval orders found", count: 0 });
+            // Return JSON response when no data is found
+            return res.status(200).json({ 
+                success: true, 
+                message: "No pending approval orders found", 
+                count: 0,
+                empty: true // Add flag to identify empty response
+            });
         }
 
         const workbook = new ExcelJS.Workbook();
@@ -2976,10 +2982,7 @@ exports.exportPendingClientApprovalOrdersToExcel = async (req, res) => {
         // File download
         res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
         const fileName = `Pending_Client_Approval_Orders_${moment().format('DDMMYYYY_HHmm')}.xlsx`;
-        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
         res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
-        res.setHeader('Content-Transfer-Encoding', 'binary');
-        res.setHeader('Cache-Control', 'private, max-age=0');
 
         await workbook.xlsx.write(res);
         res.end();
