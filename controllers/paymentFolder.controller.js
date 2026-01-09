@@ -119,7 +119,7 @@ exports.getPaymentFolders = async (req, res) => {
     // Build query object
     const query = {};
 
-    // Helper function to build multi-word search conditions (similar to complain)
+    // Helper function to build multi-word search conditions
     const buildMultiWordSearch = (searchStr, fields) => {
       if (!searchStr || !searchStr.trim()) return [];
       const parts = searchStr.trim().split(/\s+/).filter(p => p.length > 0);
@@ -190,18 +190,51 @@ exports.getPaymentFolders = async (req, res) => {
       }
     }
 
-    // Date range filter (on createdAt or assignedDate)
-    if (startDate || endDate) {
-      query.createdAt = {}; // or assignedDate if preferred
+    // AssignedDate filter - Match exact dates from array
+    if (filters.assignedDate && Array.isArray(filters.assignedDate) && filters.assignedDate.length > 0) {
+      // Filter out null/empty values
+      const validDates = filters.assignedDate.filter(d => d && d !== 'null');
+      
+      if (validDates.length > 0) {
+        // Create date range conditions for each date (match full day)
+        const dateConditions = validDates.map(dateStr => {
+          const startOfDay = new Date(dateStr);
+          startOfDay.setHours(0, 0, 0, 0);
+          
+          const endOfDay = new Date(dateStr);
+          endOfDay.setHours(23, 59, 59, 999);
+          
+          return {
+            assignedDate: {
+              $gte: startOfDay,
+              $lte: endOfDay
+            }
+          };
+        });
+        
+        // Use $or to match any of the dates
+        if (dateConditions.length === 1) {
+          query.assignedDate = dateConditions[0].assignedDate;
+        } else {
+          query.$or = query.$or 
+            ? [...query.$or, ...dateConditions]
+            : dateConditions;
+        }
+      }
+    }
+    
+    // Top-level startDate/endDate (for date range if needed separately)
+    if ((startDate || endDate) && (!filters.assignedDate || filters.assignedDate.length === 0)) {
+      query.assignedDate = {};
       if (startDate) {
         const start = new Date(startDate);
         start.setHours(0, 0, 0, 0);
-        query.createdAt.$gte = start;
+        query.assignedDate.$gte = start;
       }
       if (endDate) {
         const end = new Date(endDate);
         end.setHours(23, 59, 59, 999);
-        query.createdAt.$lte = end;
+        query.assignedDate.$lte = end;
       }
     }
 
@@ -235,9 +268,11 @@ exports.getPaymentFolders = async (req, res) => {
       query.month = { $in: filters.month };
     }
     
+    // Remarks filter
     if (filters.remarks && filters.remarks.length > 0) {
       query.remarks = { $in: filters.remarks };
     }
+
     // Assigned to filter
     if (filters.assignTo && filters.assignTo.length > 0) {
       const nameConditions = filters.assignTo.map(name => {
@@ -265,7 +300,7 @@ exports.getPaymentFolders = async (req, res) => {
       }
     }
 
-    // Payment amount range filter (if needed, e.g., min/max)
+    // Payment amount range filter
     if (filters.paymentAmount && (filters.paymentAmount.min !== undefined || filters.paymentAmount.max !== undefined)) {
       query.paymentAmount = {};
       if (filters.paymentAmount.min !== undefined) {
@@ -276,12 +311,15 @@ exports.getPaymentFolders = async (req, res) => {
       }
     }
 
+    // Debug: Log the final query
+    console.log("🔍 Final Query:", JSON.stringify(query, null, 2));
+
     // Get total count
     const totalCount = await PaymentFolder.countDocuments(query);
 
-    // Common populate options (same as existing controller)
+    // Common populate options
     const commonPopulate = [
-      { path: "company", select: "companyName" }, // Assuming companyName field
+      { path: "company", select: "companyName" },
       {
         path: "party",
         select: "-__v",
