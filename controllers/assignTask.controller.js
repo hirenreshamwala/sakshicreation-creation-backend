@@ -721,6 +721,7 @@ exports.getAllAssignTasks = async (req, res) => {
       marketName,
       mobile,
       reason,
+      // createdBy,
       assignToFilter,
       party,
       area,
@@ -729,14 +730,19 @@ exports.getAllAssignTasks = async (req, res) => {
     const createdBy = req.body.assignBy;
     const skip = (page - 1) * limit;
 
+    // Filters that can be applied BEFORE lookups (direct fields on AssignTask)
     const preMatchConditions = {};
+
+    // Filters that need to be applied AFTER lookups (nested/populated fields)
     const postMatchConditions = {};
 
     /* ================================
        DATE RANGE FILTER - APPLIED BEFORE LOOKUPS
     ================================ */
     if (date) {
+
       if (typeof date === 'string' && date.includes(',')) {
+        // Multiple dates
         const dates = date.split(',').map(d => d.trim()).filter(d => d);
         const dateConditions = [];
 
@@ -757,6 +763,7 @@ exports.getAllAssignTasks = async (req, res) => {
           preMatchConditions.$or.push(...dateConditions);
         }
       } else {
+        // Single date
         const parsedDate = parseDateString(date);
         const startOfDay = new Date(parsedDate);
         startOfDay.setHours(0, 0, 0, 0);
@@ -770,6 +777,7 @@ exports.getAllAssignTasks = async (req, res) => {
       }
     }
 
+    // Apply startDate and endDate if date is not provided OR if you want range alongside specific date
     if (startDate && endDate && !date) {
       preMatchConditions.date = {
         $gte: new Date(startDate),
@@ -781,9 +789,11 @@ exports.getAllAssignTasks = async (req, res) => {
        COMPANY FILTER - APPLIED BEFORE LOOKUPS
     ================================ */
     if (companyName) {
+
       if (mongoose.Types.ObjectId.isValid(companyName)) {
         preMatchConditions.companyName = new mongoose.Types.ObjectId(companyName);
       } else {
+        // Name-based filter will be applied after lookup
         postMatchConditions["companyData.companyName"] = {
           $regex: companyName,
           $options: "i",
@@ -812,6 +822,7 @@ exports.getAllAssignTasks = async (req, res) => {
        REASON FOR VISIT FILTER - APPLIED BEFORE LOOKUPS
     ================================ */
     if (reason) {
+
       const predefinedReasons = ['delivery', 'get payment', 'visit', 'order', 'complain', 'sample approval'];
       const reasons = reason.split(',').map(r => r.trim().toLowerCase()).filter(r => r);
 
@@ -820,10 +831,12 @@ exports.getAllAssignTasks = async (req, res) => {
         const specificReasons = reasons.filter(r => r !== 'other');
 
         if (otherIncluded && specificReasons.length === 0) {
+          // Only "other" selected
           preMatchConditions.reasonForVisit = {
             $nin: predefinedReasons.map(r => new RegExp(`^${r}$`, "i"))
           };
         } else if (otherIncluded && specificReasons.length > 0) {
+          // "other" + specific reasons
           preMatchConditions.$or = preMatchConditions.$or || [];
           preMatchConditions.$or.push(
             {
@@ -838,6 +851,7 @@ exports.getAllAssignTasks = async (req, res) => {
             }
           );
         } else {
+          // Only specific reasons
           preMatchConditions.reasonForVisit = {
             $in: specificReasons.map(r => new RegExp(`^${r}$`, "i"))
           };
@@ -849,8 +863,10 @@ exports.getAllAssignTasks = async (req, res) => {
        BASE PIPELINE WITH ALL LOOKUPS
     ================================ */
     const basePipeline = [
+      // Apply pre-match conditions FIRST (before lookups for better performance)
       ...(Object.keys(preMatchConditions).length > 0 ? [{ $match: preMatchConditions }] : []),
 
+      // 1. TASK → COMPANY
       {
         $lookup: {
           from: "companynames",
@@ -861,6 +877,7 @@ exports.getAllAssignTasks = async (req, res) => {
       },
       { $unwind: { path: "$companyData", preserveNullAndEmptyArrays: true } },
 
+      // 2. TASK → PARTY
       {
         $lookup: {
           from: "parties",
@@ -871,6 +888,7 @@ exports.getAllAssignTasks = async (req, res) => {
       },
       { $unwind: { path: "$partyData", preserveNullAndEmptyArrays: true } },
 
+      // 3. TASK → ASSIGN TO (STAFF)
       {
         $lookup: {
           from: "staffs",
@@ -881,6 +899,7 @@ exports.getAllAssignTasks = async (req, res) => {
       },
       { $unwind: { path: "$assignToData", preserveNullAndEmptyArrays: true } },
 
+      // 4. STAFF → ROLE
       {
         $lookup: {
           from: "roles",
@@ -891,6 +910,7 @@ exports.getAllAssignTasks = async (req, res) => {
       },
       { $unwind: { path: "$assignToData.roleData", preserveNullAndEmptyArrays: true } },
 
+      // 5. STAFF → DEPARTMENT
       {
         $lookup: {
           from: "departments",
@@ -901,6 +921,7 @@ exports.getAllAssignTasks = async (req, res) => {
       },
       { $unwind: { path: "$assignToData.departmentData", preserveNullAndEmptyArrays: true } },
 
+      // 6. PARTY ADDRESS → MARKET NAME
       {
         $lookup: {
           from: "markets",
@@ -910,6 +931,7 @@ exports.getAllAssignTasks = async (req, res) => {
         }
       },
 
+      // 7. PARTY ADDRESS → AREA
       {
         $lookup: {
           from: "markets",
@@ -919,6 +941,7 @@ exports.getAllAssignTasks = async (req, res) => {
         }
       },
 
+      // 8. PARTY ADDRESS → LANDMARK
       {
         $lookup: {
           from: "markets",
@@ -928,6 +951,7 @@ exports.getAllAssignTasks = async (req, res) => {
         }
       },
 
+      // 9. PARTY ADDRESS → PINCODE
       {
         $lookup: {
           from: "markets",
@@ -937,6 +961,7 @@ exports.getAllAssignTasks = async (req, res) => {
         }
       },
 
+      // 10. COMPANY → OWNER
       {
         $lookup: {
           from: "users",
@@ -947,6 +972,7 @@ exports.getAllAssignTasks = async (req, res) => {
       },
       { $unwind: { path: "$companyData.ownerData", preserveNullAndEmptyArrays: true } },
 
+      // 11. ACCOUNT MASTER FOR CREATED BY
       {
         $lookup: {
           from: "accountmasters",
@@ -977,6 +1003,7 @@ exports.getAllAssignTasks = async (req, res) => {
       },
       { $unwind: { path: "$accountData", preserveNullAndEmptyArrays: true } },
 
+      // 12. ORIGINAL TASK (IF RESCHEDULED)
       {
         $lookup: {
           from: "assigntasks",
@@ -989,9 +1016,10 @@ exports.getAllAssignTasks = async (req, res) => {
     ];
 
     /* ================================
-       POST-LOOKUP FILTERS
+       POST-LOOKUP FILTERS (Applied after all lookups)
     ================================ */
 
+    // UNIT NO FILTER
     if (unitNo) {
       const unitNos = unitNo.split(',').map(u => u.trim()).filter(u => u);
       if (unitNos.length > 0) {
@@ -1001,6 +1029,7 @@ exports.getAllAssignTasks = async (req, res) => {
       }
     }
 
+    // MARKET NAME FILTER
     if (marketName) {
       const marketNames = marketName.split(',').map(m => m.trim()).filter(m => m);
       if (marketNames.length > 0) {
@@ -1010,6 +1039,7 @@ exports.getAllAssignTasks = async (req, res) => {
       }
     }
 
+    // MOBILE NUMBER FILTER
     if (mobile) {
       postMatchConditions.$or = postMatchConditions.$or || [];
       postMatchConditions.$or.push(
@@ -1022,6 +1052,7 @@ exports.getAllAssignTasks = async (req, res) => {
       );
     }
 
+    // CREATED BY FILTER
     if (createdBy) {
       const createdByNames = createdBy
         .split(',')
@@ -1033,6 +1064,7 @@ exports.getAllAssignTasks = async (req, res) => {
       createdByNames.forEach(name => {
         const parts = name.split(' ').filter(Boolean);
 
+        // FULL NAME (First + Last)
         if (parts.length >= 2) {
           const firstName = parts[0];
           const lastName = parts.slice(1).join(" ");
@@ -1043,7 +1075,9 @@ exports.getAllAssignTasks = async (req, res) => {
               { "accountData.createdByData.lastName": { $regex: `^${lastName}$`, $options: "i" } }
             ]
           });
-        } else {
+        }
+        // ONLY FIRST NAME
+        else {
           createdByConditions.push({
             "accountData.createdByData.firstName": {
               $regex: `^${parts[0]}$`,
@@ -1058,10 +1092,13 @@ exports.getAllAssignTasks = async (req, res) => {
       }
     }
 
+
+    // ASSIGN TO FILTER
     const assignToValue = assignedTo || assignTo;
     let finalAssignToIds = [];
 
     if (assignToValue && assignToValue.trim() !== '') {
+
       if (mongoose.Types.ObjectId.isValid(assignToValue)) {
         finalAssignToIds.push(new mongoose.Types.ObjectId(assignToValue));
       } else {
@@ -1094,6 +1131,7 @@ exports.getAllAssignTasks = async (req, res) => {
       }
     }
 
+    // ASSIGN TO FILTER (comma-separated)
     if (assignToFilter && assignToFilter.trim() !== '') {
       const assignToNames = assignToFilter
         .split(',')
@@ -1111,6 +1149,7 @@ exports.getAllAssignTasks = async (req, res) => {
           let staffQuery = { $or: [] };
 
           if (parts.length >= 2) {
+            // Full name match (AND first + last)
             staffQuery.$or.push({
               $and: [
                 { firstName: { $regex: `^${parts[0]}$`, $options: 'i' } },
@@ -1118,6 +1157,7 @@ exports.getAllAssignTasks = async (req, res) => {
               ]
             });
           } else {
+            // Single word → match firstName only
             staffQuery.$or.push({ firstName: { $regex: `^${parts[0]}$`, $options: 'i' } });
           }
 
@@ -1126,6 +1166,7 @@ exports.getAllAssignTasks = async (req, res) => {
         }
       }
 
+      // Remove duplicates
       filterStaffIds = [...new Set(filterStaffIds.map(id => id.toString()))].map(id => new mongoose.Types.ObjectId(id));
 
       if (filterStaffIds.length === 0) {
@@ -1137,6 +1178,7 @@ exports.getAllAssignTasks = async (req, res) => {
         });
       }
 
+      // Intersect with previously filtered assignToIds if any
       if (finalAssignToIds.length > 0) {
         const intersection = finalAssignToIds.filter(id =>
           filterStaffIds.some(fid => fid.toString() === id.toString())
@@ -1157,10 +1199,12 @@ exports.getAllAssignTasks = async (req, res) => {
       postMatchConditions["assignToData._id"] = { $in: finalAssignToIds };
     }
 
+
     if (finalAssignToIds.length > 0) {
       postMatchConditions["assignToData._id"] = { $in: finalAssignToIds };
     }
 
+    // PARTY FILTER
     if (party) {
       const partyNames = party.split(',').map(p => p.trim()).filter(p => p);
       if (partyNames.length > 0) {
@@ -1170,6 +1214,7 @@ exports.getAllAssignTasks = async (req, res) => {
       }
     }
 
+    // AREA FILTER
     if (area) {
       const areaNames = area.split(',').map(a => a.trim()).filter(a => a);
       if (areaNames.length > 0) {
@@ -1179,6 +1224,7 @@ exports.getAllAssignTasks = async (req, res) => {
       }
     }
 
+    // Apply post-match conditions
     if (Object.keys(postMatchConditions).length > 0) {
       basePipeline.push({ $match: postMatchConditions });
     }
@@ -1232,39 +1278,19 @@ exports.getAllAssignTasks = async (req, res) => {
       basePipeline.push({ $match: searchCondition });
     }
 
+    // Add sorting
     basePipeline.push({ $sort: { createdAt: -1 } });
 
     /* ================================
-       ONLY DATES - WITH VALIDATION
+       ONLY DATES
     ================================ */
     if (getDatesOnly) {
       const dates = await AssignTask.aggregate([
         ...basePipeline,
         {
-          $addFields: {
-            // Validate year is within range (1-9999)
-            validDate: {
-              $and: [
-                { $gte: [{ $year: "$date" }, 1] },
-                { $lte: [{ $year: "$date" }, 9999] }
-              ]
-            }
-          }
-        },
-        {
-          $match: {
-            validDate: true
-          }
-        },
-        {
           $project: {
             _id: 0,
-            date: { 
-              $dateToString: { 
-                format: "%Y-%m-%d", 
-                date: "$date" 
-              } 
-            },
+            date: { $dateToString: { format: "%Y-%m-%d", date: "$date" } },
           },
         },
         { $group: { _id: "$date", count: { $sum: 1 } } },
@@ -1390,6 +1416,7 @@ exports.getAllAssignTasks = async (req, res) => {
 
     const tasks = await AssignTask.aggregate(paginatedPipeline);
 
+    // Count total documents
     const countPipeline = [...basePipeline];
     countPipeline.push({ $count: "total" });
 
@@ -1418,9 +1445,11 @@ exports.getAllAssignTasks = async (req, res) => {
   }
 };
 
+// Helper function to parse date strings in various formats
 function parseDateString(dateStr) {
   if (typeof dateStr === 'string' && dateStr.includes('-')) {
     const parts = dateStr.split('-');
+    // Check if it's DD-MM-YYYY format
     if (parts.length === 3 && parts[0].length <= 2) {
       const [day, month, year] = parts;
       return new Date(year, month - 1, day);
