@@ -341,235 +341,500 @@ const getSCReport = async (req, res) => {
     const company = await CompanyName.findOne({
       companyName: "Sakshi Creation",
     }).select("_id companyName").lean();
+    if (!company)
+      return res
+        .status(404)
+        .json({ success: false, message: "Company not found" });
 
-    if (!company) {
-      return res.status(404).json({
-        success: false,
-        message: "Company not found",
-      });
-    }
-
-    const start = new Date(startDate);
-    const end = new Date(endDate);
-    end.setHours(23, 59, 59, 999);
-
-    const taskLeadDateFilter = buildDateFilter(startDate, endDate, false);
-    const otherModelsDateFilter = buildDateFilter(startDate, endDate, true);
-
-    // 1️⃣ Sales staff
     const salesRoles = await Role.find({
       roleName: { $regex: "Sales Staff", $options: "i" },
       isDelete: false,
     }).select("_id").lean();
+    const salesRoleIds = salesRoles.map((r) => r._id);
 
-    const staffList = await Staff.find({
-      role: { $in: salesRoles.map(r => r._id) },
-    }).select("_id firstName lastName").lean();
+    const staffList = await Staff.find({ role: { $in: salesRoleIds } }).select(
+      "firstName lastName _id"
+    ).lean();
 
-    const staffIds = staffList.map(s => s._id);
+    const taskLeadDateFilter = buildDateFilter(startDate, endDate, false);
+    const otherModelsDateFilter = buildDateFilter(startDate, endDate, true);
 
-    // 2️⃣ Fetch EVERYTHING once
-    const [
-      tasks,
-      leads,
-      qpOrders,
-      orders,
-      accountParties,
-      parties
-    ] = await Promise.all([
-      AssignTask.find({
-        assignTo: { $in: staffIds },
-        companyName: company._id,
-        ...taskLeadDateFilter,
-      }).populate("partyName", "partyTag").lean(),
+    const taskReasons = [
+      "Delivery",
+      "Get Payment",
+      "Get Visit",
+      "Order",
+      "Complain",
+      "Sample Approval",
+    ];
 
-      Lead.find({
-        assignedTo: { $in: staffIds },
-        companyName: company._id,
-        ...taskLeadDateFilter,
-      }).lean(),
+    const leadReasons = [
+      "Cold Call",
+      "Proof Approval",
+      "Inquiry Call",
+      "Confirmation Call",
+    ];
 
-      QpData.find({
-        createdBy: { $in: staffIds },
-        companyName: company._id,
-        ...otherModelsDateFilter,
-      }).select("createdBy party").lean(),
+    // Initialize totals for the report
+    let totalCompletedTasks = 0;
+    let totalNewPartyVisits = 0;
+    let totalNewToCustomer = 0;
+    let totalStationaryOrders = 0;
+    let totalBookletOrders = 0;
+    let totalStationarySales = 0;
+    let totalBookletSales = 0;
+    
+    // New totals for itemwise data
+    let totalStationaryItemwise = {};
+    let totalBookletItemwise = {};
 
-      Order.find({
-        createdBy: { $in: staffIds },
-        companyName: company._id,
-        ...otherModelsDateFilter,
-      }).select("createdBy party quotation").lean(),
+    const reports = await Promise.all(
+      staffList.map(async (staff) => {
+        // Task counts
+        const completedTasks = await AssignTask.countDocuments({
+          assignTo: staff._id,
+          companyName: company._id,
+          status: { $regex: "^completed$", $options: "i" },
+          ...taskLeadDateFilter,
+        });
+        const cancelledTasks = await AssignTask.countDocuments({
+          assignTo: staff._id,
+          companyName: company._id,
+          status: { $regex: "^cancelled$", $options: "i" },
+          ...taskLeadDateFilter,
+        });
+        const rescheduledTasks = await AssignTask.countDocuments({
+          assignTo: staff._id,
+          companyName: company._id,
+          status: { $regex: "^rescheduled$", $options: "i" },
+          ...taskLeadDateFilter,
+        });
+        const pendingTasks = await AssignTask.countDocuments({
+          assignTo: staff._id,
+          companyName: company._id,
+          status: { $regex: "^pending$", $options: "i" },
+          ...taskLeadDateFilter,
+        });
 
-      AccountMaster.find({
-        createdBy: { $in: staffIds },
-        companyName: company._id,
-        ...otherModelsDateFilter,
-      }).select("createdBy party").lean(),
+        // Total tasks
+        const totalTasks = await AssignTask.countDocuments({
+          assignTo: staff._id,
+          companyName: company._id,
+          ...taskLeadDateFilter,
+        });
 
-      Party.find({}).select("_id partyTag").lean()
-    ]);
+        // tasksByReason
+        const tasks = await AssignTask.find({
+          assignTo: staff._id,
+          companyName: company._id,
+          ...taskLeadDateFilter,
+        }).select("reasonForVisit status").lean();
+        const tasksByReason = {};
 
-    // 3️⃣ Party map
-    const partyMap = {};
-    parties.forEach(p => partyMap[p._id.toString()] = p.partyTag);
+        taskReasons.forEach(
+          (r) =>
+            (tasksByReason[r.toLowerCase().replace(/\s+/g, "")] = {
+              reason: r,
+              total: 0,
+              completed: 0,
+              cancelled: 0,
+              rescheduled: 0,
+              pending: 0,
+            })
+        );
+        tasksByReason["other"] = {
+          reason: "Other",
+          total: 0,
+          completed: 0,
+          cancelled: 0,
+          rescheduled: 0,
+          pending: 0,
+        };
 
-    // 4️⃣ Group data by staff
-    const groupByStaff = (arr, key) => {
-      const map = {};
-      arr.forEach(i => {
-        const id = i[key]?.toString();
-        if (!id) return;
-        if (!map[id]) map[id] = [];
-        map[id].push(i);
-      });
-      return map;
+        tasks.forEach((task) => {
+          const key = taskReasons.find(
+            (r) => r.toLowerCase() === (task.reasonForVisit || "").toLowerCase()
+          )
+            ? task.reasonForVisit.toLowerCase().replace(/\s+/g, "")
+            : "other";
+          tasksByReason[key].total++;
+          if (/^completed$/i.test(task.status)) tasksByReason[key].completed++;
+          else if (/^cancelled$/i.test(task.status))
+            tasksByReason[key].cancelled++;
+          else if (/^rescheduled$/i.test(task.status))
+            tasksByReason[key].rescheduled++;
+          else if (/^pending$/i.test(task.status))
+            tasksByReason[key].pending++;
+        });
+
+        // leadsByReason
+        const leads = await Lead.find({
+          assignedTo: staff._id,
+          companyName: company._id,
+          ...taskLeadDateFilter,
+        }).select("reason status").lean();
+        const leadsByReason = {};
+
+        leadReasons.forEach(
+          (r) =>
+            (leadsByReason[r.toLowerCase().replace(/\s+/g, "")] = {
+              reason: r,
+              total: 0,
+              completed: 0,
+              cancelled: 0,
+              rescheduled: 0,
+            })
+        );
+        leadsByReason["other"] = {
+          reason: "Other",
+          total: 0,
+          completed: 0,
+          cancelled: 0,
+          rescheduled: 0,
+        };
+
+        leads.forEach((lead) => {
+          const key = leadReasons.find(
+            (r) => r.toLowerCase() === (lead.reason || "").toLowerCase()
+          )
+            ? lead.reason.toLowerCase().replace(/\s+/g, "")
+            : "other";
+          leadsByReason[key].total++;
+          if (/^completed$/i.test(lead.status)) leadsByReason[key].completed++;
+          else if (/^cancelled$/i.test(lead.status))
+            leadsByReason[key].cancelled++;
+          else if (/^rescheduled$/i.test(lead.status))
+            leadsByReason[key].rescheduled++;
+        });
+
+        // Visit party task - new customer count
+        const visitTasks = await AssignTask.find({
+          assignTo: staff._id,
+          companyName: company._id,
+          ...taskLeadDateFilter,
+        }).populate("partyName", "partyTag");
+
+        let getVisitCount = 0;
+        let newPartyCount = 0;
+        let customerPartyCount = 0;
+
+        visitTasks.forEach((task) => {
+          if (/^get visit$/i.test(task.reasonForVisit)) {
+            getVisitCount++;
+
+            if (task.partyName?.partyTag === "NEW") {
+              newPartyCount++;
+            } else if (task.partyName?.partyTag === "CUSTOMER") {
+              customerPartyCount++;
+            }
+          }
+        });
+
+        // New party visit to customer (NEW parties that became CUSTOMER within date range)
+        const newToCustomerParties = await Party.countDocuments({
+          createdBy: staff._id,
+          companyName: company._id,
+          partyTag: "CUSTOMER",
+          updatedAt: {
+            $gte: new Date(startDate),
+            $lte: new Date(endDate)
+          }
+        });
+
+        // Lead counts
+        const completedLeads = await Lead.countDocuments({
+          assignedTo: staff._id,
+          companyName: company._id,
+          status: { $regex: "^completed$", $options: "i" },
+          ...taskLeadDateFilter,
+        });
+        const cancelledLeads = await Lead.countDocuments({
+          assignedTo: staff._id,
+          companyName: company._id,
+          status: { $regex: "^cancelled$", $options: "i" },
+          ...taskLeadDateFilter,
+        });
+        const rescheduledLeads = await Lead.countDocuments({
+          assignedTo: staff._id,
+          companyName: company._id,
+          status: { $regex: "^rescheduled$", $options: "i" },
+          ...taskLeadDateFilter,
+        });
+        const totalLeads = await Lead.countDocuments({
+          assignedTo: staff._id,
+          companyName: company._id,
+          ...taskLeadDateFilter,
+        });
+
+        // QP Orders
+        const qpOrders = await QpData.countDocuments({
+          createdBy: staff._id,
+          companyName: company._id,
+          ...otherModelsDateFilter,
+        });
+
+        // Sakshi Orders (Stationary & Booklet)
+        const sakshiOrders = await Order.find({
+          createdBy: staff._id,
+          companyName: company._id,
+          ...otherModelsDateFilter,
+        }).lean();
+
+        // Separate Stationary and Booklet orders
+        const stationaryOrders = sakshiOrders.filter(order => 
+          order.category === "STATIONARY" || !order.category // Assuming some default
+        );
+        const bookletOrders = sakshiOrders.filter(order => 
+          order.category === "BOOKLET"
+        );
+
+        const ordersGiven = sakshiOrders.length;
+        const stationaryOrderCount = stationaryOrders.length;
+        const bookletOrderCount = bookletOrders.length;
+
+        // Stationary Order Itemwise Total
+        const stationaryItemwise = {};
+        stationaryOrders.forEach(order => {
+          order.quotation?.forEach(item => {
+            const itemName = item.productName || "Unknown";
+            if (!stationaryItemwise[itemName]) {
+              stationaryItemwise[itemName] = {
+                itemName,
+                quantity: 0,
+                totalAmount: 0
+              };
+            }
+            const qty = parseFloat(item.qty) || 0;
+            const price = parseFloat(item.unitPrice) || 0;
+            const gst = parseFloat(item.gst) || 0;
+            const total = qty * price * (1 + gst/100);
+            
+            stationaryItemwise[itemName].quantity += qty;
+            stationaryItemwise[itemName].totalAmount += total;
+            
+            // Also add to the total itemwise for all staff
+            if (!totalStationaryItemwise[itemName]) {
+              totalStationaryItemwise[itemName] = {
+                itemName,
+                quantity: 0,
+                totalAmount: 0
+              };
+            }
+            totalStationaryItemwise[itemName].quantity += qty;
+            totalStationaryItemwise[itemName].totalAmount += total;
+          });
+        });
+
+        // Booklet Order Itemwise Total
+        const bookletItemwise = {};
+        bookletOrders.forEach(order => {
+          order.quotation?.forEach(item => {
+            const itemName = item.productName || "Unknown";
+            if (!bookletItemwise[itemName]) {
+              bookletItemwise[itemName] = {
+                itemName,
+                quantity: 0,
+                totalAmount: 0
+              };
+            }
+            const qty = parseFloat(item.qty) || 0;
+            const price = parseFloat(item.unitPrice) || 0;
+            const gst = parseFloat(item.gst) || 0;
+            const total = qty * price * (1 + gst/100);
+            
+            bookletItemwise[itemName].quantity += qty;
+            bookletItemwise[itemName].totalAmount += total;
+            
+            // Also add to the total itemwise for all staff
+            if (!totalBookletItemwise[itemName]) {
+              totalBookletItemwise[itemName] = {
+                itemName,
+                quantity: 0,
+                totalAmount: 0
+              };
+            }
+            totalBookletItemwise[itemName].quantity += qty;
+            totalBookletItemwise[itemName].totalAmount += total;
+          });
+        });
+
+        // Total Sales Calculation with category separation
+        const totalSaleData = await Order.aggregate([
+          {
+            $match: {
+              companyName: company._id,
+              createdBy: staff._id,
+              ...otherModelsDateFilter,
+            },
+          },
+          {
+            $project: {
+              category: 1,
+              lastQuotation: { $arrayElemAt: ["$quotation", -1] },
+            },
+          },
+          {
+            $project: {
+              category: 1,
+              unitPrice: { $toDouble: "$lastQuotation.unitPrice" },
+              qty: { $toDouble: "$lastQuotation.qty" },
+              gst: { $toDouble: "$lastQuotation.gst" },
+            },
+          },
+          {
+            $project: {
+              category: 1,
+              total: { $multiply: ["$unitPrice", "$qty"] },
+              gstAmount: {
+                $divide: [{ $multiply: ["$unitPrice", "$qty", "$gst"] }, 100],
+              },
+            },
+          },
+          {
+            $project: {
+              category: 1,
+              grandTotal: { $add: ["$total", "$gstAmount"] },
+            },
+          },
+          {
+            $group: {
+              _id: "$category",
+              totalSale: { $sum: "$grandTotal" },
+            },
+          },
+        ]);
+
+        // Calculate separate sales for Stationary and Booklet
+        let totalSale = 0;
+        let totalStationarySale = 0;
+        let totalBookletSale = 0;
+        
+        totalSaleData.forEach(cat => {
+          const category = cat._id || "STATIONARY"; // Default to STATIONARY if no category
+          const sale = cat.totalSale || 0;
+          
+          totalSale += sale;
+          
+          if (category === "STATIONARY") {
+            totalStationarySale = sale;
+          } else if (category === "BOOKLET") {
+            totalBookletSale = sale;
+          }
+        });
+
+        // Party counts
+        const qpOrderParties = await QpData.find({
+          createdBy: staff._id,
+          companyName: company._id,
+          ...otherModelsDateFilter,
+        }).distinct("party");
+        
+        const sakshiOrderParties = await Order.find({
+          createdBy: staff._id,
+          companyName: company._id,
+          ...otherModelsDateFilter,
+        }).distinct("party");
+
+        const createdParties = await AccountMaster.find({
+          createdBy: staff._id,
+          companyName: company._id,
+          ...otherModelsDateFilter,
+        }).distinct("party").lean();
+
+        const newPartiesStillNew = await Party.countDocuments({
+          _id: { $in: createdParties },
+          partyTag: "NEW",
+          createdBy: staff._id,
+        });
+
+        // Count NEW parties for this staff
+        const newparty = await Party.countDocuments({
+          _id: { $in: createdParties },
+          partyTag: "NEW",
+        });
+
+        // Count CUSTOMER parties for this staff
+        const customerparty = await Party.countDocuments({
+          _id: { $in: createdParties },
+          partyTag: "CUSTOMER",
+        });
+
+        // Add to totals
+        totalCompletedTasks += completedTasks;
+        totalNewPartyVisits += newPartyCount;
+        totalNewToCustomer += newToCustomerParties;
+        totalStationaryOrders += stationaryOrderCount;
+        totalBookletOrders += bookletOrderCount;
+        totalStationarySales += totalStationarySale;
+        totalBookletSales += totalBookletSale;
+
+        return {
+          staffId: staff._id,
+          staffName: `${staff.firstName} ${staff.lastName}`,
+          companyId: company._id,
+          companyName: company.companyName,
+          completedTasks,
+          cancelledTasks,
+          doneTask: completedTasks + cancelledTasks,
+          rescheduledTasks,
+          pendingTasks,
+          totalTasks,
+          completedLeads,
+          cancelledLeads,
+          doneLeads: completedLeads + cancelledLeads,
+          rescheduledLeads,
+          ordersGiven,
+          stationaryOrderCount,
+          bookletOrderCount,
+          stationaryItemwise: Object.values(stationaryItemwise),
+          bookletItemwise: Object.values(bookletItemwise),
+          newToCustomerParties,
+          createdParties: createdParties.length,
+          newPartiesStillNew,
+          totalSale,
+          totalStationarySale,
+          totalBookletSale,
+          tasksByReason,
+          leadsByReason,
+          getVisitCount,
+          newPartyCount,
+          customerPartyCount,
+          totalLeads,
+          customerparty,
+          newparty,
+        };
+      })
+    );
+
+    // Add totals to the response
+    const summary = {
+      totalCompletedTasks,
+      totalNewPartyVisits,
+      totalNewToCustomer,
+      totalStationaryOrders,
+      totalBookletOrders,
+      totalStationarySales,
+      totalBookletSales,
+      totalSales: totalStationarySales + totalBookletSales,
+      totalStaff: staffList.length,
+      // Add the new itemwise totals
+      totalStationaryItemwise: Object.values(totalStationaryItemwise),
+      totalBookletItemwise: Object.values(totalBookletItemwise),
     };
 
-    const taskMap = groupByStaff(tasks, "assignTo");
-    const leadMap = groupByStaff(leads, "assignedTo");
-    const qpMap = groupByStaff(qpOrders, "createdBy");
-    const orderMap = groupByStaff(orders, "createdBy");
-    const accountMap = groupByStaff(accountParties, "createdBy");
-
-    const taskReasons = ["Delivery","Get Payment","Get Visit","Order","Complain","Sample Approval"];
-    const leadReasons = ["Cold Call","Proof Approval","Inquiry Call","Confirmation Call"];
-
-    // 5️⃣ Build report (NO DB CALL)
-    const reports = staffList.map(staff => {
-      const sid = staff._id.toString();
-      const staffTasks = taskMap[sid] || [];
-      const staffLeads = leadMap[sid] || [];
-      const staffOrders = orderMap[sid] || [];
-      const staffQP = qpMap[sid] || [];
-      const createdParties = accountMap[sid] || [];
-
-      // --- TASK COUNTS ---
-      const taskStatusCount = { completed:0, cancelled:0, pending:0, rescheduled:0 };
-      const tasksByReason = {};
-
-      taskReasons.forEach(r => {
-        tasksByReason[r.toLowerCase().replace(/\s/g,"")] =
-        { reason:r,total:0,completed:0,cancelled:0,rescheduled:0 };
-      });
-      tasksByReason.other = { reason:"Other",total:0,completed:0,cancelled:0,rescheduled:0 };
-
-      let getVisitCount = 0, newPartyCount = 0, customerPartyCount = 0;
-
-      staffTasks.forEach(t => {
-        const status = t.status?.toLowerCase();
-        if (taskStatusCount[status] !== undefined) taskStatusCount[status]++;
-
-        const key = taskReasons.find(r => r.toLowerCase() === (t.reasonForVisit||"").toLowerCase())
-          ? t.reasonForVisit.toLowerCase().replace(/\s/g,"")
-          : "other";
-
-        tasksByReason[key].total++;
-        if (status === "completed") tasksByReason[key].completed++;
-        if (status === "cancelled") tasksByReason[key].cancelled++;
-        if (status === "rescheduled") tasksByReason[key].rescheduled++;
-
-        if (/^get visit$/i.test(t.reasonForVisit)) {
-          getVisitCount++;
-          if (t.partyName?.partyTag === "NEW") newPartyCount++;
-          if (t.partyName?.partyTag === "CUSTOMER") customerPartyCount++;
-        }
-      });
-
-      // --- LEADS ---
-      const leadStatusCount = { completed:0, cancelled:0, rescheduled:0 };
-      const leadsByReason = {};
-
-      leadReasons.forEach(r => {
-        leadsByReason[r.toLowerCase().replace(/\s/g,"")] =
-        { reason:r,total:0,completed:0,cancelled:0,rescheduled:0 };
-      });
-      leadsByReason.other = { reason:"Other",total:0,completed:0,cancelled:0,rescheduled:0 };
-
-      staffLeads.forEach(l => {
-        const status = l.status?.toLowerCase();
-        if (leadStatusCount[status] !== undefined) leadStatusCount[status]++;
-
-        const key = leadReasons.find(r => r.toLowerCase() === (l.reason||"").toLowerCase())
-          ? l.reason.toLowerCase().replace(/\s/g,"")
-          : "other";
-
-        leadsByReason[key].total++;
-        if (status === "completed") leadsByReason[key].completed++;
-        if (status === "cancelled") leadsByReason[key].cancelled++;
-        if (status === "rescheduled") leadsByReason[key].rescheduled++;
-      });
-
-      // --- SALES ---
-      let totalSale = 0;
-      staffOrders.forEach(o => {
-        const q = o.quotation?.[o.quotation.length - 1];
-        if (!q) return;
-        const total = (+q.unitPrice || 0) * (+q.qty || 0);
-        totalSale += total + (total * (+q.gst || 0) / 100);
-      });
-
-      // --- PARTIES ---
-      const createdPartyIds = createdParties.map(p => p.party?.toString());
-      let newparty = 0, customerparty = 0;
-
-      createdPartyIds.forEach(id => {
-        if (partyMap[id] === "NEW") newparty++;
-        if (partyMap[id] === "CUSTOMER") customerparty++;
-      });
-
-      return {
-        staffId: staff._id,
-        staffName: `${staff.firstName} ${staff.lastName}`,
-        companyId: company._id,
-        companyName: company.companyName,
-
-        completedTasks: taskStatusCount.completed,
-        cancelledTasks: taskStatusCount.cancelled,
-        doneTask: taskStatusCount.completed + taskStatusCount.cancelled,
-        rescheduledTasks: taskStatusCount.rescheduled,
-        pendingTasks: taskStatusCount.pending,
-        totalTasks: staffTasks.length,
-
-        completedLeads: leadStatusCount.completed,
-        cancelledLeads: leadStatusCount.cancelled,
-        doneLeads: leadStatusCount.completed + leadStatusCount.cancelled,
-        rescheduledLeads: leadStatusCount.rescheduled,
-        totalLeads: staffLeads.length,
-
-        ordersGiven: staffOrders.length,
-        qpOrders: staffQP.length,
-        totalSale,
-
-        createdParties: createdPartyIds.length,
-        newparty,
-        customerparty,
-
-        tasksByReason,
-        leadsByReason,
-
-        getVisitCount,
-        newPartyCount,
-        customerPartyCount,
-      };
-    });
-
-    return res.status(200).json({
+    res.status(200).json({
       success: true,
       data: reports,
+      summary,
       filters: { startDate, endDate, companyName: company.companyName },
     });
-
   } catch (error) {
     console.error("Error generating SC report:", error);
-    return res.status(500).json({
-      success: false,
-      message: "Server error",
-      error: error.message,
-    });
+    res
+      .status(500)
+      .json({ success: false, message: "Server error", error: error.message });
   }
 };
-
 
 const getQPReport = async (req, res) => {
   try {
