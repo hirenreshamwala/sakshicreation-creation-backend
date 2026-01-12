@@ -1264,7 +1264,6 @@ const getscDesigner = async (req, res) => {
   try {
     const { startDate, endDate } = req.body;
 
-    // Validate input dates
     if (!startDate || !endDate) {
       return res.status(400).json({
         success: false,
@@ -1274,26 +1273,22 @@ const getscDesigner = async (req, res) => {
 
     const start = new Date(startDate);
     const end = new Date(endDate);
-
-    // Set end date to end of day for proper filtering
+    console.log("start", start);
+    console.log("end", end);
     end.setHours(23, 59, 59, 999);
 
-    // Fetch designer roles
     const designerRoles = await Role.find({
       roleName: { $regex: "Designer", $options: "i" },
       isDelete: false,
     }).select("_id").lean();
 
-    // Extract role IDs
-    const designerRoleIds = designerRoles.map((role) => role._id);
+    const designerRoleIds = designerRoles.map((r) => r._id);
 
-    // Fetch staff members with designer roles
     const staffList = await Staff.find({
       role: { $in: designerRoleIds },
     }).select("firstName lastName _id").lean();
 
-    // If no staff found with designer role
-    if (staffList.length === 0) {
+    if (!staffList.length) {
       return res.status(200).json({
         success: true,
         data: [],
@@ -1301,233 +1296,113 @@ const getscDesigner = async (req, res) => {
       });
     }
 
-    // Create an array to hold designer performance data
-    const designerPerformance = [];
-
-    // Process each designer
-    for (const staff of staffList) {
-      // Find orders assigned to this designer within date range
-      const orders = await Order.find({
-        designer: staff._id,
-        $or: [
-          // Orders where designer was assigned within date range
-          {
-            designerAssignedAt: {
-              $gte: start,
-              $lte: end,
-            },
-          },
-          // OR orders with design approval within date range
-          // {
-          //   designApproved: {
-          //     $gte: start,
-          //     $lte: end,
-          //   },
-          // },
-          // // OR orders with status changes within date range
-          // {
-          //   statusHistory: {
-          //     $elemMatch: {
-          //       status: { $in: ["Designer", "Approved"] },
-          //       changedAt: {
-          //         $gte: start,
-          //         $lte: end,
-          //       },
-          //     },
-          //   },
-          // },
-        ],
-      })
-        .populate("companyName", "companyName")
-        .populate("party", "fullName")
-        .populate("productItem", "itemName").lean();
-
-      // Count design approvals within date range
-      const designApprovedCount = await Order.countDocuments({
-        designer: staff._id,
-        designApproved: {
-          $gte: start,
-          $lte: end,
-        },
-        designApproved: { $ne: null },
-      });
-
-      // Count rework orders within date range
-      const reworkOrders = await Order.find({
-        designer: staff._id,
-        "reworkHistory.date": {
-          $gte: start,
-          $lte: end,
-        },
-      }).lean();
-
-      // Count new design creations within date range (using designFiles.uploadedAt)
-      const newDesignCreationCount = await Order.countDocuments({
-        designer: staff._id,
-        "designFiles.uploadedAt": {
-          $gte: start,
-          $lte: end,
-        },
-      });
-
-      // Get detailed new design creation data
-      const newDesignOrders = await Order.find({
-        designer: staff._id,
-        "designFiles.uploadedAt": {
-          $gte: start,
-          $lte: end,
-        },
-      }).select("orderNumber designFiles designerAssignedAt").lean();
-
-      // Process rework history count for this designer
-      let reworkCount = 0;
-      const reworkDetails = [];
-
-      reworkOrders.forEach((order) => {
-        order.reworkHistory.forEach((rework) => {
-          const reworkDate = rework.uploadedAt || rework.date;
-          if (reworkDate >= start && reworkDate <= end) {
-            reworkCount++;
-            reworkDetails.push({
-              orderId: order._id,
-              orderNumber: order.orderNumber,
-              reworkDate: reworkDate,
-              remarks: rework.remark,
-              filesCount: rework.files ? rework.files.length : 0,
-            });
-          }
-        });
-      });
-
-      // Process new design creation details
-      const newDesignDetails = [];
-      newDesignOrders.forEach((order) => {
-        order.designFiles.forEach((file) => {
-          if (file.uploadedAt >= start && file.uploadedAt <= end) {
-            newDesignDetails.push({
-              orderId: order._id,
-              orderNumber: order.orderNumber,
-              filePath: file.path,
-              uploadedAt: file.uploadedAt,
-              remark: file.remark || "",
-              designerAssignedAt: order.designerAssignedAt,
-            });
-          }
-        });
-      });
-
-      // Calculate pending designs count (assigned but not approved)
-      const pendingDesignsCount = await Order.countDocuments({
-        designer: staff._id,
-        designerStatus: { $in: ["Pending", "In Progress", "Rework"] },
-        designerAssignedAt: { $ne: null },
-        $or: [{ designApproved: null }, { designerStatus: "Rework" }],
-        designerAssignedAt: {
-          $gte: start,
-          $lte: end,
-        },
-      });
-
-      // Calculate average approval time (in hours)
-      const completedOrders = await Order.find({
-        designer: staff._id,
-        designApproved: {
-          $gte: start,
-          $lte: end,
-        },
-        designerAssignedAt: { $ne: null },
-        designApproved: { $ne: null },
-      }).select("designerAssignedAt designApproved").lean();
-
-      let totalApprovalTime = 0;
-      let avgApprovalTime = 0;
-
-      if (completedOrders.length > 0) {
-        completedOrders.forEach((order) => {
-          const approvalTime =
-            (order.designApproved - order.designerAssignedAt) /
-            (1000 * 60 * 60); // Convert to hours
-          totalApprovalTime += approvalTime;
-        });
-        avgApprovalTime = totalApprovalTime / completedOrders.length;
-      }
-
-      // Prepare designer data
-      const designerData = {
-        designerId: staff._id,
-        name: `${staff.firstName} ${staff.lastName}`,
-        firstName: staff.firstName,
-        lastName: staff.lastName,
-        totalOrders: orders.length,
-        approved: designApprovedCount,
-        newDesigns: newDesignCreationCount,
-        rework: reworkCount,
-        pending: pendingDesignsCount,
-        inProgress: await Order.countDocuments({
+    // 🚀 PARALLEL execution for all designers
+    const designerPerformance = await Promise.all(
+      staffList.map(async (staff) => {
+        const baseMatch = {
           designer: staff._id,
-          designerStatus: "In Progress",
-          designerAssignedAt: {
-            $gte: start,
-            $lte: end,
-          },
-        }),
-        dateRange: {
-          startDate: startDate,
-          endDate: endDate,
-        },
-      };
+          designerAssignedAt: { $gte: start, $lte: end },
+        };
 
-      designerPerformance.push(designerData);
-    }
+        // 🔥 All DB calls in parallel
+        const [
+          orders,
+          designApprovedCount,
+          reworkOrders,
+          newDesignCreationCount,
+          newDesignOrders,
+          pendingDesignsCount,
+          inProgressCount,
+          completedOrders,
+        ] = await Promise.all([
+          Order.find({
+            designer: staff._id,
+            $or: [{ designerAssignedAt: { $gte: start, $lte: end } }],
+          })
+            .populate("companyName", "companyName")
+            .populate("party", "fullName")
+            .populate("productItem", "itemName")
+            .lean(),
 
-    // Sort designers by designApprovedCount (highest first)
-    designerPerformance.sort(
-      (a, b) => b.designApprovedCount - a.designApprovedCount
+          Order.countDocuments({
+            designer: staff._id,
+            designApproved: { $gte: start, $lte: end },
+            designApproved: { $ne: null },
+          }),
+
+          Order.find({
+            designer: staff._id,
+            "reworkHistory.date": { $gte: start, $lte: end },
+          }).lean(),
+
+          Order.countDocuments({
+            designer: staff._id,
+            "designFiles.uploadedAt": { $gte: start, $lte: end },
+          }),
+
+          Order.find({
+            designer: staff._id,
+            "designFiles.uploadedAt": { $gte: start, $lte: end },
+          })
+            .select("orderNumber designFiles designerAssignedAt")
+            .lean(),
+
+          Order.countDocuments({
+            designer: staff._id,
+            designerStatus: { $in: ["Pending", "In Progress", "Rework"] },
+            designerAssignedAt: { $gte: start, $lte: end },
+            $or: [{ designApproved: null }, { designerStatus: "Rework" }],
+          }),
+
+          Order.countDocuments({
+            designer: staff._id,
+            designerStatus: "In Progress",
+            designerAssignedAt: { $gte: start, $lte: end },
+          }),
+
+          Order.find({
+            designer: staff._id,
+            designApproved: { $gte: start, $lte: end, $ne: null },
+            designerAssignedAt: { $ne: null },
+          })
+            .select("designerAssignedAt designApproved")
+            .lean(),
+        ]);
+
+        // 🔁 SAME logic
+        let reworkCount = 0;
+        reworkOrders.forEach((order) => {
+          order.reworkHistory.forEach((r) => {
+            const d = r.uploadedAt || r.date;
+            if (d >= start && d <= end) reworkCount++;
+          });
+        });
+
+        let totalApprovalTime = 0;
+        completedOrders.forEach((o) => {
+          totalApprovalTime +=
+            (o.designApproved - o.designerAssignedAt) / (1000 * 60 * 60);
+        });
+
+        return {
+          designerId: staff._id,
+          name: `${staff.firstName} ${staff.lastName}`,
+          firstName: staff.firstName,
+          lastName: staff.lastName,
+          totalOrders: orders.length,
+          approved: designApprovedCount,
+          newDesigns: newDesignCreationCount,
+          rework: reworkCount,
+          pending: pendingDesignsCount,
+          inProgress: inProgressCount,
+          dateRange: { startDate, endDate },
+        };
+      })
     );
-
-    // Calculate overall statistics
-    // const overallStats = {
-    //   totalDesigners: designerPerformance.length,
-    //   totalDesignApproved: designerPerformance.reduce(
-    //     (sum, designer) => sum + designer.designApprovedCount,
-    //     0
-    //   ),
-    //   totalNewDesigns: designerPerformance.reduce(
-    //     (sum, designer) => sum + designer.newDesignCreationCount,
-    //     0
-    //   ),
-    //   totalRework: designerPerformance.reduce(
-    //     (sum, designer) => sum + designer.reworkCount,
-    //     0
-    //   ),
-    //   totalPending: designerPerformance.reduce(
-    //     (sum, designer) => sum + designer.pendingDesignsCount,
-    //     0
-    //   ),
-    //   averageCompletionRate:
-    //     designerPerformance.length > 0
-    //       ? (
-    //           designerPerformance.reduce((sum, designer) => {
-    //             const rate = parseFloat(designer.completionRate);
-    //             return sum + (isNaN(rate) ? 0 : rate);
-    //           }, 0) / designerPerformance.length
-    //         ).toFixed(2) + "%"
-    //       : "0%",
-    //   averageNewDesignRate:
-    //     designerPerformance.length > 0
-    //       ? (
-    //           designerPerformance.reduce((sum, designer) => {
-    //             const rate = parseFloat(designer.newDesignRate);
-    //             return sum + (isNaN(rate) ? 0 : rate);
-    //           }, 0) / designerPerformance.length
-    //         ).toFixed(2) + "%"
-    //       : "0%",
-    // };
 
     return res.status(200).json({
       success: true,
       data: designerPerformance,
-      // overallStats: overallStats,
       message: "Designer performance data retrieved successfully",
     });
   } catch (error) {
@@ -1539,6 +1414,7 @@ const getscDesigner = async (req, res) => {
     });
   }
 };
+
 
 const getscPrinter = async (req, res) => {
   try {
