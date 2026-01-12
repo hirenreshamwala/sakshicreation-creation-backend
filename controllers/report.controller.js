@@ -1648,10 +1648,8 @@ const getscDesigner = async (req, res) => {
 
 const getscPrinter = async (req, res) => {
   try {
-    // Implementation for SC Printer Report
     const { startDate, endDate } = req.body;
 
-    // Validate input dates
     if (!startDate || !endDate) {
       return res.status(400).json({
         success: false,
@@ -1661,26 +1659,26 @@ const getscPrinter = async (req, res) => {
 
     const start = new Date(startDate);
     const end = new Date(endDate);
-
-    // Set end date to end of day for proper filtering
     end.setHours(23, 59, 59, 999);
 
-    // Fetch printer roles
+    // 1️⃣ Get Printer Roles
     const printerRoles = await Role.find({
       roleName: { $regex: "Printer", $options: "i" },
       isDelete: false,
-    }).select("_id");
+    })
+      .select("_id")
+      .lean();
 
-    // Extract role IDs
-    const printerRoleIds = printerRoles.map((role) => role._id);
+    const printerRoleIds = printerRoles.map((r) => r._id);
 
-    // Fetch staff members with printer roles
+    // 2️⃣ Get Printer Staff
     const staffList = await Staff.find({
       role: { $in: printerRoleIds },
-    }).select("firstName lastName _id");
+    })
+      .select("_id firstName lastName")
+      .lean();
 
-    // If no staff found with printer role
-    if (staffList.length === 0) {
+    if (!staffList.length) {
       return res.status(200).json({
         success: true,
         data: [],
@@ -1688,328 +1686,196 @@ const getscPrinter = async (req, res) => {
       });
     }
 
-    // Create an array to hold printer performance data
+    const staffIds = staffList.map((s) => s._id);
+
+    // 3️⃣ Get ALL Orders in ONE query
+    const orders = await Order.find({
+      printer: { $in: staffIds },
+      printerAssignedAt: { $gte: start, $lte: end },
+    })
+      .populate("companyName", "companyName")
+      .populate("party", "fullName")
+      .populate("productItem", "itemName")
+      .lean();
+
+    // 4️⃣ Group Orders by Printer
+    const ordersByPrinter = {};
+    for (const order of orders) {
+      const pid = order.printer.toString();
+      if (!ordersByPrinter[pid]) ordersByPrinter[pid] = [];
+      ordersByPrinter[pid].push(order);
+    }
+
     const printerPerformance = [];
 
-    // Process each printer
+    // 5️⃣ Process each printer (NO DB CALLS HERE)
     for (const staff of staffList) {
-      // Find orders assigned to this printer within date range
-      const orders = await Order.find({
-        printer: staff._id,
-        $or: [
-          // Orders where printer was assigned within date range
-          {
-            printerAssignedAt: {
-              $gte: start,
-              $lte: end,
-            },
-          },
-          // // OR orders with printing started within date range
-          // {
-          //   printingStartedAt: {
-          //     $gte: start,
-          //     $lte: end,
-          //   },
-          // },
-          // // OR orders with printing completed within date range
-          // {
-          //   printingCompletedAt: {
-          //     $gte: start,
-          //     $lte: end,
-          //   },
-          // },
-          // // OR orders with status changes within date range
-          // {
-          //   statusHistory: {
-          //     $elemMatch: {
-          //       status: "Printer",
-          //       changedAt: {
-          //         $gte: start,
-          //         $lte: end,
-          //       },
-          //     },
-          //   },
-          // },
-        ],
-      })
-        .populate("companyName", "companyName")
-        .populate("party", "fullName")
-        .populate("productItem", "itemName");
+      const printerOrders = ordersByPrinter[staff._id.toString()] || [];
 
-      // Count printing completed orders within date range
-      const printingCompletedCount = await Order.countDocuments({
-        printer: staff._id,
-        printingCompletedAt: {
-          $gte: start,
-          $lte: end,
-        },
-        printingCompletedAt: { $ne: null },
-      });
-
-      // Count pending orders (assigned but not started)
-      const pendingOrders = await Order.find({
-        printer: staff._id,
-        printerStatus: "Pending",
-        printerAssignedAt: { $ne: null },
-        $or: [{ printingStartedAt: null }, { printingCompletedAt: null }],
-        printerAssignedAt: {
-          $gte: start,
-          $lte: end,
-        },
-      });
-
-      // Count in-progress orders (started but not completed)
-      const inProgressOrders = await Order.find({
-        printer: staff._id,
-        printerStatus: "In Progress",
-        printingStartedAt: { $ne: null },
-        printingCompletedAt: null,
-        printingStartedAt: {
-          $gte: start,
-          $lte: end,
-        },
-      });
-
-      // Calculate pending days for pending orders
-      const pendingOrdersWithDays = await Promise.all(
-        pendingOrders.map(async (order) => {
-          const pendingDays = calculateDaysDifference(
-            order.printerAssignedAt,
-            new Date() // current date
-          );
-          return {
-            orderId: order._id,
-            orderNumber: order.orderNumber,
-            assignedDate: order.printerAssignedAt,
-            pendingDays: pendingDays,
-            qty: order.qty,
-            companyName: order.companyName?.companyName || "N/A",
-            partyName: order.party?.fullName || "N/A",
-          };
-        })
+      const completedOrders = printerOrders.filter(
+        (o) => o.printingCompletedAt
       );
 
-      // Calculate in-progress days for in-progress orders
-      const inProgressOrdersWithDays = await Promise.all(
-        inProgressOrders.map(async (order) => {
-          const inProgressDays = calculateDaysDifference(
-            order.printingStartedAt,
-            new Date() // current date
-          );
-          return {
-            orderId: order._id,
-            orderNumber: order.orderNumber,
-            startedDate: order.printingStartedAt,
-            inProgressDays: inProgressDays,
-            qty: order.qty,
-            companyName: order.companyName?.companyName || "N/A",
-            partyName: order.party?.fullName || "N/A",
-          };
-        })
+      const pendingOrders = printerOrders.filter(
+        (o) => o.printerStatus === "Pending"
       );
 
-      // Calculate completed days for completed orders
-      const completedOrders = await Order.find({
-        printer: staff._id,
-        printingCompletedAt: {
-          $gte: start,
-          $lte: end,
-        },
-        printerAssignedAt: { $ne: null },
-        printingCompletedAt: { $ne: null },
-      }).select("orderNumber printerAssignedAt printingCompletedAt qty");
-
-      const completedOrdersWithDays = completedOrders.map((order) => {
-        const completedDays = calculateDaysDifference(
-          order.printerAssignedAt,
-          order.printingCompletedAt
-        );
-        return {
-          orderId: order._id,
-          orderNumber: order.orderNumber,
-          assignedDate: order.printerAssignedAt,
-          completedDate: order.printingCompletedAt,
-          completedDays: completedDays,
-          qty: order.qty,
-        };
-      });
-
-      // Calculate average completion time
-      let totalCompletionDays = 0;
-      let avgCompletionDays = 0;
-
-      if (completedOrdersWithDays.length > 0) {
-        totalCompletionDays = completedOrdersWithDays.reduce(
-          (sum, order) => sum + order.completedDays,
-          0
-        );
-        avgCompletionDays =
-          totalCompletionDays / completedOrdersWithDays.length;
-      }
-
-      // Calculate total pending days average
-      const totalPendingDays = pendingOrdersWithDays.reduce(
-        (sum, order) => sum + order.pendingDays,
-        0
+      const inProgressOrders = printerOrders.filter(
+        (o) => o.printerStatus === "In Progress"
       );
-      const avgPendingDays =
-        pendingOrdersWithDays.length > 0
-          ? totalPendingDays / pendingOrdersWithDays.length
-          : 0;
 
-      // Calculate total in-progress days average
-      const totalInProgressDays = inProgressOrdersWithDays.reduce(
-        (sum, order) => sum + order.inProgressDays,
-        0
+      // Pending days
+      const pendingOrdersWithDays = pendingOrders.map((o) => ({
+        orderId: o._id,
+        orderNumber: o.orderNumber,
+        assignedDate: o.printerAssignedAt,
+        pendingDays: calculateDaysDifference(
+          o.printerAssignedAt,
+          new Date()
+        ),
+        qty: o.qty,
+        companyName: o.companyName?.companyName || "N/A",
+        partyName: o.party?.fullName || "N/A",
+      }));
+
+      // In-progress days
+      const inProgressOrdersWithDays = inProgressOrders.map((o) => ({
+        orderId: o._id,
+        orderNumber: o.orderNumber,
+        startedDate: o.printingStartedAt,
+        inProgressDays: calculateDaysDifference(
+          o.printingStartedAt,
+          new Date()
+        ),
+        qty: o.qty,
+        companyName: o.companyName?.companyName || "N/A",
+        partyName: o.party?.fullName || "N/A",
+      }));
+
+      // Completed days
+      const completedOrdersWithDays = completedOrders.map((o) => ({
+        orderId: o._id,
+        orderNumber: o.orderNumber,
+        assignedDate: o.printerAssignedAt,
+        completedDate: o.printingCompletedAt,
+        completedDays: calculateDaysDifference(
+          o.printerAssignedAt,
+          o.printingCompletedAt
+        ),
+        qty: o.qty,
+      }));
+
+      // Averages
+      const avg = (arr) =>
+        arr.length
+          ? (
+              arr.reduce((s, o) => s + o, 0) / arr.length
+            ).toFixed(2)
+          : "0.00";
+
+      const avgCompletionDays = avg(
+        completedOrdersWithDays.map((o) => o.completedDays)
       );
-      const avgInProgressDays =
-        inProgressOrdersWithDays.length > 0
-          ? totalInProgressDays / inProgressOrdersWithDays.length
-          : 0;
 
-      // Calculate paper usage and wastage
-      const printerPapersOrders = await Order.find({
-        printer: staff._id,
-        printerAssignedAt: {
-          $gte: start,
-          $lte: end,
-        },
-      }).select("printerPapers printerWastedSheet");
+      const avgPendingDays = avg(
+        pendingOrdersWithDays.map((o) => o.pendingDays)
+      );
 
+      const avgInProgressDays = avg(
+        inProgressOrdersWithDays.map((o) => o.inProgressDays)
+      );
+
+      // Paper usage
       let totalSheetsUsed = 0;
       let totalWastedSheets = 0;
 
-      printerPapersOrders.forEach((order) => {
-        // Calculate sheets used from printerPapers array
-        order.printerPapers.forEach((paper) => {
-          if (paper.numberOfSheetsUsed && !isNaN(paper.numberOfSheetsUsed)) {
-            totalSheetsUsed += parseInt(paper.numberOfSheetsUsed) || 0;
-          }
+      printerOrders.forEach((o) => {
+        o.printerPapers?.forEach((p) => {
+          totalSheetsUsed += Number(p.numberOfSheetsUsed || 0);
         });
-        // Add wasted sheets
-        totalWastedSheets += order.printerWastedSheet || 0;
+        totalWastedSheets += o.printerWastedSheet || 0;
       });
 
-      // Get recent 5 orders for this printer
-      const recentOrders = await Order.find({
-        printer: staff._id,
-        printerAssignedAt: {
-          $gte: start,
-          $lte: end,
-        },
-      })
-        .sort({ printerAssignedAt: -1 })
-        .limit(5)
-        .select(
-          "orderNumber companyName party productItem qty printerStatus printingStartedAt printingCompletedAt"
-        );
+      // Recent 5 Orders
+      const recentOrders = [...printerOrders]
+        .sort((a, b) => b.printerAssignedAt - a.printerAssignedAt)
+        .slice(0, 5)
+        .map((o) => ({
+          orderNumber: o.orderNumber,
+          status: o.printerStatus,
+          startedDate: o.printingStartedAt,
+          completedDate: o.printingCompletedAt,
+          quantity: o.qty,
+          companyName: o.companyName?.companyName,
+          partyName: o.party?.fullName,
+        }));
 
-      // Prepare printer data
-      const printerData = {
+      printerPerformance.push({
         printerId: staff._id,
         name: `${staff.firstName} ${staff.lastName}`,
-        firstName: staff.firstName,
-        lastName: staff.lastName,
-        totalAssignedOrders: orders.length,
-        printingCompletedCount: printingCompletedCount,
+        totalAssignedOrders: printerOrders.length,
+        printingCompletedCount: completedOrders.length,
         pendingOrdersCount: pendingOrders.length,
         inProgressOrdersCount: inProgressOrders.length,
         completionRate:
-          orders.length > 0
-            ? ((printingCompletedCount / orders.length) * 100).toFixed(2) + "%"
+          printerOrders.length > 0
+            ? (
+                (completedOrders.length / printerOrders.length) *
+                100
+              ).toFixed(2) + "%"
             : "0%",
-        avgCompletionDays: avgCompletionDays.toFixed(2) + " days",
-        avgPendingDays: avgPendingDays.toFixed(2) + " days",
-        avgInProgressDays: avgInProgressDays.toFixed(2) + " days",
+        avgCompletionDays: `${avgCompletionDays} days`,
+        avgPendingDays: `${avgPendingDays} days`,
+        avgInProgressDays: `${avgInProgressDays} days`,
         paperUsage: {
-          totalSheetsUsed: totalSheetsUsed,
-          totalWastedSheets: totalWastedSheets,
+          totalSheetsUsed,
+          totalWastedSheets,
           wastagePercentage:
             totalSheetsUsed > 0
-              ? ((totalWastedSheets / totalSheetsUsed) * 100).toFixed(2) + "%"
+              ? (
+                  (totalWastedSheets / totalSheetsUsed) *
+                  100
+                ).toFixed(2) + "%"
               : "0%",
         },
         pendingOrdersDetails: pendingOrdersWithDays,
         inProgressOrdersDetails: inProgressOrdersWithDays,
         completedOrdersDetails: completedOrdersWithDays,
-        performanceMetrics: {
-          totalOrders: orders.length,
-          completed: printingCompletedCount,
-          pending: pendingOrders.length,
-          inProgress: inProgressOrders.length,
-          efficiency:
-            orders.length > 0
-              ? ((printingCompletedCount / orders.length) * 100).toFixed(2) +
-              "%"
-              : "0%",
-          avgProcessingTime: avgCompletionDays.toFixed(2) + " days",
-        },
-        recentOrders: recentOrders.map((order) => ({
-          orderNumber: order.orderNumber,
-          status: order.printerStatus,
-          startedDate: order.printingStartedAt,
-          completedDate: order.printingCompletedAt,
-          quantity: order.qty,
-          companyName: order.companyName?.companyName,
-          partyName: order.party?.fullName,
-        })),
-        dateRange: {
-          startDate: startDate,
-          endDate: endDate,
-        },
-      };
-
-      printerPerformance.push(printerData);
+        recentOrders,
+        dateRange: { startDate, endDate },
+      });
     }
 
-    // Sort printers by printingCompletedCount (highest first)
+    // Sort by best printer
     printerPerformance.sort(
       (a, b) => b.printingCompletedCount - a.printingCompletedCount
     );
 
-    // Calculate overall statistics
+    // Overall stats
     const overallStats = {
       totalPrinters: printerPerformance.length,
       totalCompleted: printerPerformance.reduce(
-        (sum, printer) => sum + printer.printingCompletedCount,
+        (s, p) => s + p.printingCompletedCount,
         0
       ),
       totalPending: printerPerformance.reduce(
-        (sum, printer) => sum + printer.pendingOrdersCount,
+        (s, p) => s + p.pendingOrdersCount,
         0
       ),
       totalInProgress: printerPerformance.reduce(
-        (sum, printer) => sum + printer.inProgressOrdersCount,
+        (s, p) => s + p.inProgressOrdersCount,
         0
       ),
       totalAssigned: printerPerformance.reduce(
-        (sum, printer) => sum + printer.totalAssignedOrders,
+        (s, p) => s + p.totalAssignedOrders,
         0
       ),
-      avgCompletionRate:
-        printerPerformance.length > 0
-          ? (
-            printerPerformance.reduce((sum, printer) => {
-              const rate = parseFloat(printer.completionRate);
-              return sum + (isNaN(rate) ? 0 : rate);
-            }, 0) / printerPerformance.length
-          ).toFixed(2) + "%"
-          : "0%",
-      avgCompletionDays:
-        printerPerformance.length > 0
-          ? (
-            printerPerformance.reduce((sum, printer) => {
-              const days = parseFloat(printer.avgCompletionDays);
-              return sum + (isNaN(days) ? 0 : days);
-            }, 0) / printerPerformance.length
-          ).toFixed(2) + " days"
-          : "0 days",
     };
 
     return res.status(200).json({
       success: true,
       data: printerPerformance,
-      overallStats: overallStats,
+      overallStats,
       message: "Printer performance data retrieved successfully",
     });
   } catch (error) {
