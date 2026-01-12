@@ -340,342 +340,236 @@ const getSCReport = async (req, res) => {
 
     const company = await CompanyName.findOne({
       companyName: "Sakshi Creation",
-    }).select("_id companyName");
-    if (!company)
-      return res
-        .status(404)
-        .json({ success: false, message: "Company not found" });
+    }).select("_id companyName").lean();
 
-    const salesRoles = await Role.find({
-      roleName: { $regex: "Sales Staff", $options: "i" },
-      isDelete: false,
-    }).select("_id");
-    const salesRoleIds = salesRoles.map((r) => r._id);
+    if (!company) {
+      return res.status(404).json({
+        success: false,
+        message: "Company not found",
+      });
+    }
 
-    const staffList = await Staff.find({ role: { $in: salesRoleIds } }).select(
-      "firstName lastName _id"
-    );
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    end.setHours(23, 59, 59, 999);
 
     const taskLeadDateFilter = buildDateFilter(startDate, endDate, false);
     const otherModelsDateFilter = buildDateFilter(startDate, endDate, true);
 
-    const taskReasons = [
-      "Delivery",
-      "Get Payment",
-      "Get Visit",
-      "Order",
-      "Complain",
-      "Sample Approval",
-    ];
+    // 1️⃣ Sales staff
+    const salesRoles = await Role.find({
+      roleName: { $regex: "Sales Staff", $options: "i" },
+      isDelete: false,
+    }).select("_id").lean();
 
-    const leadReasons = [
-      "Cold Call",
-      "Proof Approval",
-      "Inquiry Call",
-      "Confirmation Call",
-    ];
+    const staffList = await Staff.find({
+      role: { $in: salesRoles.map(r => r._id) },
+    }).select("_id firstName lastName").lean();
 
-    const reports = await Promise.all(
-      staffList.map(async (staff) => {
-        const completedTasks = await AssignTask.countDocuments({
-          assignTo: staff._id,
-          companyName: company._id,
-          status: { $regex: "^completed$", $options: "i" },
-          ...taskLeadDateFilter,
-        });
-        const cancelledTasks = await AssignTask.countDocuments({
-          assignTo: staff._id,
-          companyName: company._id,
-          status: { $regex: "^cancelled$", $options: "i" },
-          ...taskLeadDateFilter,
-        });
-        const rescheduledTasks = await AssignTask.countDocuments({
-          assignTo: staff._id,
-          companyName: company._id,
-          status: { $regex: "^rescheduled$", $options: "i" },
-          ...taskLeadDateFilter,
-        });
-        const pendingTasks = await AssignTask.countDocuments({
-          assignTo: staff._id,
-          companyName: company._id,
-          status: { $regex: "^pending$", $options: "i" },
-          ...taskLeadDateFilter,
-        });
+    const staffIds = staffList.map(s => s._id);
 
-        // Total tasks = sum of all tasks (or just count all)
-        const totalTasks = await AssignTask.countDocuments({
-          assignTo: staff._id,
-          companyName: company._id,
-          ...taskLeadDateFilter,
-        });
-        // tasksByReason
-        const tasks = await AssignTask.find({
-          assignTo: staff._id,
-          companyName: company._id,
-          ...taskLeadDateFilter,
-        }).select("reasonForVisit status");
-        const tasksByReason = {};
+    // 2️⃣ Fetch EVERYTHING once
+    const [
+      tasks,
+      leads,
+      qpOrders,
+      orders,
+      accountParties,
+      parties
+    ] = await Promise.all([
+      AssignTask.find({
+        assignTo: { $in: staffIds },
+        companyName: company._id,
+        ...taskLeadDateFilter,
+      }).populate("partyName", "partyTag").lean(),
 
-        // Initialize keys
-        taskReasons.forEach(
-          (r) =>
-          (tasksByReason[r.toLowerCase().replace(/\s+/g, "")] = {
-            reason: r,
-            total: 0,
-            completed: 0,
-            cancelled: 0,
-            rescheduled: 0,
-          })
-        );
-        tasksByReason["other"] = {
-          reason: "Other",
-          total: 0,
-          completed: 0,
-          cancelled: 0,
-          rescheduled: 0,
-        };
+      Lead.find({
+        assignedTo: { $in: staffIds },
+        companyName: company._id,
+        ...taskLeadDateFilter,
+      }).lean(),
 
-        tasks.forEach((task) => {
-          const key = taskReasons.find(
-            (r) => r.toLowerCase() === (task.reasonForVisit || "").toLowerCase()
-          )
-            ? task.reasonForVisit.toLowerCase().replace(/\s+/g, "")
-            : "other";
-          tasksByReason[key].total++;
-          if (/^completed$/i.test(task.status)) tasksByReason[key].completed++;
-          else if (/^cancelled$/i.test(task.status))
-            tasksByReason[key].cancelled++;
-          else if (/^rescheduled$/i.test(task.status))
-            tasksByReason[key].rescheduled++;
-        });
+      QpData.find({
+        createdBy: { $in: staffIds },
+        companyName: company._id,
+        ...otherModelsDateFilter,
+      }).select("createdBy party").lean(),
 
-        // leadsByReason
-        const leads = await Lead.find({
-          assignedTo: staff._id,
-          companyName: company._id,
-          ...taskLeadDateFilter,
-        }).select("reason status");
-        const leadsByReason = {};
+      Order.find({
+        createdBy: { $in: staffIds },
+        companyName: company._id,
+        ...otherModelsDateFilter,
+      }).select("createdBy party quotation").lean(),
 
-        leadReasons.forEach(
-          (r) =>
-          (leadsByReason[r.toLowerCase().replace(/\s+/g, "")] = {
-            reason: r,
-            total: 0,
-            completed: 0,
-            cancelled: 0,
-            rescheduled: 0,
-          })
-        );
-        leadsByReason["other"] = {
-          reason: "Other",
-          total: 0,
-          completed: 0,
-          cancelled: 0,
-          rescheduled: 0,
-        };
+      AccountMaster.find({
+        createdBy: { $in: staffIds },
+        companyName: company._id,
+        ...otherModelsDateFilter,
+      }).select("createdBy party").lean(),
 
-        leads.forEach((lead) => {
-          const key = leadReasons.find(
-            (r) => r.toLowerCase() === (lead.reason || "").toLowerCase()
-          )
-            ? lead.reason.toLowerCase().replace(/\s+/g, "")
-            : "other";
-          leadsByReason[key].total++;
-          if (/^completed$/i.test(lead.status)) leadsByReason[key].completed++;
-          else if (/^cancelled$/i.test(lead.status))
-            leadsByReason[key].cancelled++;
-          else if (/^rescheduled$/i.test(lead.status))
-            leadsByReason[key].rescheduled++;
-        });
+      Party.find({}).select("_id partyTag").lean()
+    ]);
 
-        // visit party task nem customer count
-        const visitTasks = await AssignTask.find({
-          assignTo: staff._id,
-          companyName: company._id,
-          ...taskLeadDateFilter,
-        }).populate("partyName", "partyTag"); // populate the party to get partyTag
+    // 3️⃣ Party map
+    const partyMap = {};
+    parties.forEach(p => partyMap[p._id.toString()] = p.partyTag);
 
-        let getVisitCount = 0;
-        let newPartyCount = 0;
-        let customerPartyCount = 0;
+    // 4️⃣ Group data by staff
+    const groupByStaff = (arr, key) => {
+      const map = {};
+      arr.forEach(i => {
+        const id = i[key]?.toString();
+        if (!id) return;
+        if (!map[id]) map[id] = [];
+        map[id].push(i);
+      });
+      return map;
+    };
 
-        visitTasks.forEach((task) => {
-          // Sirf ek baar check karein
-          if (/^get visit$/i.test(task.reasonForVisit)) {
-            getVisitCount++;
+    const taskMap = groupByStaff(tasks, "assignTo");
+    const leadMap = groupByStaff(leads, "assignedTo");
+    const qpMap = groupByStaff(qpOrders, "createdBy");
+    const orderMap = groupByStaff(orders, "createdBy");
+    const accountMap = groupByStaff(accountParties, "createdBy");
 
-            // Count partyTag NEW / CUSTOMER only for "Get Visit" tasks
-            if (task.partyName?.partyTag === "NEW") {
-              newPartyCount++;
-            } else if (task.partyName?.partyTag === "CUSTOMER") {
-              customerPartyCount++;
-            }
-          }
-        });
+    const taskReasons = ["Delivery","Get Payment","Get Visit","Order","Complain","Sample Approval"];
+    const leadReasons = ["Cold Call","Proof Approval","Inquiry Call","Confirmation Call"];
 
-        const completedLeads = await Lead.countDocuments({
-          assignedTo: staff._id,
-          companyName: company._id,
-          status: { $regex: "^completed$", $options: "i" },
-          ...taskLeadDateFilter,
-        });
-        const cancelledLeads = await Lead.countDocuments({
-          assignedTo: staff._id,
-          companyName: company._id,
-          status: { $regex: "^cancelled$", $options: "i" },
-          ...taskLeadDateFilter,
-        });
-        const rescheduledLeads = await Lead.countDocuments({
-          assignedTo: staff._id,
-          companyName: company._id,
-          status: { $regex: "^rescheduled$", $options: "i" },
-          ...taskLeadDateFilter,
-        });
-        const totalLeads = await Lead.countDocuments({
-          assignedTo: staff._id,
-          companyName: company._id,
-          ...taskLeadDateFilter,
-        });
-        const qpOrders = await QpData.countDocuments({
-          createdBy: staff._id,
-          companyName: company._id,
-          ...otherModelsDateFilter,
-        });
-        const sakshiOrders = await Order.countDocuments({
-          createdBy: staff._id,
-          companyName: company._id,
-          ...otherModelsDateFilter,
-        });
-        const ordersGiven = sakshiOrders;
-        const totalSaleData = await Order.aggregate([
-          {
-            $match: {
-              companyName: company._id,
-              createdBy: staff._id,
-              ...otherModelsDateFilter,
-            },
-          },
-          {
-            $project: {
-              lastQuotation: { $arrayElemAt: ["$quotation", -1] }, // last entry
-            },
-          },
-          {
-            $project: {
-              unitPrice: { $toDouble: "$lastQuotation.unitPrice" },
-              qty: { $toDouble: "$lastQuotation.qty" },
-              gst: { $toDouble: "$lastQuotation.gst" },
-            },
-          },
-          {
-            $project: {
-              total: { $multiply: ["$unitPrice", "$qty"] },
-              gstAmount: {
-                $divide: [{ $multiply: ["$unitPrice", "$qty", "$gst"] }, 100],
-              },
-            },
-          },
-          {
-            $project: {
-              grandTotal: { $add: ["$total", "$gstAmount"] },
-            },
-          },
-          {
-            $group: {
-              _id: null,
-              totalSale: { $sum: "$grandTotal" },
-            },
-          },
-        ]);
+    // 5️⃣ Build report (NO DB CALL)
+    const reports = staffList.map(staff => {
+      const sid = staff._id.toString();
+      const staffTasks = taskMap[sid] || [];
+      const staffLeads = leadMap[sid] || [];
+      const staffOrders = orderMap[sid] || [];
+      const staffQP = qpMap[sid] || [];
+      const createdParties = accountMap[sid] || [];
 
-        const totalSale =
-          totalSaleData.length > 0 ? totalSaleData[0].totalSale : 0;
+      // --- TASK COUNTS ---
+      const taskStatusCount = { completed:0, cancelled:0, pending:0, rescheduled:0 };
+      const tasksByReason = {};
 
-        const qpOrderParties = await QpData.find({
-          createdBy: staff._id,
-          companyName: company._id,
-          ...otherModelsDateFilter,
-        }).distinct("party");
-        const sakshiOrderParties = await Order.find({
-          createdBy: staff._id,
-          companyName: company._id,
-          ...otherModelsDateFilter,
-        }).distinct("party");
+      taskReasons.forEach(r => {
+        tasksByReason[r.toLowerCase().replace(/\s/g,"")] =
+        { reason:r,total:0,completed:0,cancelled:0,rescheduled:0 };
+      });
+      tasksByReason.other = { reason:"Other",total:0,completed:0,cancelled:0,rescheduled:0 };
 
-        const createdParties = await AccountMaster.find({
-          createdBy: staff._id,
-          companyName: company._id,
-          ...otherModelsDateFilter,
-        }).distinct("party");
+      let getVisitCount = 0, newPartyCount = 0, customerPartyCount = 0;
 
-        const newToCustomerParties = await Party.countDocuments({
-          _id: { $in: [...new Set([...sakshiOrderParties])] },
-          partyTag: "CUSTOMER",
-          createdBy: staff._id,
-        });
-        const newPartiesStillNew = await Party.countDocuments({
-          _id: { $in: createdParties },
-          partyTag: "NEW",
-          createdBy: staff._id,
-        });
+      staffTasks.forEach(t => {
+        const status = t.status?.toLowerCase();
+        if (taskStatusCount[status] !== undefined) taskStatusCount[status]++;
 
-        // Count NEW parties for this staff
-        const newparty = await Party.countDocuments({
-          _id: { $in: createdParties },
-          partyTag: "NEW",
-        });
+        const key = taskReasons.find(r => r.toLowerCase() === (t.reasonForVisit||"").toLowerCase())
+          ? t.reasonForVisit.toLowerCase().replace(/\s/g,"")
+          : "other";
 
-        // Count CUSTOMER parties for this staff
-        const customerparty = await Party.countDocuments({
-          _id: { $in: createdParties },
-          partyTag: "CUSTOMER",
-        });
+        tasksByReason[key].total++;
+        if (status === "completed") tasksByReason[key].completed++;
+        if (status === "cancelled") tasksByReason[key].cancelled++;
+        if (status === "rescheduled") tasksByReason[key].rescheduled++;
 
-        return {
-          staffId: staff._id,
-          staffName: `${staff.firstName} ${staff.lastName}`,
-          companyId: company._id,
-          companyName: company.companyName,
-          completedTasks,
-          cancelledTasks,
-          doneTask: completedTasks + cancelledTasks,
-          rescheduledTasks,
-          pendingTasks,
-          totalTasks,
-          completedLeads,
-          cancelledLeads,
-          doneLeads: completedLeads + cancelledLeads,
-          rescheduledLeads,
-          ordersGiven,
-          newToCustomerParties,
-          createdParties: createdParties.length,
-          newPartiesStillNew,
-          totalSale,
-          tasksByReason,
-          leadsByReason,
-          getVisitCount,
-          newPartyCount,
-          customerPartyCount,
-          totalLeads,
-          customerparty,
-          newparty,
-        };
-      })
-    );
+        if (/^get visit$/i.test(t.reasonForVisit)) {
+          getVisitCount++;
+          if (t.partyName?.partyTag === "NEW") newPartyCount++;
+          if (t.partyName?.partyTag === "CUSTOMER") customerPartyCount++;
+        }
+      });
 
-    res.status(200).json({
+      // --- LEADS ---
+      const leadStatusCount = { completed:0, cancelled:0, rescheduled:0 };
+      const leadsByReason = {};
+
+      leadReasons.forEach(r => {
+        leadsByReason[r.toLowerCase().replace(/\s/g,"")] =
+        { reason:r,total:0,completed:0,cancelled:0,rescheduled:0 };
+      });
+      leadsByReason.other = { reason:"Other",total:0,completed:0,cancelled:0,rescheduled:0 };
+
+      staffLeads.forEach(l => {
+        const status = l.status?.toLowerCase();
+        if (leadStatusCount[status] !== undefined) leadStatusCount[status]++;
+
+        const key = leadReasons.find(r => r.toLowerCase() === (l.reason||"").toLowerCase())
+          ? l.reason.toLowerCase().replace(/\s/g,"")
+          : "other";
+
+        leadsByReason[key].total++;
+        if (status === "completed") leadsByReason[key].completed++;
+        if (status === "cancelled") leadsByReason[key].cancelled++;
+        if (status === "rescheduled") leadsByReason[key].rescheduled++;
+      });
+
+      // --- SALES ---
+      let totalSale = 0;
+      staffOrders.forEach(o => {
+        const q = o.quotation?.[o.quotation.length - 1];
+        if (!q) return;
+        const total = (+q.unitPrice || 0) * (+q.qty || 0);
+        totalSale += total + (total * (+q.gst || 0) / 100);
+      });
+
+      // --- PARTIES ---
+      const createdPartyIds = createdParties.map(p => p.party?.toString());
+      let newparty = 0, customerparty = 0;
+
+      createdPartyIds.forEach(id => {
+        if (partyMap[id] === "NEW") newparty++;
+        if (partyMap[id] === "CUSTOMER") customerparty++;
+      });
+
+      return {
+        staffId: staff._id,
+        staffName: `${staff.firstName} ${staff.lastName}`,
+        companyId: company._id,
+        companyName: company.companyName,
+
+        completedTasks: taskStatusCount.completed,
+        cancelledTasks: taskStatusCount.cancelled,
+        doneTask: taskStatusCount.completed + taskStatusCount.cancelled,
+        rescheduledTasks: taskStatusCount.rescheduled,
+        pendingTasks: taskStatusCount.pending,
+        totalTasks: staffTasks.length,
+
+        completedLeads: leadStatusCount.completed,
+        cancelledLeads: leadStatusCount.cancelled,
+        doneLeads: leadStatusCount.completed + leadStatusCount.cancelled,
+        rescheduledLeads: leadStatusCount.rescheduled,
+        totalLeads: staffLeads.length,
+
+        ordersGiven: staffOrders.length,
+        qpOrders: staffQP.length,
+        totalSale,
+
+        createdParties: createdPartyIds.length,
+        newparty,
+        customerparty,
+
+        tasksByReason,
+        leadsByReason,
+
+        getVisitCount,
+        newPartyCount,
+        customerPartyCount,
+      };
+    });
+
+    return res.status(200).json({
       success: true,
       data: reports,
       filters: { startDate, endDate, companyName: company.companyName },
     });
+
   } catch (error) {
     console.error("Error generating SC report:", error);
-    res
-      .status(500)
-      .json({ success: false, message: "Server error", error: error.message });
+    return res.status(500).json({
+      success: false,
+      message: "Server error",
+      error: error.message,
+    });
   }
 };
+
 
 const getQPReport = async (req, res) => {
   try {
@@ -1388,7 +1282,7 @@ const getscDesigner = async (req, res) => {
     const designerRoles = await Role.find({
       roleName: { $regex: "Designer", $options: "i" },
       isDelete: false,
-    }).select("_id");
+    }).select("_id").lean();
 
     // Extract role IDs
     const designerRoleIds = designerRoles.map((role) => role._id);
@@ -1396,7 +1290,7 @@ const getscDesigner = async (req, res) => {
     // Fetch staff members with designer roles
     const staffList = await Staff.find({
       role: { $in: designerRoleIds },
-    }).select("firstName lastName _id");
+    }).select("firstName lastName _id").lean();
 
     // If no staff found with designer role
     if (staffList.length === 0) {
@@ -1446,7 +1340,7 @@ const getscDesigner = async (req, res) => {
       })
         .populate("companyName", "companyName")
         .populate("party", "fullName")
-        .populate("productItem", "itemName");
+        .populate("productItem", "itemName").lean();
 
       // Count design approvals within date range
       const designApprovedCount = await Order.countDocuments({
@@ -1465,7 +1359,7 @@ const getscDesigner = async (req, res) => {
           $gte: start,
           $lte: end,
         },
-      });
+      }).lean();
 
       // Count new design creations within date range (using designFiles.uploadedAt)
       const newDesignCreationCount = await Order.countDocuments({
@@ -1483,7 +1377,7 @@ const getscDesigner = async (req, res) => {
           $gte: start,
           $lte: end,
         },
-      }).select("orderNumber designFiles designerAssignedAt");
+      }).select("orderNumber designFiles designerAssignedAt").lean();
 
       // Process rework history count for this designer
       let reworkCount = 0;
@@ -1543,7 +1437,7 @@ const getscDesigner = async (req, res) => {
         },
         designerAssignedAt: { $ne: null },
         designApproved: { $ne: null },
-      }).select("designerAssignedAt designApproved");
+      }).select("designerAssignedAt designApproved").lean();
 
       let totalApprovalTime = 0;
       let avgApprovalTime = 0;
@@ -1908,7 +1802,6 @@ const getscBinder = async (req, res) => {
   try {
     const { startDate, endDate } = req.body;
 
-    // Validate input dates
     if (!startDate || !endDate) {
       return res.status(400).json({
         success: false,
@@ -1918,26 +1811,26 @@ const getscBinder = async (req, res) => {
 
     const start = new Date(startDate);
     const end = new Date(endDate);
-
-    // Set end date to end of day for proper filtering
     end.setHours(23, 59, 59, 999);
 
-    // Fetch binder roles
+    // 1️⃣ Get Binder Roles
     const binderRoles = await Role.find({
       roleName: { $regex: "^Binder$", $options: "i" },
       isDelete: false,
-    }).select("_id");
+    })
+      .select("_id")
+      .lean();
 
-    // Extract role IDs
-    const binderRoleIds = binderRoles.map((role) => role._id);
+    const binderRoleIds = binderRoles.map((r) => r._id);
 
-    // Fetch staff members with binder roles
+    // 2️⃣ Get Binder Staff
     const staffList = await Staff.find({
       role: { $in: binderRoleIds },
-    }).select("firstName lastName _id");
+    })
+      .select("_id firstName lastName")
+      .lean();
 
-    // If no staff found with binder role
-    if (staffList.length === 0) {
+    if (!staffList.length) {
       return res.status(200).json({
         success: true,
         data: [],
@@ -1945,333 +1838,200 @@ const getscBinder = async (req, res) => {
       });
     }
 
-    // Create an array to hold binder performance data
+    const staffIds = staffList.map((s) => s._id);
+
+    // 3️⃣ Get ALL Orders in ONE query
+    const orders = await Order.find({
+      binder: { $in: staffIds },
+      binderAssignedAt: { $gte: start, $lte: end },
+    })
+      .populate("companyName", "companyName")
+      .populate("party", "fullName")
+      .populate("productItem", "itemName")
+      .lean();
+
+    // 4️⃣ Group orders by binder
+    const ordersByBinder = {};
+    for (const order of orders) {
+      const bid = order.binder.toString();
+      if (!ordersByBinder[bid]) ordersByBinder[bid] = [];
+      ordersByBinder[bid].push(order);
+    }
+
     const binderPerformance = [];
 
-    // Process each binder
+    // 5️⃣ Process binders (NO DB QUERIES)
     for (const staff of staffList) {
-      // Find orders assigned to this binder within date range
-      const orders = await Order.find({
-        binder: staff._id,
-        $or: [
-          // Orders where binder was assigned within date range
-          {
-            binderAssignedAt: {
-              $gte: start,
-              $lte: end,
-            },
-          },
-          // // OR orders with binding started within date range
-          // {
-          //   bindingStartedAt: {
-          //     $gte: start,
-          //     $lte: end,
-          //   },
-          // },
-          // // OR orders with binding completed within date range
-          // {
-          //   bindingCompletedAt: {
-          //     $gte: start,
-          //     $lte: end,
-          //   },
-          // },
-          // // OR orders with status changes within date range
-          // {
-          //   statusHistory: {
-          //     $elemMatch: {
-          //       status: "Binder",
-          //       changedAt: {
-          //         $gte: start,
-          //         $lte: end,
-          //       },
-          //     },
-          //   },
-          // },
-        ],
-      })
-        .populate("companyName", "companyName")
-        .populate("party", "fullName")
-        .populate("productItem", "itemName");
+      const binderOrders = ordersByBinder[staff._id.toString()] || [];
 
-      // Count binding completed orders within date range
-      const bindingCompletedCount = await Order.countDocuments({
-        binder: staff._id,
-        bindingCompletedAt: {
-          $gte: start,
-          $lte: end,
-        },
-        bindingCompletedAt: { $ne: null },
-      });
-
-      // Count pending orders (assigned but not started)
-      const pendingOrders = await Order.find({
-        binder: staff._id,
-        binderStatus: "Pending",
-        binderAssignedAt: { $ne: null },
-        $or: [{ bindingStartedAt: null }, { bindingCompletedAt: null }],
-        binderAssignedAt: {
-          $gte: start,
-          $lte: end,
-        },
-      });
-
-      // Count in-progress orders (started but not completed)
-      const inProgressOrders = await Order.find({
-        binder: staff._id,
-        binderStatus: "In Progress",
-        bindingStartedAt: { $ne: null },
-        bindingCompletedAt: null,
-        bindingStartedAt: {
-          $gte: start,
-          $lte: end,
-        },
-      });
-
-      // Calculate pending days for pending orders
-      const pendingOrdersWithDays = await Promise.all(
-        pendingOrders.map(async (order) => {
-          const pendingDays = calculateDaysDifference(
-            order.binderAssignedAt,
-            new Date() // current date
-          );
-          return {
-            orderId: order._id,
-            orderNumber: order.orderNumber,
-            assignedDate: order.binderAssignedAt,
-            pendingDays: pendingDays,
-            qty: order.qty,
-            companyName: order.companyName?.companyName || "N/A",
-            partyName: order.party?.fullName || "N/A",
-            bindingType: order.bindingType,
-          };
-        })
+      const completedOrders = binderOrders.filter(
+        (o) => o.bindingCompletedAt
       );
 
-      // Calculate in-progress days for in-progress orders
-      const inProgressOrdersWithDays = await Promise.all(
-        inProgressOrders.map(async (order) => {
-          const inProgressDays = calculateDaysDifference(
-            order.bindingStartedAt,
-            new Date() // current date
-          );
-          return {
-            orderId: order._id,
-            orderNumber: order.orderNumber,
-            startedDate: order.bindingStartedAt,
-            inProgressDays: inProgressDays,
-            qty: order.qty,
-            companyName: order.companyName?.companyName || "N/A",
-            partyName: order.party?.fullName || "N/A",
-            bindingType: order.bindingType,
-          };
-        })
+      const pendingOrders = binderOrders.filter(
+        (o) => o.binderStatus === "Pending"
       );
 
-      // Calculate completed days for completed orders
-      const completedOrders = await Order.find({
-        binder: staff._id,
-        bindingCompletedAt: {
-          $gte: start,
-          $lte: end,
-        },
-        binderAssignedAt: { $ne: null },
-        bindingCompletedAt: { $ne: null },
-      }).select(
-        "orderNumber binderAssignedAt bindingCompletedAt qty bindingType"
+      const inProgressOrders = binderOrders.filter(
+        (o) => o.binderStatus === "In Progress"
       );
 
-      const completedOrdersWithDays = completedOrders.map((order) => {
-        const completedDays = calculateDaysDifference(
-          order.binderAssignedAt,
-          order.bindingCompletedAt
-        );
-        return {
-          orderId: order._id,
-          orderNumber: order.orderNumber,
-          assignedDate: order.binderAssignedAt,
-          completedDate: order.bindingCompletedAt,
-          completedDays: completedDays,
-          qty: order.qty,
-          bindingType: order.bindingType,
-        };
-      });
+      // Pending days
+      const pendingOrdersWithDays = pendingOrders.map((o) => ({
+        orderId: o._id,
+        orderNumber: o.orderNumber,
+        assignedDate: o.binderAssignedAt,
+        pendingDays: calculateDaysDifference(
+          o.binderAssignedAt,
+          new Date()
+        ),
+        qty: o.qty,
+        companyName: o.companyName?.companyName || "N/A",
+        partyName: o.party?.fullName || "N/A",
+        bindingType: o.bindingType,
+      }));
 
-      // Calculate average completion time
-      let totalCompletionDays = 0;
-      let avgCompletionDays = 0;
+      // In-progress days
+      const inProgressOrdersWithDays = inProgressOrders.map((o) => ({
+        orderId: o._id,
+        orderNumber: o.orderNumber,
+        startedDate: o.bindingStartedAt,
+        inProgressDays: calculateDaysDifference(
+          o.bindingStartedAt,
+          new Date()
+        ),
+        qty: o.qty,
+        companyName: o.companyName?.companyName || "N/A",
+        partyName: o.party?.fullName || "N/A",
+        bindingType: o.bindingType,
+      }));
 
-      if (completedOrdersWithDays.length > 0) {
-        totalCompletionDays = completedOrdersWithDays.reduce(
-          (sum, order) => sum + order.completedDays,
-          0
-        );
-        avgCompletionDays =
-          totalCompletionDays / completedOrdersWithDays.length;
-      }
+      // Completed days
+      const completedOrdersWithDays = completedOrders.map((o) => ({
+        orderId: o._id,
+        orderNumber: o.orderNumber,
+        assignedDate: o.binderAssignedAt,
+        completedDate: o.bindingCompletedAt,
+        completedDays: calculateDaysDifference(
+          o.binderAssignedAt,
+          o.bindingCompletedAt
+        ),
+        qty: o.qty,
+        bindingType: o.bindingType,
+      }));
 
-      // Calculate total pending days average
-      const totalPendingDays = pendingOrdersWithDays.reduce(
-        (sum, order) => sum + order.pendingDays,
-        0
+      // Average helper
+      const avg = (arr) =>
+        arr.length
+          ? (
+              arr.reduce((s, v) => s + v, 0) / arr.length
+            ).toFixed(2)
+          : "0.00";
+
+      const avgCompletionDays = avg(
+        completedOrdersWithDays.map((o) => o.completedDays)
       );
-      const avgPendingDays =
-        pendingOrdersWithDays.length > 0
-          ? totalPendingDays / pendingOrdersWithDays.length
-          : 0;
 
-      // Calculate total in-progress days average
-      const totalInProgressDays = inProgressOrdersWithDays.reduce(
-        (sum, order) => sum + order.inProgressDays,
-        0
+      const avgPendingDays = avg(
+        pendingOrdersWithDays.map((o) => o.pendingDays)
       );
-      const avgInProgressDays =
-        inProgressOrdersWithDays.length > 0
-          ? totalInProgressDays / inProgressOrdersWithDays.length
-          : 0;
 
-      // Calculate paper usage and wastage
-      const binderPapersOrders = await Order.find({
-        binder: staff._id,
-        binderAssignedAt: {
-          $gte: start,
-          $lte: end,
-        },
-      }).select("binderPapers binderWastedSheet");
+      const avgInProgressDays = avg(
+        inProgressOrdersWithDays.map((o) => o.inProgressDays)
+      );
 
+      // Paper usage
       let totalSheetsUsed = 0;
       let totalWastedSheets = 0;
 
-      binderPapersOrders.forEach((order) => {
-        // Calculate sheets used from binderPapers array
-        order.binderPapers.forEach((paper) => {
-          if (paper.numberOfSheetsUsed && !isNaN(paper.numberOfSheetsUsed)) {
-            totalSheetsUsed += parseInt(paper.numberOfSheetsUsed) || 0;
-          }
+      binderOrders.forEach((o) => {
+        o.binderPapers?.forEach((p) => {
+          totalSheetsUsed += Number(p.numberOfSheetsUsed || 0);
         });
-        // Add wasted sheets
-        totalWastedSheets += order.binderWastedSheet || 0;
+        totalWastedSheets += o.binderWastedSheet || 0;
       });
 
-      // Get recent 5 orders for this binder
-      const recentOrders = await Order.find({
-        binder: staff._id,
-        binderAssignedAt: {
-          $gte: start,
-          $lte: end,
-        },
-      })
-        .sort({ binderAssignedAt: -1 })
-        .limit(5)
-        .select(
-          "orderNumber companyName party productItem qty binderStatus bindingStartedAt bindingCompletedAt bindingType"
-        );
+      // Recent 5 orders
+      const recentOrders = [...binderOrders]
+        .sort((a, b) => b.binderAssignedAt - a.binderAssignedAt)
+        .slice(0, 5)
+        .map((o) => ({
+          orderNumber: o.orderNumber,
+          status: o.binderStatus,
+          startedDate: o.bindingStartedAt,
+          completedDate: o.bindingCompletedAt,
+          quantity: o.qty,
+          bindingType: o.bindingType,
+          companyName: o.companyName?.companyName,
+          partyName: o.party?.fullName,
+        }));
 
-      // Prepare binder data
-      const binderData = {
+      binderPerformance.push({
         binderId: staff._id,
         name: `${staff.firstName} ${staff.lastName}`,
-        firstName: staff.firstName,
-        lastName: staff.lastName,
-        totalAssignedOrders: orders.length,
-        bindingCompletedCount: bindingCompletedCount,
+        totalAssignedOrders: binderOrders.length,
+        bindingCompletedCount: completedOrders.length,
         pendingOrdersCount: pendingOrders.length,
         inProgressOrdersCount: inProgressOrders.length,
         completionRate:
-          orders.length > 0
-            ? ((bindingCompletedCount / orders.length) * 100).toFixed(2) + "%"
+          binderOrders.length > 0
+            ? (
+                (completedOrders.length / binderOrders.length) *
+                100
+              ).toFixed(2) + "%"
             : "0%",
-        avgCompletionDays: avgCompletionDays.toFixed(2) + " days",
-        avgPendingDays: avgPendingDays.toFixed(2) + " days",
-        avgInProgressDays: avgInProgressDays.toFixed(2) + " days",
+        avgCompletionDays: `${avgCompletionDays} days`,
+        avgPendingDays: `${avgPendingDays} days`,
+        avgInProgressDays: `${avgInProgressDays} days`,
         paperUsage: {
-          totalSheetsUsed: totalSheetsUsed,
-          totalWastedSheets: totalWastedSheets,
+          totalSheetsUsed,
+          totalWastedSheets,
           wastagePercentage:
             totalSheetsUsed > 0
-              ? ((totalWastedSheets / totalSheetsUsed) * 100).toFixed(2) + "%"
+              ? (
+                  (totalWastedSheets / totalSheetsUsed) *
+                  100
+                ).toFixed(2) + "%"
               : "0%",
         },
         pendingOrdersDetails: pendingOrdersWithDays,
         inProgressOrdersDetails: inProgressOrdersWithDays,
         completedOrdersDetails: completedOrdersWithDays,
-        performanceMetrics: {
-          totalOrders: orders.length,
-          completed: bindingCompletedCount,
-          pending: pendingOrders.length,
-          inProgress: inProgressOrders.length,
-          efficiency:
-            orders.length > 0
-              ? ((bindingCompletedCount / orders.length) * 100).toFixed(2) + "%"
-              : "0%",
-          avgProcessingTime: avgCompletionDays.toFixed(2) + " days",
-        },
-        recentOrders: recentOrders.map((order) => ({
-          orderNumber: order.orderNumber,
-          status: order.binderStatus,
-          startedDate: order.bindingStartedAt,
-          completedDate: order.bindingCompletedAt,
-          quantity: order.qty,
-          bindingType: order.bindingType,
-          companyName: order.companyName?.companyName,
-          partyName: order.party?.fullName,
-        })),
-        dateRange: {
-          startDate: startDate,
-          endDate: endDate,
-        },
-      };
-
-      binderPerformance.push(binderData);
+        recentOrders,
+        dateRange: { startDate, endDate },
+      });
     }
 
-    // Sort binders by bindingCompletedCount (highest first)
+    // Sort by best binder
     binderPerformance.sort(
       (a, b) => b.bindingCompletedCount - a.bindingCompletedCount
     );
 
-    // Calculate overall statistics
+    // Overall stats
     const overallStats = {
       totalBinders: binderPerformance.length,
       totalCompleted: binderPerformance.reduce(
-        (sum, binder) => sum + binder.bindingCompletedCount,
+        (s, b) => s + b.bindingCompletedCount,
         0
       ),
       totalPending: binderPerformance.reduce(
-        (sum, binder) => sum + binder.pendingOrdersCount,
+        (s, b) => s + b.pendingOrdersCount,
         0
       ),
       totalInProgress: binderPerformance.reduce(
-        (sum, binder) => sum + binder.inProgressOrdersCount,
+        (s, b) => s + b.inProgressOrdersCount,
         0
       ),
       totalAssigned: binderPerformance.reduce(
-        (sum, binder) => sum + binder.totalAssignedOrders,
+        (s, b) => s + b.totalAssignedOrders,
         0
       ),
-      avgCompletionRate:
-        binderPerformance.length > 0
-          ? (
-            binderPerformance.reduce((sum, binder) => {
-              const rate = parseFloat(binder.completionRate);
-              return sum + (isNaN(rate) ? 0 : rate);
-            }, 0) / binderPerformance.length
-          ).toFixed(2) + "%"
-          : "0%",
-      avgCompletionDays:
-        binderPerformance.length > 0
-          ? (
-            binderPerformance.reduce((sum, binder) => {
-              const days = parseFloat(binder.avgCompletionDays);
-              return sum + (isNaN(days) ? 0 : days);
-            }, 0) / binderPerformance.length
-          ).toFixed(2) + " days"
-          : "0 days",
     };
 
     return res.status(200).json({
       success: true,
       data: binderPerformance,
-      overallStats: overallStats,
+      overallStats,
       message: "Binder performance data retrieved successfully",
     });
   } catch (error) {
@@ -2283,6 +2043,7 @@ const getscBinder = async (req, res) => {
     });
   }
 };
+
 
 const getscBookletBinder = async (req, res) => {
   try {
@@ -2308,7 +2069,7 @@ const getscBookletBinder = async (req, res) => {
         { roleName: { $regex: "Booklet", $options: "i" } },
       ],
       isDelete: false,
-    }).select("_id");
+    }).select("_id").lean();
 
     // Extract role IDs
     const bookletBinderRoleIds = bookletBinderRoles.map((role) => role._id);
@@ -2316,7 +2077,7 @@ const getscBookletBinder = async (req, res) => {
     // Fetch staff members with booklet binder roles
     const staffList = await Staff.find({
       role: { $in: bookletBinderRoleIds },
-    }).select("firstName lastName _id");
+    }).select("firstName lastName _id").lean();
 
     // If no staff found with booklet binder role
     if (staffList.length === 0) {
@@ -2347,7 +2108,7 @@ const getscBookletBinder = async (req, res) => {
       })
         .populate("companyName", "companyName")
         .populate("party", "fullName")
-        .populate("productItem", "itemName");
+        .populate("productItem", "itemName").lean();
 
       // Count booklet binding completed orders within date range
       const bookletBindingCompletedCount = await Order.countDocuments({
@@ -2437,7 +2198,7 @@ const getscBookletBinder = async (req, res) => {
         bookletBindingCompletedAt: { $ne: null },
       }).select(
         "orderNumber bookletBinderAssignedAt bookletBindingCompletedAt qty bookletFolderType"
-      );
+      ).lean();
 
       const completedOrdersWithDays = completedOrders.map((order) => {
         const completedDays = calculateDaysDifference(
@@ -2495,7 +2256,7 @@ const getscBookletBinder = async (req, res) => {
           $gte: start,
           $lte: end,
         },
-      }).select("bookletPapers bookletBinderWastedSheet");
+      }).select("bookletPapers bookletBinderWastedSheet").lean();
 
       let totalSheetsUsed = 0;
       let totalWastedSheets = 0;
@@ -2518,7 +2279,7 @@ const getscBookletBinder = async (req, res) => {
           $gte: start,
           $lte: end,
         },
-      }).select("isPasting isCutting isCreasing isFoil isPunching");
+      }).select("isPasting isCutting isCreasing isFoil isPunching").lean();
 
       const processStats = {
         pasting: processDetailsOrders.filter((order) => order.isPasting).length,
@@ -2542,7 +2303,7 @@ const getscBookletBinder = async (req, res) => {
         .limit(5)
         .select(
           "orderNumber companyName party productItem qty bookletBinderStatus bookletBindingStartedAt bookletBindingCompletedAt bookletFolderType isPasting isCutting isCreasing isFoil isPunching"
-        );
+        ).lean();
 
       // Prepare booklet binder data
       const bookletBinderData = {
