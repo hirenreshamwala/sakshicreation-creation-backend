@@ -1359,6 +1359,7 @@ exports.updateAccountMaster = async (req, res) => {
       address: req.body.address,
       partyType: req.body.partyType,
       reference: req.body.reference,
+      partyTag: req.body.partyTag,
       // Preserve existing statusApproval unless explicitly updated
       statusApproval:
         req.body.statusApproval ||
