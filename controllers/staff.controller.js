@@ -161,11 +161,14 @@ exports.getStaff = async (req, res) => {
     const staff = await Staff.find()
       .populate({
         path: "role",
-        select: "-permissions", // ❌ exclude permissions
+        select: "-permissions -totalUser -isDelete -__v", // ❌ exclude permissions
       })
-      .populate("CompanyName")
-      .select("-password")
-      .lean(); // ⚡ recommended
+       .populate({
+        path: "CompanyName",
+        select: "-createdAt -updatedAt -__v ", // ❌ exclude permissions
+      })
+      .select("-password -orders -web_token -isDelete -__v")
+      .lean();
 
     res.status(200).json({
       success: true,

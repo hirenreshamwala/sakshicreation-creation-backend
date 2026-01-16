@@ -752,8 +752,9 @@ exports.exportAssignTasksToExcel = async (req, res) => {
             { header: 'TAG', key: 'TAG', width: 10 },
             { header: 'REASON FOR VISIT', key: 'REASON FOR VISIT', width: 20 },
             { header: 'STATUS', key: 'STATUS', width: 12 },
+            { header: 'ASSIGNED TO', key: 'ASSIGNED TO', width: 20 },
             { header: 'REMARKS', key: 'REMARKS', width: 25 },
-            { header: 'FEEDBACK', key: 'FEEDBACK', width: 25 }
+            { header: 'FEEDBACK', key: 'FEEDBACK', width: 25 },
         ];
 
         // Add data rows with only required fields
@@ -770,8 +771,9 @@ exports.exportAssignTasksToExcel = async (req, res) => {
                 TAG: task.TAG || '',
                 'REASON FOR VISIT': task['REASON FOR VISIT'] || '',
                 STATUS: task.STATUS || '',
+                'ASSIGNED TO': task['ASSIGNED TO'] || '',
                 REMARKS: task.REMARKS || '',
-                FEEDBACK: task.FEEDBACK || ''
+                FEEDBACK: task.FEEDBACK || '',
             });
         });
 
@@ -1514,7 +1516,7 @@ exports.exportLeadsToExcel = async (req, res) => {
             { header: 'TAG', key: 'TAG', width: 10 },
             { header: 'REASON', key: 'REASON', width: 20 },
             { header: 'STATUS', key: 'STATUS', width: 12 },
-            // { header: 'ASSIGNED TO', key: 'ASSIGNED TO', width: 20 },
+            { header: 'ASSIGNED TO', key: 'ASSIGNED TO', width: 20 },
             // { header: 'CREATED BY', key: 'CREATED BY', width: 20 },
             { header: 'REMARKS', key: 'REMARKS', width: 25 },
             { header: 'CALL FEEDBACK', key: 'CALL FEEDBACK', width: 25 },
@@ -2678,21 +2680,17 @@ exports.exportPaymentFolderToExcel = async (req, res) => {
         const workbook = new ExcelJS.Workbook();
         const worksheet = workbook.addWorksheet('Payment Folders Report');
 
+        // Define columns
         worksheet.columns = [
             { header: 'S.NO', key: 'srNo', width: 10 },
-            { header: 'MONTH', key: 'month', width: 15 },
-            { header: 'PARTY', key: 'partyName', width: 35 },
-            { header: 'ADDRESS', key: 'address', width: 60 },
-            { header: 'PERSON', key: 'person', width: 25 },
-            { header: 'MOBILE NO', key: 'mobileNumber', width: 18 },
-            { header: 'AMOUNT', key: 'amount', width: 15, style: { numFmt: '#,##0.00' } },
-            { header: 'RECEIVED AMOUNT', key: 'recievedAmount', width: 30, style: { numFmt: '#,##0.00' } },
-            { header: 'REMAINING AMOUNT', key: 'remainingAmount', width: 30, style: { numFmt: '#,##0.00' } },
-            { header: 'PAYMENT TERMS', key: 'paymentTerms', width: 25 },
-            { header: 'AREA', key: 'area', width: 15 },
-            { header: 'ASSIGN TO', key: 'assignedTo', width: 25 },
-            { header: 'REASON', key: 'reason', width: 40 },
-            { header: 'REMARKS', key: 'remarks', width: 50 },
+            { header: 'PARTY NAME', key: 'partyName', width: 35 },
+            { header: 'OLD', key: 'januaryToAugust', width: 20, style: { numFmt: '#,##0' } },
+            { header: 'SEP', key: 'septPayment', width: 15, style: { numFmt: '#,##0' } },
+            { header: 'OCT', key: 'octPayment', width: 15, style: { numFmt: '#,##0' } },
+            { header: 'NOV', key: 'novPayment', width: 15, style: { numFmt: '#,##0' } },
+            { header: 'DEC', key: 'decPayment', width: 15, style: { numFmt: '#,##0' } },
+            { header: 'TOTAL', key: 'totalPayment', width: 20, style: { numFmt: '#,##0' } },
+            { header: 'COLLECTING MAN', key: 'collectingMan', width: 20, style: { numFmt: '#,##0' } },
         ];
 
         const headerRow = worksheet.getRow(1);
@@ -2703,10 +2701,16 @@ exports.exportPaymentFolderToExcel = async (req, res) => {
         let currentRowNumber = 2;
         let globalSrNo = 1;
 
+        // Calculate the range from the current date to 1 year ago
+        const currentDate = new Date();
+        const lastYearDate = new Date();
+        lastYearDate.setFullYear(currentDate.getFullYear() - 1);
+
         for (const comp of selectedCompanies) {
             const companyName = comp.companyName;
 
-            worksheet.mergeCells(currentRowNumber, 1, currentRowNumber, 14);
+            // Add company name row
+            worksheet.mergeCells(currentRowNumber, 1, currentRowNumber, 9);
             const companyCell = worksheet.getCell(currentRowNumber, 1);
             companyCell.value = companyName;
             companyCell.font = { bold: true, size: 13 };
@@ -2714,32 +2718,16 @@ exports.exportPaymentFolderToExcel = async (req, res) => {
             companyCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8E8E8' } };
             currentRowNumber++;
 
-            // Only direct filters in query (Month, Area, Date)
-            let finalQuery = { company: comp._id };
-
-            if (startDate || endDate) {
-                finalQuery.createdAt = {};
-                if (startDate) {
-                    const start = new Date(startDate);
-                    start.setHours(0, 0, 0, 0);
-                    finalQuery.createdAt.$gte = start;
+            // Set up query for the last 12 months
+            let finalQuery = {
+                company: comp._id,
+                createdAt: {
+                    $gte: lastYearDate,
+                    $lte: currentDate,
                 }
-                if (endDate) {
-                    const end = new Date(endDate);
-                    end.setHours(23, 59, 59, 999);
-                    finalQuery.createdAt.$lte = end;
-                }
-            }
+            };
 
-            if (filters.area && filters.area.length > 0 && filters.area[0] !== "All") {
-                finalQuery.area = { $in: filters.area };
-            }
-
-            if (filters.month && filters.month.length > 0) {
-                finalQuery.month = { $in: filters.month };
-            }
-
-            // Fetch with full populate
+            // Fetch filtered data
             let folders = await PaymentFolder.find(finalQuery)
                 .populate({
                     path: "party",
@@ -2751,47 +2739,10 @@ exports.exportPaymentFolderToExcel = async (req, res) => {
                         { path: "address.pincode", model: "Market", select: "pincode" },
                     ]
                 })
-                .populate("assignedTo", "firstName lastName")
-                .populate("assignTask", "reasonForVisit")
-                .sort({ createdAt: -1 })
+                .sort({ createdAt: -1 });
 
-            // Manual filtering for Party, Person (contactPerson/ownerName), Assigned To, Remarks, Search
+            // Manual filtering for Party, Person, Assigned To, Remarks, Search
             let filteredFolders = [...folders];
-
-            // Party filter
-            if (filters.party && filters.party.length > 0) {
-                const partySet = new Set(filters.party.map(p => p.toUpperCase()));
-                filteredFolders = filteredFolders.filter(f =>
-                    f.party?.partyName && partySet.has(f.party.partyName.toUpperCase())
-                );
-            }
-
-            // Person (contactPerson or ownerName)
-            if (filters.person && filters.person.length > 0) {
-                const personSet = new Set(filters.person.map(p => p.toUpperCase()));
-                filteredFolders = filteredFolders.filter(f => {
-                    const contactPerson = f.party?.contactPerson?.toUpperCase() || '';
-                    const ownerName = f.party?.ownerName?.toUpperCase() || '';
-                    return personSet.has(contactPerson) || personSet.has(ownerName);
-                });
-            }
-
-            // Assigned To filter
-            if (filters.assignedTo && filters.assignedTo.length > 0) {
-                const assignSet = new Set(filters.assignedTo.map(a => a.toUpperCase()));
-                filteredFolders = filteredFolders.filter(f => {
-                    const name = f.assignedTo ? `${f.assignedTo.firstName} ${f.assignedTo.lastName}`.trim().toUpperCase() : '';
-                    return assignSet.has(name);
-                });
-            }
-
-            // Remarks filter
-            if (filters.remarks && filters.remarks.length > 0) {
-                const remarksSet = new Set(filters.remarks.map(r => r.toUpperCase()));
-                filteredFolders = filteredFolders.filter(f =>
-                    f.remarks && remarksSet.has(f.remarks.toUpperCase())
-                );
-            }
 
             // Global Search
             if (search && search.trim()) {
@@ -2821,67 +2772,53 @@ exports.exportPaymentFolderToExcel = async (req, res) => {
                 });
             }
 
-            if (filteredFolders.length > 0) {
-                filteredFolders.forEach(folder => {
-                    const party = folder.party;
-                    const addressParts = [];
-                    if (party?.address?.unitNo) addressParts.push(`Unit No: ${party.address.unitNo}`);
-                    if (party?.address?.marketName?.marketName) addressParts.push(`Market: ${party.address.marketName.marketName}`);
-                    if (party?.address?.landMark?.landmark) addressParts.push(`Landmark: ${party.address.landMark.landmark}`);
-                    if (party?.address?.area?.area) addressParts.push(`Area: ${party.address.area.area}`);
-                    if (party?.address?.pincode?.pincode) addressParts.push(`Pincode: ${party.address.pincode.pincode}`);
-                    const fullAddress = addressParts.length > 0 ? addressParts.join(', ') : '-';
+            // Process each folder for payment breakdown
+            filteredFolders.forEach(folder => {
+                const party = folder.party;
+                const paymentData = {
+                    partyName: party?.partyName || '-',
+                    januaryToAugustPayments: 0,
+                    septPayment: 0,
+                    octPayment: 0,
+                    novPayment: 0,
+                    decPayment: 0,
+                    totalPayments: 0,
+                };
 
-                    const firstMobile = party?.contactForPayment ||
-                        party?.contactMobileNo ||
-                        party?.contactWhatsAppNo ||
-                        party?.ownerMobileNo ||
-                        party?.ownerWhatsAppNo || 'N/A';
-
-                    const personName = party?.contactPerson?.trim() || party?.ownerName?.trim() || '-';
-                    const assignedToName = folder.assignedTo ? `${folder.assignedTo.firstName} ${folder.assignedTo.lastName}`.trim() : 'Unassigned';
-                    const reason = folder.assignTask?.reasonForVisit || '-';
-
-                    worksheet.addRow({
-                        srNo: globalSrNo++,
-                        month: folder.month || '-',
-                        partyName: party?.partyName || '-',
-                        address: fullAddress,
-                        person: personName,
-                        mobileNumber: firstMobile,
-                        amount: Number(folder.paymentAmount) || 0,
-                        recievedAmount: Number(folder.receivedAmount) || 0,
-                        remainingAmount: Number(folder.pendingAmount) || 0,
-                        paymentTerms: folder.paymentTerms || '-',
-                        area: folder.area || '-',
-                        assignedTo: assignedToName,
-                        reason: reason,
-                        remarks: folder.remarks || '-',
-                    });
+                folder.payments.forEach(payment => {
+                    const paymentMonth = payment.date.getMonth() + 1; // Month index is 0-based
+                    if (paymentMonth <= 8) {
+                        paymentData.januaryToAugustPayments += payment.amount; // Payments from January to August
+                    } else if (paymentMonth === 9) {
+                        paymentData.septPayment += payment.amount; // September payment
+                    } else if (paymentMonth === 10) {
+                        paymentData.octPayment += payment.amount; // October payment
+                    } else if (paymentMonth === 11) {
+                        paymentData.novPayment += payment.amount; // November payment
+                    } else if (paymentMonth === 12) {
+                        paymentData.decPayment += payment.amount; // December payment
+                    }
+                    paymentData.totalPayments += payment.amount; // Total payment
                 });
-            } else {
+
                 worksheet.addRow({
                     srNo: globalSrNo++,
-                    month: '-',
-                    partyName: 'No payment folders found with applied filters',
-                    address: '-',
-                    person: '',
-                    mobileNumber: '',
-                    amount: 0,
-                    recievedAmount: 0,
-                    remainingAmount: 0,
-                    area: '',
-                    assignedTo: '',
-                    reason: '',
-                    remarks: '',
+                    partyName: paymentData.partyName,
+                    januaryToAugust: paymentData.januaryToAugustPayments,
+                    septPayment: paymentData.septPayment,
+                    octPayment: paymentData.octPayment,
+                    novPayment: paymentData.novPayment,
+                    decPayment: paymentData.decPayment,
+                    totalPayment: paymentData.totalPayments,
                 });
-            }
+            });
 
             currentRowNumber = worksheet.lastRow.number + 2;
             worksheet.addRow({});
             currentRowNumber++;
         }
 
+        // Set the response headers and filename
         res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
         const dateStr = startDate && endDate
             ? `${moment(startDate).format('DDMMYYYY')}_to_${moment(endDate).format('DDMMYYYY')}`
@@ -2889,6 +2826,7 @@ exports.exportPaymentFolderToExcel = async (req, res) => {
         const fileName = `PaymentFolders_Report_${dateStr}.xlsx`;
         res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
 
+        // Write the Excel file to the response
         await workbook.xlsx.write(res);
         res.end();
     } catch (error) {
@@ -2896,6 +2834,8 @@ exports.exportPaymentFolderToExcel = async (req, res) => {
         res.status(500).json({ success: false, message: "Export failed", error: error.message });
     }
 };
+
+
 
 exports.exportPendingClientApprovalOrdersToExcel = async (req, res) => {
     try {
