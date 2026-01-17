@@ -31,4 +31,6 @@ router.post("/add-callhistory/:id", LeadController.addLeadCallHistory);
 
 router.post("/download-excel", ExcelDownloadController.exportLeadsToExcel);
 
+router.post("/delete/bulk", LeadController.bulkDeleteLeads);
+
 module.exports = router;

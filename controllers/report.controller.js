@@ -390,45 +390,39 @@ const getSCReport = async (req, res) => {
 
     const reports = await Promise.all(
       staffList.map(async (staff) => {
-        // Task counts
-        const completedTasks = await AssignTask.countDocuments({
+        // Get all tasks for this staff in the date range
+        const allTasks = await AssignTask.find({
           assignTo: staff._id,
           companyName: company._id,
-          status: { $regex: "^completed$", $options: "i" },
           ...taskLeadDateFilter,
-        });
-        const cancelledTasks = await AssignTask.countDocuments({
-          assignTo: staff._id,
-          companyName: company._id,
-          status: { $regex: "^cancelled$", $options: "i" },
-          ...taskLeadDateFilter,
-        });
-        const rescheduledTasks = await AssignTask.countDocuments({
-          assignTo: staff._id,
-          companyName: company._id,
-          status: { $regex: "^rescheduled$", $options: "i" },
-          ...taskLeadDateFilter,
-        });
-        const pendingTasks = await AssignTask.countDocuments({
-          assignTo: staff._id,
-          companyName: company._id,
-          status: { $regex: "^pending$", $options: "i" },
-          ...taskLeadDateFilter,
-        });
+        }).populate("partyName", "partyTag").lean();
+
+        // 1. Total Visits - Count all completed tasks
+        const visitCount = allTasks.filter(task => 
+          /^completed$/i.test(task.status)
+        ).length;
+
+        // Task counts (using allTasks for efficiency)
+        const completedTasks = allTasks.filter(task => 
+          /^completed$/i.test(task.status)
+        ).length;
+        
+        const cancelledTasks = allTasks.filter(task => 
+          /^cancelled$/i.test(task.status)
+        ).length;
+        
+        const rescheduledTasks = allTasks.filter(task => 
+          /^rescheduled$/i.test(task.status)
+        ).length;
+        
+        const pendingTasks = allTasks.filter(task => 
+          /^pending$/i.test(task.status)
+        ).length;
 
         // Total tasks
-        const totalTasks = await AssignTask.countDocuments({
-          assignTo: staff._id,
-          companyName: company._id,
-          ...taskLeadDateFilter,
-        });
+        const totalTasks = allTasks.length;
 
         // tasksByReason
-        const tasks = await AssignTask.find({
-          assignTo: staff._id,
-          companyName: company._id,
-          ...taskLeadDateFilter,
-        }).select("reasonForVisit status").lean();
         const tasksByReason = {};
 
         taskReasons.forEach(
@@ -451,7 +445,7 @@ const getSCReport = async (req, res) => {
           pending: 0,
         };
 
-        tasks.forEach((task) => {
+        allTasks.forEach((task) => {
           const key = taskReasons.find(
             (r) => r.toLowerCase() === (task.reasonForVisit || "").toLowerCase()
           )
@@ -508,17 +502,11 @@ const getSCReport = async (req, res) => {
         });
 
         // Visit party task - new customer count
-        const visitTasks = await AssignTask.find({
-          assignTo: staff._id,
-          companyName: company._id,
-          ...taskLeadDateFilter,
-        }).populate("partyName", "partyTag");
-
         let getVisitCount = 0;
         let newPartyCount = 0;
         let customerPartyCount = 0;
 
-        visitTasks.forEach((task) => {
+        allTasks.forEach((task) => {
           if (/^get visit$/i.test(task.reasonForVisit)) {
             getVisitCount++;
 
@@ -529,6 +517,12 @@ const getSCReport = async (req, res) => {
             }
           }
         });
+
+        // 2. New party visits - Get parties where partyTag is NEW
+        const newPartyVisits = allTasks.filter(task => 
+          task.partyName?.partyTag === "NEW" && 
+          /^completed$/i.test(task.status)
+        ).length;
 
         // New party visit to customer (NEW parties that became CUSTOMER within date range)
         const newToCustomerParties = await Party.countDocuments({
@@ -541,30 +535,72 @@ const getSCReport = async (req, res) => {
           }
         });
 
+        // 3. New party to customer - Count of NEW parties converted to CUSTOMER
+        // We need to find parties that were created as NEW and later became CUSTOMER
+        const newToCustomer = await Party.aggregate([
+          {
+            $match: {
+              createdBy: staff._id,
+              companyName: company._id,
+              partyTag: "CUSTOMER",
+              createdAt: {
+                $gte: new Date(startDate),
+                $lte: new Date(endDate)
+              }
+            }
+          },
+          {
+            $lookup: {
+              from: "orders",
+              let: { partyId: "$_id" },
+              pipeline: [
+                {
+                  $match: {
+                    $expr: {
+                      $and: [
+                        { $eq: ["$party", "$$partyId"] },
+                        { $eq: ["$companyName", company._id] }
+                      ]
+                    }
+                  }
+                },
+                { $limit: 1 }
+              ],
+              as: "firstOrder"
+            }
+          },
+          {
+            $match: {
+              firstOrder: { $ne: [] },
+              $expr: {
+                $gt: [
+                  { $arrayElemAt: ["$firstOrder.createdAt", 0] },
+                  "$createdAt"
+                ]
+              }
+            }
+          },
+          {
+            $count: "count"
+          }
+        ]);
+
+        const newPartyToCustomer = newToCustomer.length > 0 ? newToCustomer[0].count : 0;
+
         // Lead counts
-        const completedLeads = await Lead.countDocuments({
-          assignedTo: staff._id,
-          companyName: company._id,
-          status: { $regex: "^completed$", $options: "i" },
-          ...taskLeadDateFilter,
-        });
-        const cancelledLeads = await Lead.countDocuments({
-          assignedTo: staff._id,
-          companyName: company._id,
-          status: { $regex: "^cancelled$", $options: "i" },
-          ...taskLeadDateFilter,
-        });
-        const rescheduledLeads = await Lead.countDocuments({
-          assignedTo: staff._id,
-          companyName: company._id,
-          status: { $regex: "^rescheduled$", $options: "i" },
-          ...taskLeadDateFilter,
-        });
-        const totalLeads = await Lead.countDocuments({
-          assignedTo: staff._id,
-          companyName: company._id,
-          ...taskLeadDateFilter,
-        });
+        const completedLeads = leads.filter(lead => 
+          /^completed$/i.test(lead.status)
+        ).length;
+        
+        const cancelledLeads = leads.filter(lead => 
+          /^cancelled$/i.test(lead.status)
+        ).length;
+        
+        const rescheduledLeads = leads.filter(lead => 
+          /^rescheduled$/i.test(lead.status)
+        ).length;
+        
+        const totalLeads = leads.length;
 
         // QP Orders
         const qpOrders = await QpData.countDocuments({
@@ -773,6 +809,11 @@ const getSCReport = async (req, res) => {
           staffName: `${staff.firstName} ${staff.lastName}`,
           companyId: company._id,
           companyName: company.companyName,
+          // 3 new fields added here
+          visit: visitCount,                    // Total completed visits
+          newPartyVisit: newPartyVisits,       // New party visits
+          newPartyToCustomer: newPartyToCustomer, // New parties converted to customer
+          
           completedTasks,
           cancelledTasks,
           doneTask: completedTasks + cancelledTasks,
