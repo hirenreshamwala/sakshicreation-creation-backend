@@ -2672,7 +2672,12 @@ exports.exportPaymentFolderToExcel = async (req, res) => {
             return res.status(400).json({ success: false, message: "No companies specified" });
         }
 
-        const selectedCompanies = await CompanyName.find({ companyName: { $in: companyNames } }).lean();
+        // =============================
+        // Company Filter (NO AREA HERE)
+        // =============================
+        const companyFilter = { companyName: { $in: companyNames } };
+        const selectedCompanies = await CompanyName.find(companyFilter).lean();
+
         if (selectedCompanies.length === 0) {
             return res.status(400).json({ success: false, message: "No matching companies found" });
         }
@@ -2680,161 +2685,211 @@ exports.exportPaymentFolderToExcel = async (req, res) => {
         const workbook = new ExcelJS.Workbook();
         const worksheet = workbook.addWorksheet('Payment Folders Report');
 
-        // Define columns
+        // =============================
+        // LAST 4 MONTHS CALCULATION
+        // =============================
+        const now = new Date();
+        const currentMonth = now.getMonth(); // 0-11
+        const currentYear = now.getFullYear();
+
+        const last4Months = [];
+        for (let i = 3; i >= 0; i--) {
+            const d = new Date(currentYear, currentMonth - i, 1);
+            last4Months.push({
+                month: d.getMonth() + 1,
+                year: d.getFullYear(),
+                label: d.toLocaleString('en-US', { month: 'short' }).toUpperCase()
+            });
+        }
+
+        // =============================
+        // EXCEL COLUMNS
+        // =============================
         worksheet.columns = [
-            { header: 'S.NO', key: 'srNo', width: 10 },
-            { header: 'PARTY NAME', key: 'partyName', width: 35 },
-            { header: 'OLD', key: 'januaryToAugust', width: 20, style: { numFmt: '#,##0' } },
-            { header: 'SEP', key: 'septPayment', width: 15, style: { numFmt: '#,##0' } },
-            { header: 'OCT', key: 'octPayment', width: 15, style: { numFmt: '#,##0' } },
-            { header: 'NOV', key: 'novPayment', width: 15, style: { numFmt: '#,##0' } },
-            { header: 'DEC', key: 'decPayment', width: 15, style: { numFmt: '#,##0' } },
-            { header: 'TOTAL', key: 'totalPayment', width: 20, style: { numFmt: '#,##0' } },
-            { header: 'COLLECTING MAN', key: 'collectingMan', width: 20, style: { numFmt: '#,##0' } },
+            { header: 'S.NO', key: 'srNo', width: 8 },
+            { header: 'PARTY NAME', key: 'partyName', width: 32 },
+            { header: 'PHONE NO', key: 'phoneNumber', width: 18 },
+            { header: 'CONTACT PERSON', key: 'contactPersonName', width: 22 },
+            { header: 'OLD', key: 'OLD', width: 14, style: { numFmt: '#,##0' } },
+            ...last4Months.map(m => ({
+                header: m.label,
+                key: m.label,
+                width: 14,
+                style: { numFmt: '#,##0' }
+            })),
+            { header: 'TOTAL', key: 'TOTAL', width: 15, style: { numFmt: '#,##0' } },
+            { header: 'ASSIGN TO', key: 'assignTo', width: 20 },
+            { header: 'ASSIGN DATE', key: 'assignDate', width: 18 },
+            { header: 'REMARKS', key: 'remarks', width: 30 },
         ];
 
+        // Header styling
         const headerRow = worksheet.getRow(1);
         headerRow.font = { bold: true };
-        headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD3D3D3' } };
-        headerRow.alignment = { vertical: 'middle', horizontal: 'center' };
+        headerRow.alignment = { horizontal: 'center', vertical: 'middle' };
+        headerRow.fill = {
+            type: 'pattern',
+            pattern: 'solid',
+            fgColor: { argb: 'FFD3D3D3' }
+        };
 
-        let currentRowNumber = 2;
         let globalSrNo = 1;
 
-        // Calculate the range from the current date to 1 year ago
-        const currentDate = new Date();
-        const lastYearDate = new Date();
-        lastYearDate.setFullYear(currentDate.getFullYear() - 1);
-
+        // =============================
+        // LOOP COMPANIES
+        // =============================
         for (const comp of selectedCompanies) {
-            const companyName = comp.companyName;
 
-            // Add company name row
-            worksheet.mergeCells(currentRowNumber, 1, currentRowNumber, 9);
-            const companyCell = worksheet.getCell(currentRowNumber, 1);
-            companyCell.value = companyName;
-            companyCell.font = { bold: true, size: 13 };
-            companyCell.alignment = { horizontal: 'center', vertical: 'middle' };
-            companyCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8E8E8' } };
-            currentRowNumber++;
+            // Company Title Row
+            worksheet.mergeCells(
+                worksheet.lastRow.number + 1,
+                1,
+                worksheet.lastRow.number + 1,
+                worksheet.columns.length
+            );
 
-            // Set up query for the last 12 months
-            let finalQuery = {
-                company: comp._id,
-                createdAt: {
-                    $gte: lastYearDate,
-                    $lte: currentDate,
-                }
+            const companyRow = worksheet.lastRow;
+            companyRow.getCell(1).value = comp.companyName;
+            companyRow.font = { bold: true, size: 13 };
+            companyRow.alignment = { horizontal: 'center' };
+            companyRow.fill = {
+                type: 'pattern',
+                pattern: 'solid',
+                fgColor: { argb: 'FFE8E8E8' }
             };
 
-            // Fetch filtered data
+            // =============================
+            // FETCH PAYMENT FOLDERS
+            // =============================
+            let finalQuery = { company: comp._id };
+
             let folders = await PaymentFolder.find(finalQuery)
                 .populate({
                     path: "party",
-                    select: "partyName contactMobileNo contactWhatsAppNo ownerMobileNo ownerWhatsAppNo contactForPayment ownerName contactPerson address",
+                    select: "partyName contactMobileNo ownerMobileNo contactPerson ownerName address",
                     populate: [
-                        { path: "address.marketName", model: "Market", select: "marketName" },
-                        { path: "address.landMark", model: "Market", select: "landmark" },
-                        { path: "address.area", model: "Market", select: "area" },
-                        { path: "address.pincode", model: "Market", select: "pincode" },
+                        { path: "address.area", model: "Market", select: "area" }
                     ]
                 })
+                .populate("assignedTo", "firstName lastName")
                 .sort({ createdAt: -1 });
 
-            // Manual filtering for Party, Person, Assigned To, Remarks, Search
+            // =============================
+            // MANUAL FILTERS
+            // =============================
             let filteredFolders = [...folders];
 
-            // Global Search
-            if (search && search.trim()) {
-                const lowerSearch = search.trim().toLowerCase();
-                filteredFolders = filteredFolders.filter(folder => {
-                    const partyName = folder.party?.partyName?.toLowerCase() || '';
-                    const area = folder.area?.toLowerCase() || '';
-                    const month = folder.month?.toLowerCase() || '';
-                    const remarks = folder.remarks?.toLowerCase() || '';
-                    const assignedTo = folder.assignedTo ? `${folder.assignedTo.firstName} ${folder.assignedTo.lastName}`.toLowerCase() : '';
-                    const person = (folder.party?.contactPerson || folder.party?.ownerName || '').toLowerCase();
-                    const fullAddress = [
-                        folder.party?.address?.unitNo,
-                        folder.party?.address?.marketName?.marketName,
-                        folder.party?.address?.landMark?.landmark,
-                        folder.party?.address?.area?.area,
-                        folder.party?.address?.pincode?.pincode
-                    ].filter(Boolean).join(' ').toLowerCase();
+            // Area filter (Party level)
+            if (filters.area?.length) {
+                filteredFolders = filteredFolders.filter(f =>
+                    filters.area.includes(
+                        f?.area?.toString()
+                    )
+                );
+            }
 
-                    return partyName.includes(lowerSearch) ||
-                        area.includes(lowerSearch) ||
-                        month.includes(lowerSearch) ||
-                        remarks.includes(lowerSearch) ||
-                        assignedTo.includes(lowerSearch) ||
-                        person.includes(lowerSearch) ||
-                        fullAddress.includes(lowerSearch);
+            // Search filter
+            if (search?.trim()) {
+                const s = search.toLowerCase();
+                filteredFolders = filteredFolders.filter(f => {
+                    const party = f.party || {};
+                    return (
+                        party.partyName?.toLowerCase().includes(s) ||
+                        party.contactPerson?.toLowerCase().includes(s) ||
+                        party.ownerName?.toLowerCase().includes(s) ||
+                        f.remarks?.toLowerCase().includes(s)
+                    );
                 });
             }
 
-            // Process each folder for payment breakdown
+            // =============================
+            // PARTY-WISE AGGREGATION
+            // =============================
+            const partyMap = new Map();
+
             filteredFolders.forEach(folder => {
                 const party = folder.party;
-                const paymentData = {
-                    partyName: party?.partyName || '-',
-                    januaryToAugustPayments: 0,
-                    septPayment: 0,
-                    octPayment: 0,
-                    novPayment: 0,
-                    decPayment: 0,
-                    totalPayments: 0,
-                };
+                if (!party?._id) return;
 
-                folder.payments.forEach(payment => {
-                    const paymentMonth = payment.date.getMonth() + 1; // Month index is 0-based
-                    if (paymentMonth <= 8) {
-                        paymentData.januaryToAugustPayments += payment.amount; // Payments from January to August
-                    } else if (paymentMonth === 9) {
-                        paymentData.septPayment += payment.amount; // September payment
-                    } else if (paymentMonth === 10) {
-                        paymentData.octPayment += payment.amount; // October payment
-                    } else if (paymentMonth === 11) {
-                        paymentData.novPayment += payment.amount; // November payment
-                    } else if (paymentMonth === 12) {
-                        paymentData.decPayment += payment.amount; // December payment
+                const partyId = party._id.toString();
+
+                if (!partyMap.has(partyId)) {
+                    const base = {
+                        partyName: party.partyName || '-',
+                        phoneNumber: party.contactMobileNo || party.ownerMobileNo || '-',
+                        contactPersonName: party.contactPerson || party.ownerName || '-',
+                        OLD: 0,
+                        TOTAL: 0,
+                        assignTo: folder.assignedTo
+                            ? `${folder.assignedTo.firstName} ${folder.assignedTo.lastName}`
+                            : '',
+                        assignDate: folder.assignedDate
+                            ? new Date(folder.assignedDate).toLocaleDateString()
+                            : '',
+                        remarks: folder.remarks || '-'
+                    };
+
+                    last4Months.forEach(m => base[m.label] = 0);
+                    partyMap.set(partyId, base);
+                }
+
+                const row = partyMap.get(partyId);
+
+                folder.payments.forEach(p => {
+                    const d = new Date(p.date);
+                    const m = d.getMonth() + 1;
+                    const y = d.getFullYear();
+
+                    const match = last4Months.find(
+                        lm => lm.month === m && lm.year === y
+                    );
+
+                    if (match) {
+                        row[match.label] += p.amount;
+                    } else {
+                        row.OLD += p.amount;
                     }
-                    paymentData.totalPayments += payment.amount; // Total payment
-                });
 
-                worksheet.addRow({
-                    srNo: globalSrNo++,
-                    partyName: paymentData.partyName,
-                    januaryToAugust: paymentData.januaryToAugustPayments,
-                    septPayment: paymentData.septPayment,
-                    octPayment: paymentData.octPayment,
-                    novPayment: paymentData.novPayment,
-                    decPayment: paymentData.decPayment,
-                    totalPayment: paymentData.totalPayments,
+                    row.TOTAL += p.amount;
                 });
             });
 
-            currentRowNumber = worksheet.lastRow.number + 2;
+            // =============================
+            // WRITE ROWS
+            // =============================
+            for (const data of partyMap.values()) {
+                worksheet.addRow({
+                    srNo: globalSrNo++,
+                    ...data
+                });
+            }
+
             worksheet.addRow({});
-            currentRowNumber++;
         }
 
-        // Set the response headers and filename
-        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-        const dateStr = startDate && endDate
-            ? `${moment(startDate).format('DDMMYYYY')}_to_${moment(endDate).format('DDMMYYYY')}`
-            : 'All_Time';
-        const fileName = `PaymentFolders_Report_${dateStr}.xlsx`;
+        // =============================
+        // RESPONSE
+        // =============================
+        res.setHeader(
+            'Content-Type',
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        );
+
+        const fileName = `PaymentFolders_Report_${moment().format('DDMMYYYY')}.xlsx`;
         res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
 
-        // Write the Excel file to the response
         await workbook.xlsx.write(res);
         res.end();
+
     } catch (error) {
-        console.error("Error exporting payment folders:", error);
-        res.status(500).json({ success: false, message: "Export failed", error: error.message });
+        console.error("Export error:", error);
+        res.status(500).json({
+            success: false,
+            message: "Export failed",
+            error: error.message
+        });
     }
 };
-
 
 
 exports.exportPendingClientApprovalOrdersToExcel = async (req, res) => {
