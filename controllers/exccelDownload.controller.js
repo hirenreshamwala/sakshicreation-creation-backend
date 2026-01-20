@@ -2761,7 +2761,12 @@ exports.exportPaymentFolderToExcel = async (req, res) => {
             // =============================
             // FETCH PAYMENT FOLDERS
             // =============================
-            let finalQuery = { company: comp._id };
+            let finalQuery = {
+                company: comp._id,
+                $expr: {
+                    $ne: ["$paymentAmount", 0]
+                }
+            };
 
             let folders = await PaymentFolder.find(finalQuery)
                 .populate({
