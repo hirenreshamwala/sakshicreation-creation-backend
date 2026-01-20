@@ -2893,7 +2893,7 @@ exports.exportPaymentFolderToExcel = async (req, res) => {
                         cell.fill = {
                             type: 'pattern',
                             pattern: 'solid',
-                            fgColor: { argb: 'FFFFE0E0' } // Light red background
+                            // fgColor: { argb: 'FFFFE0E0' } // Light red background
                         };
                     });
                 }
