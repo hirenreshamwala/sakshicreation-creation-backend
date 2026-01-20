@@ -2718,7 +2718,7 @@ exports.exportPaymentFolderToExcel = async (req, res) => {
                 style: { numFmt: '#,##0' }
             })),
             { header: 'TOTAL', key: 'TOTAL', width: 15, style: { numFmt: '#,##0' } },
-            { header: 'PENDING', key: 'PENDING', width: 15, style: { numFmt: '#,##0' } }, // नया कॉलम जोड़ा
+            { header: 'PENDING', key: 'PENDING', width: 15, style: { numFmt: '#,##0' } },
             { header: 'ASSIGN TO', key: 'assignTo', width: 20 },
             { header: 'ASSIGN DATE', key: 'assignDate', width: 18 },
             { header: 'REMARKS', key: 'remarks', width: 30 },
@@ -2762,22 +2762,21 @@ exports.exportPaymentFolderToExcel = async (req, res) => {
             // First, fetch all payment folders for this company
             let folders = await PaymentFolder.find({
                 company: comp._id,
-                paymentAmount: { $gt: 0 } // Only folders with payment amount > 0
+                paymentAmount: { $gt: 0 }
             })
-                .populate({
-                    path: "party",
-                    select: "partyName contactMobileNo ownerMobileNo contactPerson ownerName address",
-                    populate: [
-                        { path: "address.area", model: "Market", select: "area" }
-                    ]
-                })
-                .populate("assignedTo", "firstName lastName")
-                .sort({ createdAt: -1 })
-                .lean();
+            .populate({
+                path: "party",
+                select: "partyName contactMobileNo ownerMobileNo contactPerson ownerName address",
+                populate: [
+                    { path: "address.area", model: "Market", select: "area" }
+                ]
+            })
+            .populate("assignedTo", "firstName lastName")
+            .sort({ createdAt: -1 })
+            .lean();
 
             // Filter folders where pending amount > 0
             let foldersWithPending = folders.filter(folder => {
-                // Calculate received amount from payments array
                 const receivedAmount = folder.payments.reduce((total, payment) => total + payment.amount, 0);
                 const pendingAmount = folder.paymentAmount - receivedAmount;
                 return pendingAmount > 0;
@@ -2838,7 +2837,7 @@ exports.exportPaymentFolderToExcel = async (req, res) => {
                         contactPersonName: party.contactPerson || party.ownerName || '-',
                         OLD: 0,
                         TOTAL: 0,
-                        PENDING: 0, // Pending amount initialize
+                        PENDING: 0,
                         assignTo: folder.assignedTo
                             ? `${folder.assignedTo.firstName} ${folder.assignedTo.lastName}`
                             : '',
@@ -2878,25 +2877,14 @@ exports.exportPaymentFolderToExcel = async (req, res) => {
             });
 
             // =============================
-            // WRITE ROWS
+            // WRITE ROWS (NORMAL ROWS WITHOUT HIGHLIGHT)
             // =============================
             for (const data of partyMap.values()) {
-                // Add row to worksheet
-                const newRow = worksheet.addRow({
+                worksheet.addRow({
                     srNo: globalSrNo++,
                     ...data
                 });
-
-                // Highlight row if pending amount is high
-                if (data.PENDING > 10000) { // Adjust threshold as needed
-                    newRow.eachCell((cell) => {
-                        cell.fill = {
-                            type: 'pattern',
-                            pattern: 'solid',
-                            // fgColor: { argb: 'FFFFE0E0' } // Light red background
-                        };
-                    });
-                }
+                // SIMPLE ROW ADDED - NO EXTRA STYLING/HIGHLIGHTING
             }
 
             worksheet.addRow({});
