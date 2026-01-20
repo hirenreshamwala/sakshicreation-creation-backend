@@ -2673,7 +2673,7 @@ exports.exportPaymentFolderToExcel = async (req, res) => {
         }
 
         // =============================
-        // Company Filter (NO AREA HERE)
+        // Company Filter
         // =============================
         const companyFilter = { companyName: { $in: companyNames } };
         const selectedCompanies = await CompanyName.find(companyFilter).lean();
@@ -2718,6 +2718,7 @@ exports.exportPaymentFolderToExcel = async (req, res) => {
                 style: { numFmt: '#,##0' }
             })),
             { header: 'TOTAL', key: 'TOTAL', width: 15, style: { numFmt: '#,##0' } },
+            { header: 'PENDING', key: 'PENDING', width: 15, style: { numFmt: '#,##0' } }, // नया कॉलम जोड़ा
             { header: 'ASSIGN TO', key: 'assignTo', width: 20 },
             { header: 'ASSIGN DATE', key: 'assignDate', width: 18 },
             { header: 'REMARKS', key: 'remarks', width: 30 },
@@ -2741,14 +2742,10 @@ exports.exportPaymentFolderToExcel = async (req, res) => {
         for (const comp of selectedCompanies) {
 
             // Company Title Row
-            worksheet.mergeCells(
-                worksheet.lastRow.number + 1,
-                1,
-                worksheet.lastRow.number + 1,
-                worksheet.columns.length
-            );
+            const lastRowNum = worksheet.lastRow ? worksheet.lastRow.number : 0;
+            worksheet.mergeCells(lastRowNum + 1, 1, lastRowNum + 1, worksheet.columns.length);
 
-            const companyRow = worksheet.lastRow;
+            const companyRow = worksheet.getRow(lastRowNum + 1);
             companyRow.getCell(1).value = comp.companyName;
             companyRow.font = { bold: true, size: 13 };
             companyRow.alignment = { horizontal: 'center' };
@@ -2757,18 +2754,16 @@ exports.exportPaymentFolderToExcel = async (req, res) => {
                 pattern: 'solid',
                 fgColor: { argb: 'FFE8E8E8' }
             };
+            companyRow.commit();
 
             // =============================
-            // FETCH PAYMENT FOLDERS
+            // FETCH PAYMENT FOLDERS WITH PENDING AMOUNT
             // =============================
-            let finalQuery = {
+            // First, fetch all payment folders for this company
+            let folders = await PaymentFolder.find({
                 company: comp._id,
-                $expr: {
-                    $ne: ["$paymentAmount", 0]
-                }
-            };
-
-            let folders = await PaymentFolder.find(finalQuery)
+                paymentAmount: { $gt: 0 } // Only folders with payment amount > 0
+            })
                 .populate({
                     path: "party",
                     select: "partyName contactMobileNo ownerMobileNo contactPerson ownerName address",
@@ -2777,19 +2772,27 @@ exports.exportPaymentFolderToExcel = async (req, res) => {
                     ]
                 })
                 .populate("assignedTo", "firstName lastName")
-                .sort({ createdAt: -1 });
+                .sort({ createdAt: -1 })
+                .lean();
+
+            // Filter folders where pending amount > 0
+            let foldersWithPending = folders.filter(folder => {
+                // Calculate received amount from payments array
+                const receivedAmount = folder.payments.reduce((total, payment) => total + payment.amount, 0);
+                const pendingAmount = folder.paymentAmount - receivedAmount;
+                return pendingAmount > 0;
+            });
 
             // =============================
             // MANUAL FILTERS
             // =============================
-            let filteredFolders = [...folders];
+            let filteredFolders = [...foldersWithPending];
 
             // Area filter (Party level)
             if (filters.area?.length) {
                 filteredFolders = filteredFolders.filter(f =>
-                    filters.area.includes(
-                        f?.area?.toString()
-                    )
+                    f.party?.address?.area?._id &&
+                    filters.area.includes(f.party.address.area._id.toString())
                 );
             }
 
@@ -2807,6 +2810,12 @@ exports.exportPaymentFolderToExcel = async (req, res) => {
                 });
             }
 
+            // If no folders with pending amount, continue to next company
+            if (filteredFolders.length === 0) {
+                worksheet.addRow({});
+                continue;
+            }
+
             // =============================
             // PARTY-WISE AGGREGATION
             // =============================
@@ -2818,6 +2827,10 @@ exports.exportPaymentFolderToExcel = async (req, res) => {
 
                 const partyId = party._id.toString();
 
+                // Calculate pending amount for this folder
+                const receivedAmount = folder.payments.reduce((total, payment) => total + payment.amount, 0);
+                const pendingAmount = folder.paymentAmount - receivedAmount;
+
                 if (!partyMap.has(partyId)) {
                     const base = {
                         partyName: party.partyName || '-',
@@ -2825,11 +2838,12 @@ exports.exportPaymentFolderToExcel = async (req, res) => {
                         contactPersonName: party.contactPerson || party.ownerName || '-',
                         OLD: 0,
                         TOTAL: 0,
+                        PENDING: 0, // Pending amount initialize
                         assignTo: folder.assignedTo
                             ? `${folder.assignedTo.firstName} ${folder.assignedTo.lastName}`
                             : '',
                         assignDate: folder.assignedDate
-                            ? new Date(folder.assignedDate).toLocaleDateString()
+                            ? moment(folder.assignedDate).format('DD-MM-YYYY')
                             : '',
                         remarks: folder.remarks || '-'
                     };
@@ -2840,6 +2854,7 @@ exports.exportPaymentFolderToExcel = async (req, res) => {
 
                 const row = partyMap.get(partyId);
 
+                // Process payments
                 folder.payments.forEach(p => {
                     const d = new Date(p.date);
                     const m = d.getMonth() + 1;
@@ -2857,16 +2872,31 @@ exports.exportPaymentFolderToExcel = async (req, res) => {
 
                     row.TOTAL += p.amount;
                 });
+
+                // Add pending amount for this folder
+                row.PENDING += pendingAmount;
             });
 
             // =============================
             // WRITE ROWS
             // =============================
             for (const data of partyMap.values()) {
-                worksheet.addRow({
+                // Add row to worksheet
+                const newRow = worksheet.addRow({
                     srNo: globalSrNo++,
                     ...data
                 });
+
+                // Highlight row if pending amount is high
+                if (data.PENDING > 10000) { // Adjust threshold as needed
+                    newRow.eachCell((cell) => {
+                        cell.fill = {
+                            type: 'pattern',
+                            pattern: 'solid',
+                            fgColor: { argb: 'FFFFE0E0' } // Light red background
+                        };
+                    });
+                }
             }
 
             worksheet.addRow({});
@@ -2880,7 +2910,7 @@ exports.exportPaymentFolderToExcel = async (req, res) => {
             'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
         );
 
-        const fileName = `PaymentFolders_Report_${moment().format('DDMMYYYY')}.xlsx`;
+        const fileName = `Pending_PaymentFolders_Report_${moment().format('DDMMYYYY')}.xlsx`;
         res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
 
         await workbook.xlsx.write(res);
@@ -2930,9 +2960,9 @@ exports.exportPendingClientApprovalOrdersToExcel = async (req, res) => {
 
         if (orders.length === 0) {
             // Return JSON response when no data is found
-            return res.status(200).json({ 
-                success: true, 
-                message: "No pending approval orders found", 
+            return res.status(200).json({
+                success: true,
+                message: "No pending approval orders found",
                 count: 0,
                 empty: true // Add flag to identify empty response
             });
