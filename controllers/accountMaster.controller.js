@@ -758,6 +758,8 @@ exports.getAllAccountMasters = async (req, res) => {
                 partyTag: 1,
                 partyType:1,
                 ownerMobileNo: 1,
+                ownerName: 1,
+                contactForPayment: 1,
                 ownerWhatsAppNo: 1,
                 contactPerson: 1,
                 personMobileNo: 1,

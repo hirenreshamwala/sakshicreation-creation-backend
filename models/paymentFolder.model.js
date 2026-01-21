@@ -70,6 +70,12 @@ const paymentFolderSchema = new mongoose.Schema(
       type: String,
       default: "",
     },
+    status: {
+      type: String,
+      enum: ["pending", "completed"],
+      default: "pending",
+    },
+
     assignTask: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "AssignTask",

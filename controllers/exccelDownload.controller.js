@@ -17,6 +17,7 @@ const Complain = require('../models/complain.model');
 const Party = require("../models/Party.model");
 const QpData = require("../models/qpOrder.model");
 const PaymentFolder = require('../models/paymentFolder.model');
+const { filter } = require('lodash');
 
 exports.exportAccountMastersToExcel = async (req, res) => {
     try {
@@ -2666,268 +2667,190 @@ exports.exportComplainToExcel = async (req, res) => {
 
 exports.exportPaymentFolderToExcel = async (req, res) => {
     try {
-        const { startDate, endDate, companyNames = [], filters = {}, search = "" } = req.body;
+        const { companyNames = [], search = "" } = req.body;
 
-        if (!Array.isArray(companyNames) || companyNames.length === 0) {
-            return res.status(400).json({ success: false, message: "No companies specified" });
+        if (!Array.isArray(companyNames) || !companyNames.length) {
+            return res.status(400).json({
+                success: false,
+                message: "No companies specified",
+            });
         }
 
         // =============================
-        // Company Filter
+        // FETCH COMPANIES
         // =============================
-        const companyFilter = { companyName: { $in: companyNames } };
-        const selectedCompanies = await CompanyName.find(companyFilter).lean();
+        const companies = await CompanyName.find({
+            companyName: { $in: companyNames },
+        }).lean();
 
-        if (selectedCompanies.length === 0) {
-            return res.status(400).json({ success: false, message: "No matching companies found" });
+        if (!companies.length) {
+            return res.status(400).json({
+                success: false,
+                message: "No matching companies found",
+            });
         }
 
         const workbook = new ExcelJS.Workbook();
-        const worksheet = workbook.addWorksheet('Payment Folders Report');
-
-        // =============================
-        // LAST 4 MONTHS CALCULATION
-        // =============================
-        const now = new Date();
-        const currentMonth = now.getMonth(); // 0-11
-        const currentYear = now.getFullYear();
-
-        const last4Months = [];
-        for (let i = 3; i >= 0; i--) {
-            const d = new Date(currentYear, currentMonth - i, 1);
-            last4Months.push({
-                month: d.getMonth() + 1,
-                year: d.getFullYear(),
-                label: d.toLocaleString('en-US', { month: 'short' }).toUpperCase()
-            });
-        }
+        const worksheet = workbook.addWorksheet("Pending Payment Report");
 
         // =============================
         // EXCEL COLUMNS
         // =============================
         worksheet.columns = [
-            { header: 'S.NO', key: 'srNo', width: 8 },
-            { header: 'PARTY NAME', key: 'partyName', width: 32 },
-            { header: 'PHONE NO', key: 'phoneNumber', width: 18 },
-            { header: 'CONTACT PERSON', key: 'contactPersonName', width: 22 },
-            { header: 'OLD', key: 'OLD', width: 14, style: { numFmt: '#,##0' } },
-            ...last4Months.map(m => ({
-                header: m.label,
-                key: m.label,
-                width: 14,
-                style: { numFmt: '#,##0' }
-            })),
-            { header: 'TOTAL', key: 'TOTAL', width: 15, style: { numFmt: '#,##0' } },
-            { header: 'PENDING', key: 'PENDING', width: 15, style: { numFmt: '#,##0' } },
-            { header: 'ASSIGN TO', key: 'assignTo', width: 20 },
-            { header: 'ASSIGN DATE', key: 'assignDate', width: 18 },
-            { header: 'REMARKS', key: 'remarks', width: 30 },
+            { header: "S.NO", key: "srNo", width: 8 },
+            { header: "PARTY NAME", key: "partyName", width: 30 },
+            { header: "PHONE NO", key: "phoneNumber", width: 18 },
+            { header: "CONTACT PERSON", key: "contactPerson", width: 22 },
+            { header: "PENDING AMOUNT", key: "OLD", width: 18 },
+            { header: "TOTAL", key: "TOTAL", width: 18 },
+            { header: "ASSIGN TO", key: "assignTo", width: 20 },
+            { header: "ASSIGN DATE", key: "assignDate", width: 18 },
+            { header: "REMARKS", key: "remarks", width: 30 },
         ];
 
-        // Header styling
-        const headerRow = worksheet.getRow(1);
-        headerRow.font = { bold: true };
-        headerRow.alignment = { horizontal: 'center', vertical: 'middle' };
-        headerRow.fill = {
-            type: 'pattern',
-            pattern: 'solid',
-            fgColor: { argb: 'FFD3D3D3' }
-        };
+        worksheet.getRow(1).font = { bold: true };
 
-        let globalSrNo = 1;
+        let srNo = 1;
 
         // =============================
         // LOOP COMPANIES
         // =============================
-        for (const comp of selectedCompanies) {
+        for (const comp of companies) {
+            const startRow = worksheet.lastRow
+                ? worksheet.lastRow.number + 1
+                : 2;
 
-            // Company Title Row
-            const lastRowNum = worksheet.lastRow ? worksheet.lastRow.number : 0;
-            worksheet.mergeCells(lastRowNum + 1, 1, lastRowNum + 1, worksheet.columns.length);
+            worksheet.mergeCells(startRow, 1, startRow, worksheet.columns.length);
 
-            const companyRow = worksheet.getRow(lastRowNum + 1);
-            companyRow.getCell(1).value = comp.companyName;
-            companyRow.font = { bold: true, size: 13 };
-            companyRow.alignment = { horizontal: 'center' };
-            companyRow.fill = {
-                type: 'pattern',
-                pattern: 'solid',
-                fgColor: { argb: 'FFE8E8E8' }
-            };
-            companyRow.commit();
+            const titleRow = worksheet.getRow(startRow);
+            titleRow.getCell(1).value = comp.companyName;
+            titleRow.font = { bold: true, size: 13 };
+            titleRow.alignment = { horizontal: "center" };
 
             // =============================
             // FETCH PAYMENT FOLDERS
             // =============================
-            let folders = await PaymentFolder.find({
-                company: comp._id,
-                paymentAmount: { $gt: 0 }
-            })
-                .populate({
-                    path: "party",
-                    select: "partyName contactMobileNo ownerMobileNo contactPerson ownerName address",
-                    populate: [
-                        { path: "address.area", model: "Market", select: "area" }
-                    ]
-                })
-                .populate("assignedTo", "firstName lastName")
-                .sort({ createdAt: -1 })
-                .lean();
-
-            // =============================
-            // FILTER: SIRF PENDING WALE FOLDERS
-            // =============================
-            let foldersWithPending = folders.filter(folder => {
-                const receivedAmount = folder.payments.reduce((total, payment) => total + payment.amount, 0);
-                const pendingAmount = folder.paymentAmount - receivedAmount;
-                return pendingAmount > 0; // Sirf pending amount wale
-            });
-
-            // =============================
-            // MANUAL FILTERS (Area, Search)
-            // =============================
-            let filteredFolders = [...foldersWithPending];
-
-            // Area filter - Check both folder.area and party.address.area
-            if (filters.area?.length) {
-                filteredFolders = filteredFolders.filter(f => {
-                    // Check folder level area (string field)
-                    const folderAreaMatch = f.area && filters.area.includes(f.area);
-
-                    // Check party level area (populated ObjectId)
-                    const partyAreaMatch = f.party?.address?.area?._id &&
-                        filters.area.includes(f.party.address.area._id.toString());
-
-                    // Match if either matches
-                    return folderAreaMatch || partyAreaMatch;
-                });
+            let query = { company: comp._id }
+            if (req.body.filters.area) {
+                query.area = req.body.filters.area[0]
             }
 
-            // Search filter
+            let folders = await PaymentFolder.find(query)
+                .populate({
+                    path: "party",
+                    select:
+                        "partyName contactMobileNo ownerMobileNo contactPerson ownerName",
+                })
+                .populate("assignedTo", "firstName lastName")
+                .sort({ createdAt: -1 });
+
+            // =============================
+            // SEARCH FILTER
+            // =============================
             if (search?.trim()) {
                 const s = search.toLowerCase();
-                filteredFolders = filteredFolders.filter(f => {
-                    const party = f.party || {};
+                folders = folders.filter((f) => {
+                    const p = f.party || {};
                     return (
-                        party.partyName?.toLowerCase().includes(s) ||
-                        party.contactPerson?.toLowerCase().includes(s) ||
-                        party.ownerName?.toLowerCase().includes(s) ||
+                        p.partyName?.toLowerCase().includes(s) ||
+                        p.contactPerson?.toLowerCase().includes(s) ||
+                        p.ownerName?.toLowerCase().includes(s) ||
                         f.remarks?.toLowerCase().includes(s)
                     );
                 });
             }
 
-            // Agar koi pending folder nahi hai, next company
-            if (filteredFolders.length === 0) {
-                worksheet.addRow({});
-                continue;
-            }
-
             // =============================
-            // PARTY-WISE AGGREGATION
+            // PARTY-WISE PENDING LOGIC
             // =============================
             const partyMap = new Map();
 
-            filteredFolders.forEach(folder => {
+            for (const folder of folders) {
+                const payments = Array.isArray(folder.payments)
+                    ? folder.payments
+                    : [];
+
+                const receivedAmount = payments.reduce(
+                    (sum, p) => sum + (p.amount || 0),
+                    0
+                );
+
+                const pendingAmount =
+                    (folder.paymentAmount || 0) - receivedAmount;
+
+                // 🔥 ₹1 bhi pending hua to include
+                if (pendingAmount <= 0) continue;
+
                 const party = folder.party;
-                if (!party?._id) return;
+                if (!party?._id) continue;
 
                 const partyId = party._id.toString();
 
-                // Pending amount calculate
-                const receivedAmount = folder.payments.reduce((total, payment) => total + payment.amount, 0);
-                const pendingAmount = folder.paymentAmount - receivedAmount;
-
                 if (!partyMap.has(partyId)) {
-                    const base = {
-                        partyName: party.partyName || '-',
-                        phoneNumber: party.contactMobileNo || party.ownerMobileNo || '-',
-                        contactPersonName: party.contactPerson || party.ownerName || '-',
+                    partyMap.set(partyId, {
+                        partyName: party.partyName || "-",
+                        phoneNumber:
+                            party.contactMobileNo || party.ownerMobileNo || "-",
+                        contactPerson:
+                            party.contactPerson || party.ownerName || "-",
                         OLD: 0,
                         TOTAL: 0,
-                        PENDING: 0,
                         assignTo: folder.assignedTo
                             ? `${folder.assignedTo.firstName} ${folder.assignedTo.lastName}`
-                            : '',
+                            : "",
                         assignDate: folder.assignedDate
-                            ? moment(folder.assignedDate).format('DD-MM-YYYY')
-                            : '',
-                        remarks: folder.remarks || '-'
-                    };
-
-                    // Last 4 months columns initialize
-                    last4Months.forEach(m => base[m.label] = 0);
-                    partyMap.set(partyId, base);
+                            ? new Date(folder.assignedDate).toLocaleDateString()
+                            : "",
+                        remarks: folder.remarks || "-",
+                    });
                 }
 
                 const row = partyMap.get(partyId);
 
-                // =============================
-                // PAYMENTS KO CATEGORIZE KARO
-                // Last 4 months alag, baaki OLD mein
-                // =============================
-                folder.payments.forEach(p => {
-                    const paymentDate = new Date(p.date);
-                    const paymentMonth = paymentDate.getMonth() + 1;
-                    const paymentYear = paymentDate.getFullYear();
-
-                    // Check if payment is in last 4 months
-                    const matchedMonth = last4Months.find(
-                        lm => lm.month === paymentMonth && lm.year === paymentYear
-                    );
-
-                    if (matchedMonth) {
-                        // Last 4 months mein hai
-                        row[matchedMonth.label] += p.amount;
-                    } else {
-                        // OLD mein dalo
-                        row.OLD += p.amount;
-                    }
-
-                    row.TOTAL += p.amount;
-                });
-
-                // Pending amount add karo
-                row.PENDING += pendingAmount;
-            });
+                // ✅ CORRECT ACCOUNTING
+                row.OLD += pendingAmount;
+                row.TOTAL += pendingAmount;
+            }
 
             // =============================
-            // WRITE ROWS TO EXCEL
+            // WRITE EXCEL ROWS
             // =============================
             for (const data of partyMap.values()) {
                 worksheet.addRow({
-                    srNo: globalSrNo++,
-                    ...data
+                    srNo: srNo++,
+                    ...data,
                 });
             }
 
-            worksheet.addRow({}); // Empty row after each company
+            worksheet.addRow({});
         }
 
         // =============================
-        // SEND EXCEL FILE
+        // SEND RESPONSE
         // =============================
         res.setHeader(
-            'Content-Type',
-            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            "Content-Type",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         );
 
-        const fileName = `Pending_PaymentFolders_Report_${moment().format('DDMMYYYY')}.xlsx`;
-        res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+        res.setHeader(
+            "Content-Disposition",
+            `attachment; filename="Pending_Payment_Report_${moment().format(
+                "DDMMYYYY"
+            )}.xlsx"`
+        );
 
         await workbook.xlsx.write(res);
         res.end();
-
     } catch (error) {
         console.error("Export error:", error);
         res.status(500).json({
             success: false,
             message: "Export failed",
-            error: error.message
+            error: error.message,
         });
     }
 };
-
 
 exports.exportPendingClientApprovalOrdersToExcel = async (req, res) => {
     try {
