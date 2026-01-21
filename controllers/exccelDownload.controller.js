@@ -2757,42 +2757,50 @@ exports.exportPaymentFolderToExcel = async (req, res) => {
             companyRow.commit();
 
             // =============================
-            // FETCH PAYMENT FOLDERS WITH PENDING AMOUNT
+            // FETCH PAYMENT FOLDERS
             // =============================
-            // First, fetch all payment folders for this company
             let folders = await PaymentFolder.find({
                 company: comp._id,
                 paymentAmount: { $gt: 0 }
             })
-            .populate({
-                path: "party",
-                select: "partyName contactMobileNo ownerMobileNo contactPerson ownerName address",
-                populate: [
-                    { path: "address.area", model: "Market", select: "area" }
-                ]
-            })
-            .populate("assignedTo", "firstName lastName")
-            .sort({ createdAt: -1 })
-            .lean();
+                .populate({
+                    path: "party",
+                    select: "partyName contactMobileNo ownerMobileNo contactPerson ownerName address",
+                    populate: [
+                        { path: "address.area", model: "Market", select: "area" }
+                    ]
+                })
+                .populate("assignedTo", "firstName lastName")
+                .sort({ createdAt: -1 })
+                .lean();
 
-            // Filter folders where pending amount > 0
+            // =============================
+            // FILTER: SIRF PENDING WALE FOLDERS
+            // =============================
             let foldersWithPending = folders.filter(folder => {
                 const receivedAmount = folder.payments.reduce((total, payment) => total + payment.amount, 0);
                 const pendingAmount = folder.paymentAmount - receivedAmount;
-                return pendingAmount > 0;
+                return pendingAmount > 0; // Sirf pending amount wale
             });
 
             // =============================
-            // MANUAL FILTERS
+            // MANUAL FILTERS (Area, Search)
             // =============================
             let filteredFolders = [...foldersWithPending];
 
-            // Area filter (Party level)
+            // Area filter - Check both folder.area and party.address.area
             if (filters.area?.length) {
-                filteredFolders = filteredFolders.filter(f =>
-                    f.party?.address?.area?._id &&
-                    filters.area.includes(f.party.address.area._id.toString())
-                );
+                filteredFolders = filteredFolders.filter(f => {
+                    // Check folder level area (string field)
+                    const folderAreaMatch = f.area && filters.area.includes(f.area);
+
+                    // Check party level area (populated ObjectId)
+                    const partyAreaMatch = f.party?.address?.area?._id &&
+                        filters.area.includes(f.party.address.area._id.toString());
+
+                    // Match if either matches
+                    return folderAreaMatch || partyAreaMatch;
+                });
             }
 
             // Search filter
@@ -2809,7 +2817,7 @@ exports.exportPaymentFolderToExcel = async (req, res) => {
                 });
             }
 
-            // If no folders with pending amount, continue to next company
+            // Agar koi pending folder nahi hai, next company
             if (filteredFolders.length === 0) {
                 worksheet.addRow({});
                 continue;
@@ -2826,7 +2834,7 @@ exports.exportPaymentFolderToExcel = async (req, res) => {
 
                 const partyId = party._id.toString();
 
-                // Calculate pending amount for this folder
+                // Pending amount calculate
                 const receivedAmount = folder.payments.reduce((total, payment) => total + payment.amount, 0);
                 const pendingAmount = folder.paymentAmount - receivedAmount;
 
@@ -2847,51 +2855,57 @@ exports.exportPaymentFolderToExcel = async (req, res) => {
                         remarks: folder.remarks || '-'
                     };
 
+                    // Last 4 months columns initialize
                     last4Months.forEach(m => base[m.label] = 0);
                     partyMap.set(partyId, base);
                 }
 
                 const row = partyMap.get(partyId);
 
-                // Process payments
+                // =============================
+                // PAYMENTS KO CATEGORIZE KARO
+                // Last 4 months alag, baaki OLD mein
+                // =============================
                 folder.payments.forEach(p => {
-                    const d = new Date(p.date);
-                    const m = d.getMonth() + 1;
-                    const y = d.getFullYear();
+                    const paymentDate = new Date(p.date);
+                    const paymentMonth = paymentDate.getMonth() + 1;
+                    const paymentYear = paymentDate.getFullYear();
 
-                    const match = last4Months.find(
-                        lm => lm.month === m && lm.year === y
+                    // Check if payment is in last 4 months
+                    const matchedMonth = last4Months.find(
+                        lm => lm.month === paymentMonth && lm.year === paymentYear
                     );
 
-                    if (match) {
-                        row[match.label] += p.amount;
+                    if (matchedMonth) {
+                        // Last 4 months mein hai
+                        row[matchedMonth.label] += p.amount;
                     } else {
+                        // OLD mein dalo
                         row.OLD += p.amount;
                     }
 
                     row.TOTAL += p.amount;
                 });
 
-                // Add pending amount for this folder
+                // Pending amount add karo
                 row.PENDING += pendingAmount;
             });
 
             // =============================
-            // WRITE ROWS (NORMAL ROWS WITHOUT HIGHLIGHT)
+            // WRITE ROWS TO EXCEL
             // =============================
             for (const data of partyMap.values()) {
                 worksheet.addRow({
                     srNo: globalSrNo++,
                     ...data
                 });
-                // SIMPLE ROW ADDED - NO EXTRA STYLING/HIGHLIGHTING
             }
 
-            worksheet.addRow({});
+            worksheet.addRow({}); // Empty row after each company
         }
 
         // =============================
-        // RESPONSE
+        // SEND EXCEL FILE
         // =============================
         res.setHeader(
             'Content-Type',
