@@ -3272,20 +3272,20 @@ exports.exportPaymentFolderToExcel = async (req, res) => {
             if (folder.assignedDate) {
                 const assignDate = new Date(folder.assignedDate);
                 const paymentTermDays = getPaymentTermDays(folder.paymentTerms);
-                
+
                 // Subtract payment term days from assign date
                 const paymentDate = new Date(assignDate);
                 paymentDate.setDate(paymentDate.getDate() - paymentTermDays);
-                
+
                 return paymentDate.getFullYear();
             }
-            
+
             // If no assignDate, try to extract year from month field
             if (folder.month) {
                 const [year] = folder.month.split("-").map(Number);
                 return year;
             }
-            
+
             // Fallback to current year
             return currentYear;
         };
@@ -3434,7 +3434,7 @@ exports.exportPaymentFolderToExcel = async (req, res) => {
                 if (folder.month) {
                     // Parse month from "2024-09" or "OCT" format
                     let paymentMonth, paymentYear;
-                    
+
                     if (folder.month.includes("-")) {
                         // Format: "2024-09"
                         [paymentYear, paymentMonth] = folder.month.split("-").map(Number);
@@ -3445,7 +3445,23 @@ exports.exportPaymentFolderToExcel = async (req, res) => {
                             JUL: 7, AUG: 8, SEP: 9, OCT: 10, NOV: 11, DEC: 12
                         };
                         paymentMonth = monthNames[folder.month.toUpperCase()];
-                        paymentYear = getPaymentYear(folder);
+                        paymentMonth = monthNames[folder.month.toUpperCase()];
+
+                        if (folder.assignedDate) {
+                            const assignDate = new Date(folder.assignedDate);
+                            const assignMonth = assignDate.getMonth() + 1;
+                            let assignYear = assignDate.getFullYear();
+
+                            // 🔥 FIX: Dec showing as OLD issue
+                            if (paymentMonth > assignMonth) {
+                                assignYear = assignYear - 1;
+                            }
+
+                            paymentYear = assignYear;
+                        } else {
+                            paymentYear = currentYear;
+                        }
+
                     }
 
                     // Find matching month in last 4 months
