@@ -3312,7 +3312,7 @@ exports.exportPaymentFolderToExcel = async (req, res) => {
             { header: "S.NO", key: "srNo", width: 8 },
             { header: "PARTY NAME", key: "partyName", width: 30 },
             { header: "PHONE NO", key: "phoneNumber", width: 18 },
-            { header: "CONTACT PERSON", key: "contactPerson", width: 22 },
+            { header: "CONTACT PERSON NAME", key: "contactPerson", width: 22 },
             { header: "OLD", key: "OLD", width: 14 },
             ...last4Months.map((m) => ({
                 header: m.label,
