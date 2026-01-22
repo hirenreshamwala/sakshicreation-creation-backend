@@ -3247,7 +3247,7 @@ exports.exportPaymentFolderToExcel = async (req, res) => {
         // Helper function to get payment term days
         const getPaymentTermDays = (paymentTerms) => {
             if (!paymentTerms) return 0;
-            
+
             const term = paymentTerms.toLowerCase();
 
             if (term.includes("30") || term.includes("thirty")) {
@@ -3358,7 +3358,17 @@ exports.exportPaymentFolderToExcel = async (req, res) => {
             // =============================
             // FETCH PAYMENT FOLDERS
             // =============================
-            let folders = await PaymentFolder.find({ company: comp._id })
+            let query = {};
+
+            // Area filter
+            if (req.body?.filters?.area?.length > 0) {
+                query.area = req.body.filters.area[0];
+            }
+
+            const folders = await PaymentFolder.find({
+                company: comp._id,
+                ...query,
+            })
                 .populate({
                     path: "party",
                     select:
@@ -3366,6 +3376,7 @@ exports.exportPaymentFolderToExcel = async (req, res) => {
                 })
                 .populate("assignedTo", "firstName lastName")
                 .sort({ createdAt: -1 });
+
 
             // =============================
             // SEARCH FILTER
