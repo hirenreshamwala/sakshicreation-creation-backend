@@ -3201,7 +3201,13 @@ exports.exportComplainToExcel = async (req, res) => {
 
 exports.exportPaymentFolderToExcel = async (req, res) => {
     try {
-        const { companyNames = [], filters = {}, search = "" } = req.body;
+        const {
+            companyNames = [],
+            filters = {},
+            search = "",
+            startDate,
+            endDate,
+        } = req.body;
 
         if (!Array.isArray(companyNames) || companyNames.length === 0) {
             return res.status(400).json({
@@ -3264,30 +3270,6 @@ exports.exportPaymentFolderToExcel = async (req, res) => {
                 }
             }
             return 0;
-        };
-
-        // Helper function to determine payment year
-        const getPaymentYear = (folder) => {
-            // If assignDate exists, use it to calculate year
-            if (folder.assignedDate) {
-                const assignDate = new Date(folder.assignedDate);
-                const paymentTermDays = getPaymentTermDays(folder.paymentTerms);
-
-                // Subtract payment term days from assign date
-                const paymentDate = new Date(assignDate);
-                paymentDate.setDate(paymentDate.getDate() - paymentTermDays);
-
-                return paymentDate.getFullYear();
-            }
-
-            // If no assignDate, try to extract year from month field
-            if (folder.month) {
-                const [year] = folder.month.split("-").map(Number);
-                return year;
-            }
-
-            // Fallback to current year
-            return currentYear;
         };
 
         const isInLast4Months = (month, year) => {
@@ -3358,11 +3340,199 @@ exports.exportPaymentFolderToExcel = async (req, res) => {
             // =============================
             // FETCH PAYMENT FOLDERS
             // =============================
-            let query = {};
+            // Build query object
+            const query = {};
+
+            // Helper function to build multi-word search conditions
+            const buildMultiWordSearch = (searchStr, fields) => {
+                if (!searchStr || !searchStr.trim()) return [];
+                const parts = searchStr.trim().split(/\s+/).filter(p => p.length > 0);
+                if (parts.length === 0) return [];
+
+                const partConditions = parts.map(part => ({
+                    $or: fields.map(field => ({
+                        [field]: { $regex: part, $options: "i" }
+                    }))
+                }));
+
+                if (parts.length === 1) {
+                    return partConditions[0].$or;
+                } else {
+                    return [{ $and: partConditions }];
+                }
+            };
+
+            // Search functionality
+            if (search && search.trim()) {
+                const directOr = [
+                    { remarks: { $regex: search, $options: "i" } },
+                    { month: { $regex: search, $options: "i" } },
+                    { area: { $regex: search, $options: "i" } },
+                ];
+
+                // Company search with multi-word support
+                const companyFields = ['companyName'];
+                const companyConditions = buildMultiWordSearch(search, companyFields);
+                if (companyConditions.length > 0) {
+                    const matchingCompanies = await Company.find({
+                        $or: companyConditions
+                    }).select('_id').lean();
+                    const companyIds = matchingCompanies.map(c => c._id);
+                    if (companyIds.length > 0) {
+                        directOr.push({ company: { $in: companyIds } });
+                    }
+                }
+
+                // Party search with multi-word support
+                const partyFields = ['partyName'];
+                const partyConditions = buildMultiWordSearch(search, partyFields);
+                if (partyConditions.length > 0) {
+                    const matchingParties = await Party.find({
+                        $or: partyConditions
+                    }).select('_id').lean();
+                    const partyIds = matchingParties.map(p => p._id);
+                    if (partyIds.length > 0) {
+                        directOr.push({ party: { $in: partyIds } });
+                    }
+                }
+
+                // Assigned to (Staff) search with multi-word support
+                const staffFields = ['firstName', 'lastName', 'email'];
+                const staffConditions = buildMultiWordSearch(search, staffFields);
+                if (staffConditions.length > 0) {
+                    const matchingStaff = await Staff.find({
+                        $or: staffConditions
+                    }).select('_id').lean();
+                    const staffIds = matchingStaff.map(s => s._id);
+                    if (staffIds.length > 0) {
+                        directOr.push({ assignedTo: { $in: staffIds } });
+                    }
+                }
+
+                if (directOr.length > 0) {
+                    query.$or = directOr;
+                }
+            }
+
+            // AssignedDate filter - Match exact dates from array
+            if (filters.assignedDate && Array.isArray(filters.assignedDate) && filters.assignedDate.length > 0) {
+                // Filter out null/empty values
+                const validDates = filters.assignedDate.filter(d => d && d !== 'null');
+
+                if (validDates.length > 0) {
+                    // Create date range conditions for each date (match full day)
+                    const dateConditions = validDates.map(dateStr => {
+                        const startOfDay = new Date(dateStr);
+                        startOfDay.setHours(0, 0, 0, 0);
+
+                        const endOfDay = new Date(dateStr);
+                        endOfDay.setHours(23, 59, 59, 999);
+
+                        return {
+                            assignedDate: {
+                                $gte: startOfDay,
+                                $lte: endOfDay
+                            }
+                        };
+                    });
+
+                    // Use $or to match any of the dates
+                    if (dateConditions.length === 1) {
+                        query.assignedDate = dateConditions[0].assignedDate;
+                    } else {
+                        query.$or = query.$or
+                            ? [...query.$or, ...dateConditions]
+                            : dateConditions;
+                    }
+                }
+            }
+
+            // Top-level startDate/endDate (for date range if needed separately)
+            if ((startDate || endDate) && (!filters.assignedDate || filters.assignedDate.length === 0)) {
+                query.assignedDate = {};
+                if (startDate) {
+                    const start = new Date(startDate);
+                    start.setHours(0, 0, 0, 0);
+                    query.assignedDate.$gte = start;
+                }
+                if (endDate) {
+                    const end = new Date(endDate);
+                    end.setHours(23, 59, 59, 999);
+                    query.assignedDate.$lte = end;
+                }
+            }
+
+            // Company filter
+            if (filters.company && filters.company.length > 0) {
+                const companies = await CompanyName.find({
+                    companyName: { $in: filters.company }
+                }).select('_id').lean();
+                if (companies.length > 0) {
+                    query.company = { $in: companies.map(c => c._id) };
+                }
+            }
+
+            // Party filter
+            if (filters.party && filters.party.length > 0) {
+                const parties = await Party.find({
+                    partyName: { $in: filters.party }
+                }).select('_id').lean();
+                if (parties.length > 0) {
+                    query.party = { $in: parties.map(p => p._id) };
+                }
+            }
 
             // Area filter
-            if (req.body?.filters?.area?.length > 0) {
-                query.area = req.body.filters.area[0];
+            if (filters.area && filters.area.length > 0) {
+                query.area = { $in: filters.area };
+            }
+
+            // Month filter
+            if (filters.month && filters.month.length > 0) {
+                query.month = { $in: filters.month };
+            }
+
+            // Remarks filter
+            if (filters.remarks && filters.remarks.length > 0) {
+                query.remarks = { $in: filters.remarks };
+            }
+
+            // Assigned to filter
+            if (filters.assignTo && filters.assignTo.length > 0) {
+                const nameConditions = filters.assignTo.map(name => {
+                    const parts = name.split(' ');
+                    if (parts.length === 2) {
+                        return {
+                            firstName: { $regex: `^${parts[0]}`, $options: "i" },
+                            lastName: { $regex: `^${parts[1]}`, $options: "i" }
+                        };
+                    } else {
+                        return {
+                            $or: [
+                                { firstName: { $regex: `^${name}`, $options: "i" } },
+                                { lastName: { $regex: `^${name}`, $options: "i" } }
+                            ]
+                        };
+                    }
+                });
+                const matchingStaff = await Staff.find({
+                    $or: nameConditions
+                }).select('_id').lean();
+
+                if (matchingStaff.length > 0) {
+                    query.assignedTo = { $in: matchingStaff.map(s => s._id) };
+                }
+            }
+
+            // Payment amount range filter
+            if (filters.paymentAmount && (filters.paymentAmount.min !== undefined || filters.paymentAmount.max !== undefined)) {
+                query.paymentAmount = {};
+                if (filters.paymentAmount.min !== undefined) {
+                    query.paymentAmount.$gte = filters.paymentAmount.min;
+                }
+                if (filters.paymentAmount.max !== undefined) {
+                    query.paymentAmount.$lte = filters.paymentAmount.max;
+                }
             }
 
             const folders = await PaymentFolder.find({
