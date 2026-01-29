@@ -32,6 +32,8 @@ const report = require("./report.routes");
 const factoryArrival = require("./factoryReturn.routes");
 const paymentFolder = require("./paymentFolder.routes");
 const PartyRouter = require("./party.routes");
+const GsmRouter = require('./gsm.routes')
+const DeckalRouter = require('./deckal.routes')
 
 router.use("/staff", StaffRouter);
 router.use("/party", PartyRouter);
@@ -65,4 +67,7 @@ router.use("/performance-invoice", performanceInvoiceRoutes);
 router.use("/complain", complain);
 router.use("/factoryReturn", factoryArrival);
 router.use("/payment-folders", paymentFolder);
+router.use("/gsm", GsmRouter);
+router.use("/deckal", DeckalRouter);
+
 module.exports = router;

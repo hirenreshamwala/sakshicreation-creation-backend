@@ -6,11 +6,11 @@ const Kantan = require("../models/kantan.model"); // Add missing import (assume 
 exports.getInventoryByCategory = async (req, res) => {
   try {
     const { category } = req.params;
-    const { 
+    const {
       type, // Optional: inward/outward
-      page = 1, 
-      pageSize = 10, 
-      isPagination = true 
+      page = 1,
+      pageSize = 10,
+      isPagination = true
     } = req.body; // From POST body
 
     if (!["printer", "binder", "booklet", "factory", "godown"].includes(category)) {
@@ -34,13 +34,13 @@ exports.getInventoryByCategory = async (req, res) => {
       data = await Inventory.find(query)
         .skip(skip)
         .limit(pageSize)
-      .populate("material", "materialName materialSize materialGSM")
-      .populate("vendor", "name")
-      .populate("companyName", "companyName")
-      .populate("for", "roleName")
-      .populate("kantan", "kantanName")
-      .populate("forCompany", "firstName lastName")
-      .sort({ date: -1 });
+        .populate("material", "materialName materialSize materialGSM")
+        .populate("vendor", "name")
+        .populate("companyName", "companyName")
+        .populate("for", "roleName")
+        .populate("kantan", "kantanName")
+        .populate("forCompany", "firstName lastName")
+        .sort({ date: -1 });
 
       pagination = {
         currentPage: parseInt(page),
@@ -119,14 +119,15 @@ exports.getInventorySummary = async (req, res) => {
 
 exports.getAllInventory = async (req, res) => {
   try {
-    const inventory = await Inventory.find()
-      .populate("material", "materialName materialSize materialGSM")
-      .populate("vendor", "name")
-      .populate("companyName", "companyName")
-      .populate("for", "roleName")
-      .populate("kantan", "kantanName")
-      .populate("forCompany", "firstName lastName")
-      .sort({ date: -1 });
+    const inventory = await Inventory.find({}, { __v: 0 })
+      .populate('material', 'materialName materialSize materialGSM -__v')
+      .populate('vendor', 'name -__v')
+      .populate('companyName', 'companyName -__v')
+      .populate('for', 'roleName -__v')
+      .populate('kantan', 'kantanName -__v')
+      .populate('forCompany', 'firstName lastName -__v')
+      .sort({ date: -1 })
+      .lean();
 
     res.status(200).json({
       success: true,
@@ -153,11 +154,11 @@ exports.getAllInventoryForQuality = async (req, res) => {
       includeCounts = true
     } = req.body;
     console.log("📊 Inventory API - Request:", { filters, search, startDate, endDate, page, pageSize, isPagination });
-   
+
     // Build query object - similar to payment folders
     const query = {};
     let exprConditions = []; // Collect $expr conditions for derived fields
-    
+
     // Search functionality - adapt for inventory fields
     if (search && search.trim()) {
       const directOr = [
@@ -187,7 +188,7 @@ exports.getAllInventoryForQuality = async (req, res) => {
     if (filters.category && filters.category.length > 0) {
       query.category = { $in: filters.category };
     }
-    
+
     // Type filter (inward/outward)
     if (filters.type && filters.type.length > 0) {
       query.type = { $in: filters.type };
@@ -342,11 +343,11 @@ exports.getInventoryFilterOptions = async (req, res) => {
     console.log("Inventory Filter Options - Field:", field, "Filters:", otherFilters);
     // Extended validFields for inventory-specific fields
     const validFields = [
-      'category', 'type', 'vendor', 'date', 
-      'deckal', 'ply', 'gsm', 'bf', 'color', 
+      'category', 'type', 'vendor', 'date',
+      'deckal', 'ply', 'gsm', 'bf', 'color',
       'kantanName', 'reel', 'boxType', 'boxSize', 'boxGSM', 'isKantan'
     ]; // Add more as needed based on your schema
-    
+
     if (!validFields.includes(field)) {
       return res.status(400).json({
         success: false,
@@ -630,9 +631,9 @@ exports.getAvailableBoxes = async (req, res) => {
     const baseFilter = {
       inventoryType: "Box",
       ply,
-      boxLength:length,
-      boxWidth:width,
-      boxHeight:height,
+      boxLength: length,
+      boxWidth: width,
+      boxHeight: height,
       deckal,
       paper1GSM,
       paper2GSM,
@@ -728,4 +729,3 @@ exports.getAvailableBoxes = async (req, res) => {
     });
   }
 };
- 

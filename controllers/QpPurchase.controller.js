@@ -116,7 +116,8 @@ exports.createPurchase = async (req, res) => {
       paper1GSM,
       paper2GSM,
       paper3GSM,
-      noOfBox
+      noOfBox,
+      isDuplex
     } = req.body;
     console.log("req body", req.body);
 
@@ -276,6 +277,7 @@ exports.createPurchase = async (req, res) => {
       paper2GSM: type === "Box" ? paper2GSM : undefined,
       paper3GSM: type === "Box" ? paper3GSM : undefined,
       noOfBox: type === "Box" ? noOfBox : undefined,
+      isDuplex: type === "paper" ? isDuplex : undefined,
     });
 
     const savedPurchase = await newPurchase.save();
@@ -310,6 +312,7 @@ exports.createPurchase = async (req, res) => {
       paper3GSM: type === "Box" ? paper3GSM : undefined,
       quantity: type === "Box" ? noOfBox : undefined,
       usedBox: type === "Box" ? 0 : 0,
+      isDuplex: type === "paper" ? isDuplex : undefined,
     });
 
     await newInventory.save();

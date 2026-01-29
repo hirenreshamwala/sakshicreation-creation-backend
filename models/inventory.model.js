@@ -226,8 +226,14 @@ const InventorySchema = new mongoose.Schema(
     printType: {
       type: String,
     },
+    isDuplex: {
+      type: Boolean,
+    },
   },
-  { timestamps: true }
+  {
+    timestamps: true,
+    versionKey: false,
+  }
 );
 
 module.exports = mongoose.model("Inventory", InventorySchema);
