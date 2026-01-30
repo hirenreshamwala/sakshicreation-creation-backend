@@ -97,8 +97,9 @@ const PurchaseSchema = new mongoose.Schema(
     deckal: {
       type: String,
     },
-    isDuplex:{
-      type:Boolean
+    isDuplex: {
+      type: Boolean,
+      default: false
     }
   },
   { timestamps: true }
