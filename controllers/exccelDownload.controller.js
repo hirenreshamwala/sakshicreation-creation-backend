@@ -652,6 +652,8 @@ const getTasksDataForExcel = async (req) => {
                     },
                     // TAG
                     TAG: "$partyData.partyTag",
+                    // TYPE
+                    TYPE: "$partyData.partyType",
                     // STATUS
                     STATUS: "$status",
                     // REMARKS
@@ -728,17 +730,6 @@ exports.exportAssignTasksToExcel = async (req, res) => {
         const workbook = new ExcelJS.Workbook();
         const worksheet = workbook.addWorksheet('Assign Tasks');
 
-        // Helper function to format date (Account Masters के जैसा)
-        const formatDate = (dateString) => {
-            if (!dateString) return '';
-            try {
-                const date = new Date(dateString);
-                return date.toLocaleDateString();
-            } catch (error) {
-                return dateString;
-            }
-        };
-
         // Define only required columns
         worksheet.columns = [
             { header: 'Sr no', key: 'Sr no', width: 10 },
@@ -750,6 +741,7 @@ exports.exportAssignTasksToExcel = async (req, res) => {
             { header: 'CONTACT P', key: 'CONTACT P', width: 20 },
             { header: 'MOBILE NO', key: 'MOBILE NO', width: 15 },
             { header: 'TAG', key: 'TAG', width: 10 },
+            { header: 'TYPE', key: 'TYPE', width: 10 },
             { header: 'REASON FOR VISIT', key: 'REASON FOR VISIT', width: 20 },
             { header: 'STATUS', key: 'STATUS', width: 12 },
             { header: 'ASSIGNED TO', key: 'ASSIGNED TO', width: 20 },
@@ -769,6 +761,7 @@ exports.exportAssignTasksToExcel = async (req, res) => {
                 'CONTACT P': task['CONTACT P'] || '',
                 'MOBILE NO': task['MOBILE NO'] || '',
                 TAG: task.TAG || '',
+                'TYPE': task.TYPE || '',
                 'REASON FOR VISIT': task['REASON FOR VISIT'] || '',
                 STATUS: task.STATUS || '',
                 'ASSIGNED TO': task['ASSIGNED TO'] || '',
@@ -1392,6 +1385,7 @@ const getLeadsDataForExcel = async (req) => {
                     // Party Details
                     "GST NUMBER": "$partyData.GSTNo",
                     "PARTY TAG": "$partyData.partyTag",
+                    "PARTY TYPE": "$partyData.partyType",
 
                     // Address
                     "UNIT NO": "$partyData.address.unitNo",
@@ -1514,6 +1508,7 @@ exports.exportLeadsToExcel = async (req, res) => {
             { header: 'CONTACT PERSON', key: 'CONTACT PERSON', width: 20 },
             { header: 'MOBILE NO', key: 'MOBILE NO', width: 15 },
             { header: 'TAG', key: 'TAG', width: 10 },
+            { header: 'PARTY TYPE', key: 'PARTY TYPE', width: 10 },
             { header: 'REASON', key: 'REASON', width: 20 },
             { header: 'STATUS', key: 'STATUS', width: 12 },
             { header: 'ASSIGNED TO', key: 'ASSIGNED TO', width: 20 },
@@ -1521,17 +1516,6 @@ exports.exportLeadsToExcel = async (req, res) => {
             { header: 'REMARKS', key: 'REMARKS', width: 25 },
             { header: 'CALL FEEDBACK', key: 'CALL FEEDBACK', width: 25 },
         ];
-
-        // Helper function to format date
-        const formatDate = (dateString) => {
-            if (!dateString) return '';
-            try {
-                const date = new Date(dateString);
-                return date.toLocaleDateString(); // Account Masters की तरह format
-            } catch (error) {
-                return dateString;
-            }
-        };
 
         // Add data rows with required fields
         leads.forEach((lead, index) => {
@@ -1546,6 +1530,7 @@ exports.exportLeadsToExcel = async (req, res) => {
                 'CONTACT PERSON': lead['CONTACT PERSON'] || lead['OWNER NAME'] || '',
                 'MOBILE NO': lead['PRIMARY MOBILE'] || lead['MOBILE NO'] || '',
                 TAG: lead['PARTY TAG'] || lead.TAG || '',
+                'PARTY TYPE': lead['PARTY TYPE'] || '',
                 STATUS: lead.STATUS || '',
                 REASON: lead.REASON || '',
                 'ASSIGNED TO': lead['ASSIGNED TO'] || '',
@@ -2663,541 +2648,6 @@ exports.exportComplainToExcel = async (req, res) => {
         res.status(500).json({ success: false, message: "Export failed", error: error.message });
     }
 };
-
-
-// exports.exportPaymentFolderToExcel = async (req, res) => {
-//     try {
-//         const { companyNames = [], filters = {}, search = "" } = req.body;
-
-//         if (!Array.isArray(companyNames) || companyNames.length === 0) {
-//             return res.status(400).json({
-//                 success: false,
-//                 message: "No companies specified",
-//             });
-//         }
-
-//         // =============================
-//         // FETCH COMPANIES
-//         // =============================
-//         const companies = await CompanyName.find({
-//             companyName: { $in: companyNames },
-//         }).lean();
-
-//         if (!companies.length) {
-//             return res.status(400).json({
-//                 success: false,
-//                 message: "No matching companies found",
-//             });
-//         }
-
-//         const workbook = new ExcelJS.Workbook();
-//         const worksheet = workbook.addWorksheet("Payment Pending Report");
-
-//         // =============================
-//         // LAST 4 MONTHS (EXCLUDING CURRENT)
-//         // =============================
-//         const now = new Date();
-//         const currentMonth = now.getMonth();
-//         const currentYear = now.getFullYear();
-
-//         const last4Months = [];
-//         for (let i = 4; i >= 1; i--) {
-//             const d = new Date(currentYear, currentMonth - i, 1);
-//             last4Months.push({
-//                 month: d.getMonth() + 1,
-//                 year: d.getFullYear(),
-//                 label: d.toLocaleString("en-US", { month: "short" }).toUpperCase(),
-//             });
-//         }
-
-//         const isInLast4Months = (date) => {
-//             const d = new Date(date);
-//             return last4Months.some(
-//                 (m) =>
-//                     m.month === d.getMonth() + 1 && m.year === d.getFullYear()
-//             );
-//         };
-
-//         const isOldDate = (date) => {
-//             const d = new Date(date);
-//             if (
-//                 d.getMonth() === currentMonth &&
-//                 d.getFullYear() === currentYear
-//             )
-//                 return false;
-//             return !isInLast4Months(date);
-//         };
-
-//         // =============================
-//         // EXCEL COLUMNS
-//         // =============================
-//         worksheet.columns = [
-//             { header: "S.NO", key: "srNo", width: 8 },
-//             { header: "PARTY NAME", key: "partyName", width: 30 },
-//             { header: "PHONE NO", key: "phoneNumber", width: 18 },
-//             { header: "CONTACT PERSON", key: "contactPerson", width: 22 },
-//             { header: "OLD", key: "OLD", width: 14 },
-//             ...last4Months.map((m) => ({
-//                 header: m.label,
-//                 key: m.label,
-//                 width: 14,
-//             })),
-//             { header: "TOTAL", key: "TOTAL", width: 15 },
-//             { header: "ASSIGN TO", key: "assignTo", width: 20 },
-//             { header: "ASSIGN DATE", key: "assignDate", width: 18 },
-//             { header: "REMARKS", key: "remarks", width: 30 },
-//         ];
-
-//         worksheet.getRow(1).font = { bold: true };
-
-//         let srNo = 1;
-
-//         // =============================
-//         // LOOP COMPANIES
-//         // =============================
-//         for (const comp of companies) {
-//             const startRow = worksheet.lastRow
-//                 ? worksheet.lastRow.number + 1
-//                 : 2;
-
-//             worksheet.mergeCells(
-//                 startRow,
-//                 1,
-//                 startRow,
-//                 worksheet.columns.length
-//             );
-
-//             const titleRow = worksheet.getRow(startRow);
-//             titleRow.getCell(1).value = comp.companyName;
-//             titleRow.font = { bold: true, size: 13 };
-//             titleRow.alignment = { horizontal: "center" };
-
-//             // =============================
-//             // FETCH PAYMENT FOLDERS
-//             // =============================
-//             let folders = await PaymentFolder.find({ company: comp._id })
-//                 .populate({
-//                     path: "party",
-//                     select:
-//                         "partyName contactMobileNo ownerMobileNo contactPerson ownerName",
-//                 })
-//                 .populate("assignedTo", "firstName lastName")
-//                 .sort({ createdAt: -1 });
-
-//             // =============================
-//             // SEARCH FILTER
-//             // =============================
-//             if (search?.trim()) {
-//                 const s = search.toLowerCase();
-//                 folders = folders.filter((f) => {
-//                     const p = f.party || {};
-//                     return (
-//                         p.partyName?.toLowerCase().includes(s) ||
-//                         p.contactPerson?.toLowerCase().includes(s) ||
-//                         p.ownerName?.toLowerCase().includes(s) ||
-//                         f.remarks?.toLowerCase().includes(s)
-//                     );
-//                 });
-//             }
-
-//             // =============================
-//             // PARTY-WISE AGGREGATION
-//             // =============================
-//             const partyMap = new Map();
-
-//             for (const folder of folders) {
-//                 const payments = Array.isArray(folder.payments)
-//                     ? folder.payments
-//                     : [];
-
-//                 const totalReceived = payments.reduce(
-//                     (sum, p) => sum + (p.amount || 0),
-//                     0
-//                 );
-
-//                 const pendingAmount =
-//                     (folder.paymentAmount || 0) - totalReceived;
-
-//                 // 🔥 MAIN RULE: ₹1 bhi pending hai to include
-//                 if (pendingAmount <= 0) continue;
-
-//                 const party = folder.party;
-//                 if (!party?._id) continue;
-
-//                 const partyId = party._id.toString();
-
-//                 if (!partyMap.has(partyId)) {
-//                     const base = {
-//                         partyName: party.partyName || "-",
-//                         phoneNumber:
-//                             party.contactMobileNo || party.ownerMobileNo || "-",
-//                         contactPerson:
-//                             party.contactPerson || party.ownerName || "-",
-//                         OLD: 0,
-//                         TOTAL: 0,
-//                         assignTo: folder.assignedTo
-//                             ? `${folder.assignedTo.firstName} ${folder.assignedTo.lastName}`
-//                             : "",
-//                         assignDate: folder.assignedDate
-//                             ? new Date(folder.assignedDate).toLocaleDateString()
-//                             : "",
-//                         remarks: folder.remarks || "-",
-//                     };
-
-//                     last4Months.forEach((m) => (base[m.label] = 0));
-//                     partyMap.set(partyId, base);
-//                 }
-
-//                 const row = partyMap.get(partyId);
-
-//                 for (const p of payments) {
-//                     const amt = p.amount || 0;
-//                     const dt = new Date(p.date);
-
-//                     if (isInLast4Months(dt)) {
-//                         const m = last4Months.find(
-//                             (x) =>
-//                                 x.month === dt.getMonth() + 1 &&
-//                                 x.year === dt.getFullYear()
-//                         );
-//                         if (m) row[m.label] += amt;
-//                     } else if (isOldDate(dt)) {
-//                         row.OLD += amt;
-//                     }
-
-//                     row.TOTAL += amt;
-//                 }
-//             }
-
-//             // =============================
-//             // WRITE EXCEL ROWS
-//             // =============================
-//             for (const data of partyMap.values()) {
-//                 worksheet.addRow({
-//                     srNo: srNo++,
-//                     ...data,
-//                 });
-//             }
-
-//             worksheet.addRow({});
-//         }
-
-//         // =============================
-//         // SEND RESPONSE
-//         // =============================
-//         res.setHeader(
-//             "Content-Type",
-//             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-//         );
-
-//         res.setHeader(
-//             "Content-Disposition",
-//             `attachment; filename="Pending_Payment_Report_${moment().format(
-//                 "DDMMYYYY"
-//             )}.xlsx"`
-//         );
-
-//         await workbook.xlsx.write(res);
-//         res.end();
-//     } catch (err) {
-//         console.error("Export error:", err);
-//         res.status(500).json({
-//             success: false,
-//             message: "Export failed",
-//             error: err.message,
-//         });
-//     }
-// };
-
-// exports.exportPaymentFolderToExcel = async (req, res) => {
-//     try {
-//         const { companyNames = [], filters = {}, search = "" } = req.body;
-
-//         if (!Array.isArray(companyNames) || companyNames.length === 0) {
-//             return res.status(400).json({
-//                 success: false,
-//                 message: "No companies specified",
-//             });
-//         }
-
-//         // =============================
-//         // FETCH COMPANIES
-//         // =============================
-//         const companies = await CompanyName.find({
-//             companyName: { $in: companyNames },
-//         }).lean();
-
-//         if (!companies.length) {
-//             return res.status(400).json({
-//                 success: false,
-//                 message: "No matching companies found",
-//             });
-//         }
-
-//         const workbook = new ExcelJS.Workbook();
-//         const worksheet = workbook.addWorksheet("Payment Pending Report");
-
-//         // =============================
-//         // LAST 4 MONTHS (EXCLUDING CURRENT)
-//         // =============================
-//         const now = new Date();
-//         const currentMonth = now.getMonth();
-//         const currentYear = now.getFullYear();
-
-//         const last4Months = [];
-//         for (let i = 4; i >= 1; i--) {
-//             const d = new Date(currentYear, currentMonth - i, 1);
-//             last4Months.push({
-//                 month: d.getMonth() + 1,
-//                 year: d.getFullYear(),
-//                 label: d.toLocaleString("en-US", { month: "short" }).toUpperCase(),
-//             });
-//         }
-
-//         const isInLast4Months = (date) => {
-//             const d = new Date(date);
-//             return last4Months.some(
-//                 (m) =>
-//                     m.month === d.getMonth() + 1 && m.year === d.getFullYear()
-//             );
-//         };
-
-//         const isOldDate = (date) => {
-//             const d = new Date(date);
-//             // Exclude current month
-//             if (
-//                 d.getMonth() === currentMonth &&
-//                 d.getFullYear() === currentYear
-//             )
-//                 return false;
-//             // Old = not in last 4 months and not current month
-//             return !isInLast4Months(date);
-//         };
-
-//         // =============================
-//         // EXCEL COLUMNS
-//         // =============================
-//         worksheet.columns = [
-//             { header: "S.NO", key: "srNo", width: 8 },
-//             { header: "PARTY NAME", key: "partyName", width: 30 },
-//             { header: "PHONE NO", key: "phoneNumber", width: 18 },
-//             { header: "CONTACT PERSON", key: "contactPerson", width: 22 },
-//             { header: "OLD", key: "OLD", width: 14 },
-//             ...last4Months.map((m) => ({
-//                 header: m.label,
-//                 key: m.label,
-//                 width: 14,
-//             })),
-//             { header: "TOTAL", key: "TOTAL", width: 15 },
-//             { header: "ASSIGN TO", key: "assignTo", width: 20 },
-//             { header: "ASSIGN DATE", key: "assignDate", width: 18 },
-//             { header: "REMARKS", key: "remarks", width: 30 },
-//         ];
-
-//         worksheet.getRow(1).font = { bold: true };
-//         worksheet.getRow(1).alignment = { horizontal: "center", vertical: "middle" };
-
-//         let srNo = 1;
-
-//         // =============================
-//         // LOOP COMPANIES
-//         // =============================
-//         for (const comp of companies) {
-//             const startRow = worksheet.lastRow
-//                 ? worksheet.lastRow.number + 1
-//                 : 2;
-
-//             worksheet.mergeCells(
-//                 startRow,
-//                 1,
-//                 startRow,
-//                 worksheet.columns.length
-//             );
-
-//             const titleRow = worksheet.getRow(startRow);
-//             titleRow.getCell(1).value = comp.companyName;
-//             titleRow.font = { bold: true, size: 13 };
-//             titleRow.alignment = { horizontal: "center" };
-//             titleRow.fill = {
-//                 type: "pattern",
-//                 pattern: "solid",
-//                 fgColor: { argb: "FFE0E0E0" },
-//             };
-
-//             // =============================
-//             // FETCH PAYMENT FOLDERS
-//             // =============================
-//             let folders = await PaymentFolder.find({ company: comp._id })
-//                 .populate({
-//                     path: "party",
-//                     select:
-//                         "partyName contactMobileNo ownerMobileNo contactPerson ownerName",
-//                 })
-//                 .populate("assignedTo", "firstName lastName")
-//                 .sort({ createdAt: -1 });
-
-//             // =============================
-//             // SEARCH FILTER
-//             // =============================
-//             if (search?.trim()) {
-//                 const s = search.toLowerCase();
-//                 folders = folders.filter((f) => {
-//                     const p = f.party || {};
-//                     return (
-//                         p.partyName?.toLowerCase().includes(s) ||
-//                         p.contactPerson?.toLowerCase().includes(s) ||
-//                         p.ownerName?.toLowerCase().includes(s) ||
-//                         f.remarks?.toLowerCase().includes(s)
-//                     );
-//                 });
-//             }
-
-//             // =============================
-//             // PARTY-WISE AGGREGATION
-//             // =============================
-//             const partyMap = new Map();
-
-//             for (const folder of folders) {
-//                 const payments = Array.isArray(folder.payments)
-//                     ? folder.payments
-//                     : [];
-
-//                 const totalReceived = payments.reduce(
-//                     (sum, p) => sum + (p.amount || 0),
-//                     0
-//                 );
-
-//                 const pendingAmount =
-//                     (folder.paymentAmount || 0) - totalReceived;
-
-//                 // Only include if payment is NOT fully received
-//                 if (pendingAmount <= 0) continue;
-
-//                 const party = folder.party;
-//                 if (!party?._id) continue;
-
-//                 const partyId = party._id.toString();
-
-//                 // Initialize party entry if not exists
-//                 if (!partyMap.has(partyId)) {
-//                     const base = {
-//                         partyName: party.partyName || "-",
-//                         phoneNumber:
-//                             party.contactMobileNo || party.ownerMobileNo || party.contactWhatsAppNo || "-",
-//                         contactPerson:
-//                             party.contactPerson || party.ownerName || party.contactForPayment || "-",
-//                         OLD: 0,
-//                         TOTAL: 0,
-//                         assignTo: "",
-//                         assignDate: "",
-//                         remarks: "",
-//                     };
-
-//                     last4Months.forEach((m) => (base[m.label] = 0));
-//                     partyMap.set(partyId, base);
-//                 }
-
-//                 const row = partyMap.get(partyId);
-
-//                 // Add pending amount to appropriate month column
-//                 const folderMonth = folder.month; // "2024-09" format expected
-//                 if (folderMonth) {
-//                     const [year, month] = folderMonth.split("-").map(Number);
-
-//                     const folderDate = new Date(year, month - 1, 1);
-
-//                     // Check if folder month is in last 4 months
-//                     const matchingMonth = last4Months.find(
-//                         (m) => m.month === month && m.year === year
-//                     );
-
-//                     if (matchingMonth) {
-//                         // Add pending amount to specific month
-//                         row[matchingMonth.label] += pendingAmount;
-//                     } else if (isOldDate(folderDate)) {
-//                         // Add to OLD if before last 4 months
-//                         row.OLD += pendingAmount;
-//                     }
-//                     // Current month is excluded (no addition)
-//                 }
-
-//                 // Update total
-//                 row.TOTAL += pendingAmount;
-
-//                 // Update assignment details (use latest folder's details)
-//                 if (folder.assignedTo) {
-//                     row.assignTo = `${folder.assignedTo.firstName || ""} ${folder.assignedTo.lastName || ""}`.trim();
-//                 }
-//                 if (folder.assignedDate) {
-//                     row.assignDate = moment(folder.assignedDate).format("DD-MM-YYYY");
-//                 }
-//                 if (folder.remarks) {
-//                     row.remarks = folder.remarks;
-//                 }
-//             }
-
-//             // =============================
-//             // WRITE EXCEL ROWS
-//             // =============================
-//             const sortedParties = Array.from(partyMap.values()).sort((a, b) =>
-//                 a.partyName.localeCompare(b.partyName)
-//             );
-
-//             for (const data of sortedParties) {
-//                 const newRow = worksheet.addRow({
-//                     srNo: srNo++,
-//                     ...data,
-//                 });
-
-//                 // Format currency columns
-//                 const currencyColumns = [5, ...Array.from({ length: 4 }, (_, i) => 6 + i), 10];
-//                 currencyColumns.forEach(col => {
-//                     newRow.getCell(col).numFmt = '#,##0';
-//                 });
-//             }
-
-//             // Add empty row after each company
-//             worksheet.addRow({});
-//         }
-
-//         // =============================
-//         // AUTO-FIT COLUMNS
-//         // =============================
-//         worksheet.columns.forEach((column) => {
-//             if (column.header) {
-//                 column.width = Math.max(
-//                     column.width || 10,
-//                     column.header.length + 2
-//                 );
-//             }
-//         });
-
-//         // =============================
-//         // SEND RESPONSE
-//         // =============================
-//         res.setHeader(
-//             "Content-Type",
-//             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-//         );
-
-//         res.setHeader(
-//             "Content-Disposition",
-//             `attachment; filename="Pending_Payment_Report_${moment().format(
-//                 "DDMMYYYY"
-//             )}.xlsx"`
-//         );
-
-//         await workbook.xlsx.write(res);
-//         res.end();
-//     } catch (err) {
-//         console.error("Export error:", err);
-//         res.status(500).json({
-//             success: false,
-//             message: "Export failed",
-//             error: err.message,
-//         });
-//     }
-// };
 
 exports.exportPaymentFolderToExcel = async (req, res) => {
     try {
