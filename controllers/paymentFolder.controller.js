@@ -9,8 +9,6 @@ exports.createPaymentFolder = async (req, res) => {
     const {
       company,
       party,
-      assignedTo,
-      assignedDate,
       remarks,
       paymentType,
       month,
@@ -22,31 +20,10 @@ exports.createPaymentFolder = async (req, res) => {
 
     const pendingAmount = paymentAmount - receivedAmount;
 
-    // First create the assign task
-    const newAssignTask = new AssignTask({
-      companyName: company,
-      partyName: party,
-      date: new Date(assignedDate),
-      time: assignedDate,
-      reasonForVisit: "Get Payment",
-      remarks: remarks || "",
-      assignTo: assignedTo,
-      status: "Pending",
-      visitDate: req.body.visitDate ? new Date(req.body.visitDate) : null,
-      visitTime: req.body.visitTime || "",
-      feedback: req.body.feedback || "",
-      isRescheduledTask: req.body.isRescheduledTask || false,
-      originalTaskId: req.body.originalTaskId || null,
-    });
-
-    const savedAssignTask = await newAssignTask.save();
-
-    // Now create payment folder with assignTask ID
+    // Now create payment folder (task assignment moved to a separate step)
     const data = await PaymentFolder.create({
       company,
       party,
-      assignedTo,
-      assignedDate,
       remarks,
       paymentType,
       month,
@@ -55,7 +32,6 @@ exports.createPaymentFolder = async (req, res) => {
       paymentTerms,
       receivedAmount,
       pendingAmount,
-      assignTask: savedAssignTask._id, // Store the assign task ID
     });
 
     const newData = await PaymentFolder.findById(data._id)
@@ -311,9 +287,6 @@ exports.getPaymentFolders = async (req, res) => {
       }
     }
 
-    // Debug: Log the final query
-    console.log("🔍 Final Query:", JSON.stringify(query, null, 2));
-
     // Get total count
     const totalCount = await PaymentFolder.countDocuments(query);
 
@@ -347,7 +320,7 @@ exports.getPaymentFolders = async (req, res) => {
         ],
       },
       { path: "assignedTo", select: "firstName lastName email" },
-      { path: "assignTask", select: "date time reasonForVisit remarks status" },
+      { path: "assignTask", select: "date time reasonForVisit remarks status isRescheduledTask rescheduleDate" },
       {
         path: "payments.receivedBy",
         select: "firstName lastName",
@@ -635,6 +608,14 @@ exports.updatePaymentFolder = async (req, res) => {
       const newReceived = updateData.receivedAmount;
       const paymentAmount = existing.paymentAmount;
       updateData.pendingAmount = paymentAmount - newReceived;
+      
+      // If payment becomes complete via direct update
+      if (updateData.pendingAmount <= 0 && existing.assignTask) {
+        await AssignTask.findByIdAndUpdate(existing.assignTask, {
+          status: "Completed",
+          remarks: (existing.remarks || "") + " (Payment Completed via Update)"
+        });
+      }
     }
 
     // If paymentAmount updated (rare case)
@@ -767,12 +748,18 @@ exports.deleteMultiplePaymentFolder = async (req, res) => {
 exports.addPaymentToFolder = async (req, res) => {
   try {
     const { id } = req.params;
-    const { amount, date, note, paymentMethod, receivedBy, remark } = req.body;
+    const { amount, date, note, paymentMethod, receivedBy, remark, differenceAmount } = req.body;
 
     // Validate required fields
-    if (!amount || !receivedBy) {
+    if (!amount && !differenceAmount) {
       return res.status(400).json({
-        message: "Amount and receivedBy are required fields",
+        message: "Amount or differenceAmount is required",
+      });
+    }
+
+    if (amount && !receivedBy) {
+      return res.status(400).json({
+        message: "receivedBy is required for payment amount",
       });
     }
 
@@ -782,35 +769,50 @@ exports.addPaymentToFolder = async (req, res) => {
       return res.status(404).json({ message: "Payment folder not found" });
     }
 
-    // Validate amount doesn't exceed pending amount
-    const currentPending = existingFolder.pendingAmount;
-    if (amount > currentPending) {
-      return res.status(400).json({
-        message: `Payment amount (₹${amount}) cannot exceed pending amount (₹${currentPending})`,
-      });
+    // Update difference amount if provided
+    if (differenceAmount !== undefined) {
+      existingFolder.differenceAmount = (existingFolder.differenceAmount || 0) + Number(differenceAmount);
     }
 
-    // Create new payment object
-    const newPayment = {
-      date: date || new Date(),
-      amount: amount,
-      note: remark || "",
-      paymentMethod: paymentMethod || "Cash",
-      receivedBy: receivedBy,
-    };
+    // Create new payment object if amount is provided
+    if (amount) {
+      const newPayment = {
+        date: date || new Date(),
+        amount: Number(amount),
+        note: remark || "",
+        paymentMethod: paymentMethod || "Cash",
+        receivedBy: receivedBy,
+      };
 
-    // Add payment to the beginning of payments array (latest first)
-    existingFolder.payments.unshift(newPayment);
+      // Add payment to the beginning of payments array (latest first)
+      existingFolder.payments.unshift(newPayment);
+    }
 
-    // Calculate new received amount from all payments
+    // Validate total (received + difference) doesn't exceed payment amount
     const totalReceived = existingFolder.payments.reduce(
       (total, payment) => total + payment.amount,
       0
     );
+    const totalAccounted = totalReceived + (existingFolder.differenceAmount || 0);
 
-    // Update received and pending amounts
-    existingFolder.receivedAmount = totalReceived;
-    existingFolder.pendingAmount = existingFolder.paymentAmount - totalReceived;
+    if (totalAccounted > existingFolder.paymentAmount) {
+      return res.status(400).json({
+        message: `Total accounted amount (₹${totalAccounted}) cannot exceed payment amount (₹${existingFolder.paymentAmount})`,
+      });
+    }
+
+    // Update status to completed if pending is 0
+    if (existingFolder.paymentAmount - totalAccounted === 0) {
+      existingFolder.status = "completed";
+      
+      // If payment is completed, also mark the associated task as Completed
+      if (existingFolder.assignTask) {
+        await AssignTask.findByIdAndUpdate(existingFolder.assignTask, {
+          status: "Completed",
+          remarks: (existingFolder.remarks || "") + " (Payment Completed)"
+        });
+      }
+    }
 
     // Save the updated document
     const updatedFolder = await existingFolder.save();
@@ -846,5 +848,78 @@ exports.addPaymentToFolder = async (req, res) => {
       message: "Server error while adding payment",
       error: error.message,
     });
+  }
+};
+
+exports.assignTaskToFolder = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { assignedTo, assignedDate, remarks } = req.body;
+
+    const folder = await PaymentFolder.findById(id);
+    if (!folder) {
+      return res.status(404).json({ message: "Payment folder not found" });
+    }
+
+    // If task already exists, we should probably close/cancel it and create a new one
+    // or just update the staff if requested. User said: "if i want to assign this task after once assign 
+    // then i will just update a name of assign staff and new task is assign to that selected new staff"
+    
+    if (folder.assignTask) {
+      const existingTask = await AssignTask.findById(folder.assignTask);
+      if (existingTask && existingTask.assignTo.toString() !== assignedTo) {
+        // Cancel old task or mark as reassigned
+        existingTask.status = "Cancelled";
+        existingTask.remarks = (existingTask.remarks || "") + " (Reassigned to new staff)";
+        await existingTask.save();
+      }
+    }
+
+    // Create a new task
+    const newTask = new AssignTask({
+      companyName: folder.company,
+      partyName: folder.party,
+      date: new Date(assignedDate),
+      time: assignedDate,
+      reasonForVisit: "Get Payment",
+      remarks: remarks || folder.remarks || "",
+      assignTo: assignedTo,
+      status: "Pending",
+    });
+
+    const savedTask = await newTask.save();
+
+    // Update payment folder
+    folder.assignedTo = assignedTo;
+    folder.assignedDate = new Date(assignedDate);
+    folder.assignTask = savedTask._id;
+    await folder.save();
+
+    const populatedFolder = await PaymentFolder.findById(id)
+      .populate("company")
+      .populate({
+        path: "party",
+        select: "-__v",
+        populate: [
+          { path: "address.marketName", model: "Market", select: "marketName" },
+          { path: "address.landMark", model: "Market", select: "landmark" },
+          { path: "address.area", model: "Market", select: "area" },
+          { path: "address.pincode", model: "Market", select: "pincode" },
+        ],
+      })
+      .populate("assignedTo", "firstName lastName email")
+      .populate("assignTask")
+      .populate({
+        path: "payments.receivedBy",
+        select: "firstName lastName",
+      });
+
+    res.status(200).json({
+      message: "Task assigned successfully",
+      data: populatedFolder,
+    });
+  } catch (error) {
+    console.error("Error assigning task:", error);
+    res.status(500).json({ message: "Server Error", error: error.message });
   }
 };

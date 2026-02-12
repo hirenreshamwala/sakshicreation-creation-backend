@@ -7,6 +7,7 @@ const Party = require("../models/Party.model");
 const AssignTask = require("../models/assignTask.model");
 const moment = require("moment");
 const Market = require("../models/marketData.model");
+const PaymentFolder = require("../models/paymentFolder.model");
 
 exports.createAssignTask = async (req, res) => {
   try {
@@ -421,6 +422,8 @@ exports.updateAssignTask = async (req, res) => {
       });
     }
 
+    const paymentFolder = await PaymentFolder.findOne({ assignTask: id });
+
     // 3. Validate reference fields if they're being updated
     const validateReference = async (field, model, required = false) => {
       if (updateData[field]) {
@@ -618,6 +621,13 @@ exports.updateAssignTask = async (req, res) => {
         const newTask = new AssignTask(newTaskData);
         await newTask.save();
 
+        // Sync with PaymentFolder if exists
+        if (paymentFolder) {
+          paymentFolder.assignTask = newTask._id;
+          paymentFolder.assignedDate = newTask.date;
+          await paymentFolder.save();
+        }
+
         // Populate the new task for the response
         populatedNewTask = await AssignTask.findById(newTask._id)
           .populate("companyName", "companyName avatar")
@@ -652,6 +662,12 @@ exports.updateAssignTask = async (req, res) => {
           select: "roleName"
         }
       });
+
+    // Sync status change with PaymentFolder if exists and not rescheduled
+    if (paymentFolder && updateData.status && updateData.status !== "Rescheduled") {
+      // No specific action needed for other status changes in PaymentFolder for now,
+      // but we ensure the relationship is tracked.
+    }
 
     if (!updatedAssignTask) {
       return res.status(404).json({
@@ -1471,7 +1487,12 @@ exports.updateAssignTaskStatus = async (req, res) => {
       });
     }
 
+    // 1. Sync with PaymentFolder if exists
+    const paymentFolder = await PaymentFolder.findOne({ assignTask: req.params.id });
+
     const updateData = { status };
+    let populatedNewTask = null;
+
     if (status === "Rescheduled") {
       if (!rescheduleDate || isNaN(new Date(rescheduleDate).getTime())) {
         return res.status(400).json({
@@ -1490,6 +1511,38 @@ exports.updateAssignTaskStatus = async (req, res) => {
         });
       }
       updateData.rescheduleDate = rescheduleDateObj;
+
+      // Create new task for rescheduling (matching logic in updateAssignTask)
+      const existingTask = await AssignTask.findById(req.params.id);
+      if (existingTask) {
+        const newTaskData = {
+          companyName: existingTask.companyName,
+          partyName: existingTask.partyName,
+          date: rescheduleDateObj,
+          time: existingTask.time,
+          reasonForVisit: existingTask.reasonForVisit,
+          remarks: existingTask.remarks,
+          assignTo: existingTask.assignTo,
+          status: "Pending",
+          isRescheduledTask: true,
+          originalTaskId: existingTask._id,
+          rescheduleDate: null,
+          createdAt: existingTask.createdAt,
+        };
+
+        const newTask = new AssignTask(newTaskData);
+        await newTask.save();
+
+        // Sync PaymentFolder to the new task
+        if (paymentFolder) {
+          paymentFolder.assignTask = newTask._id;
+          paymentFolder.assignedDate = newTask.date;
+          await paymentFolder.save();
+        }
+
+        populatedNewTask = await AssignTask.findById(newTask._id)
+          .populate("assignTo", "firstName lastName");
+      }
     } else {
       updateData.rescheduleDate = null;
     }
@@ -1539,7 +1592,14 @@ exports.updateAssignTaskStatus = async (req, res) => {
 
 exports.deleteAssignTask = async (req, res) => {
   try {
-    const assignTask = await AssignTask.findByIdAndDelete(req.params.id);
+    const { id } = req.params;
+    
+    // Sync with PaymentFolder if exists
+    await PaymentFolder.updateMany({ assignTask: id }, { 
+      $unset: { assignTask: 1, assignedTo: 1, assignedDate: 1 } 
+    });
+
+    const assignTask = await AssignTask.findByIdAndDelete(id);
     if (assignTask) {
       res.status(200).json({
         success: true,
@@ -1569,6 +1629,11 @@ exports.bulkDeleteAssignTasks = async (req, res) => {
         message: "No task IDs provided for deletion",
       });
     }
+
+    // Sync with PaymentFolder if exists
+    await PaymentFolder.updateMany({ assignTask: { $in: ids } }, { 
+      $unset: { assignTask: 1, assignedTo: 1, assignedDate: 1 } 
+    });
 
     const result = await AssignTask.deleteMany({ _id: { $in: ids } });
 

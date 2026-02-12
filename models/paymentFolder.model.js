@@ -44,7 +44,7 @@ const paymentFolderSchema = new mongoose.Schema(
     assignedTo: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Staff",
-      required: true,
+      required: false,
     },
     assignedDate: {
       type: Date,
@@ -81,6 +81,10 @@ const paymentFolderSchema = new mongoose.Schema(
       ref: "AssignTask",
       required: false,
     },
+    differenceAmount: {
+      type: Number,
+      default: 0,
+    },
     // Remove individual receivedAmount and pendingAmount fields
     payments: [paymentSchema], // Array of payment objects
   },
@@ -94,7 +98,7 @@ paymentFolderSchema.virtual("receivedAmount").get(function () {
 
 // Virtual for calculated pendingAmount
 paymentFolderSchema.virtual("pendingAmount").get(function () {
-  return this.paymentAmount - this.receivedAmount;
+  return this.paymentAmount - this.receivedAmount - (this.differenceAmount || 0);
 });
 
 // Ensure virtual fields are serialized

@@ -11,6 +11,7 @@ router.post("/update/:id", paymentFolderController.updatePaymentFolder);
 router.delete("/delete/:id", paymentFolderController.deletePaymentFolder);
 router.post("/multi-delete", paymentFolderController.deleteMultiplePaymentFolder);
 router.post("/payments/:id", paymentFolderController.addPaymentToFolder);
+router.post("/assign-task/:id", paymentFolderController.assignTaskToFolder);
 router.post("/filter-options/:field", paymentFolderController.getPaymentFolderFilterOptions);
 
 router.post("/export-payment-folder-excel", ExcelDownloadController.exportPaymentFolderToExcel);
