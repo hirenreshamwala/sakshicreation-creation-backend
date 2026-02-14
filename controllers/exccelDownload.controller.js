@@ -620,6 +620,24 @@ const getTasksDataForExcel = async (req) => {
                             date: "$date"
                         }
                     },
+                    // RESCHEDULE DATE - Show only for rescheduled tasks
+            "RESCHEDULE DATE": {
+                $cond: {
+                    if: { 
+                        $and: [
+                            { $eq: ["$status", "Rescheduled"] },
+                            "$rescheduleDate"
+                        ]
+                    },
+                    then: {
+                        $dateToString: {
+                            format: "%Y-%m-%d",
+                            date: "$rescheduleDate"
+                        }
+                    },
+                    else: ""
+                }
+            },
                     // PARTY NAME
                     "PARTY NAME": "$partyData.partyName",
                     // UNIT NO
@@ -688,8 +706,8 @@ const getTasksDataForExcel = async (req) => {
                     },
                     "VISIT TIME": "$visitTime",
                     PRIORITY: "$priority"
-                }
-            }
+        }
+    }
         ];
 
         const tasks = await assignTaskModel.aggregate(pipeline);
@@ -734,6 +752,7 @@ exports.exportAssignTasksToExcel = async (req, res) => {
         worksheet.columns = [
             { header: 'Sr no', key: 'Sr no', width: 10 },
             { header: 'ASSIGN DATE', key: 'DATE', width: 12 },
+            { header: 'RESCHEDULE DATE', key: 'RESCHEDULE DATE', width: 12 },
             { header: 'PARTY NAME', key: 'PARTY NAME', width: 25 },
             { header: 'UNIT NO', key: 'UNIT NO', width: 12 },
             { header: 'MKT NAME', key: 'MKT NAME', width: 20 },
@@ -754,6 +773,7 @@ exports.exportAssignTasksToExcel = async (req, res) => {
             worksheet.addRow({
                 'Sr no': index + 1,
                 DATE: moment(task.DATE).format('DD-MM-YYYY') || '', // यहाँ formatting apply करें
+                 'RESCHEDULE DATE': task['RESCHEDULE DATE'] ? moment(task['RESCHEDULE DATE']).format('DD-MM-YYYY') : '',
                 'PARTY NAME': task['PARTY NAME'] || '',
                 'UNIT NO': task['UNIT NO'] || '',
                 'MKT NAME': task['MKT NAME'] || '',
@@ -3840,6 +3860,14 @@ exports.exportPaymentFolderToExcel = async (req, res) => {
                 label: d.toLocaleString("en-US", { month: "short" }).toUpperCase(),
             });
         }
+        if (isDifference === true) {
+            const curr = new Date(currentYear, currentMonth, 1);
+            last4Months.push({
+                month: curr.getMonth() + 1,
+                year: curr.getFullYear(),
+                label: curr.toLocaleString("en-US", { month: "short" }).toUpperCase(),
+            });
+        }
 
         // Helper function to get payment term days
         const getPaymentTermDays = (paymentTerms) => {
@@ -3881,17 +3909,19 @@ exports.exportPaymentFolderToExcel = async (req, res) => {
         // =============================
         // EXCEL COLUMNS
         // =============================
+        const monthColumns = last4Months.map((m) => ({
+            header: m.label,
+            key: m.label,
+            width: 14,
+        }));
+
         worksheet.columns = [
             { header: "S.NO", key: "srNo", width: 8 },
             { header: "PARTY NAME", key: "partyName", width: 30 },
             { header: "PHONE NO", key: "phoneNumber", width: 18 },
             { header: "CONTACT PERSON NAME", key: "contactPerson", width: 22 },
             { header: "OLD", key: "OLD", width: 14 },
-            ...last4Months.map((m) => ({
-                header: m.label,
-                key: m.label,
-                width: 14,
-            })),
+            ...monthColumns,
             { header: "TOTAL", key: "TOTAL", width: 15 },
             { header: "DIFFERENCE", key: "difference", width: 15 },
             { header: "ASSIGN TO", key: "assignTo", width: 20 },
@@ -4150,7 +4180,8 @@ exports.exportPaymentFolderToExcel = async (req, res) => {
                 .populate("assignedTo", "firstName lastName")
                 .populate({
                     path: "assignTask",
-                    select: "status followUpDate followUpTime notes isRescheduledTask"
+                    select: "status followUpDate followUpTime notes isRescheduledTask date rescheduleDate originalTaskId",
+                    populate: { path: "originalTaskId", select: "date" }
                 })
                 .sort({ createdAt: -1 });
 
@@ -4270,7 +4301,7 @@ exports.exportPaymentFolderToExcel = async (req, res) => {
                         // Add to OLD if before last 4 months
                         row.OLD += pendingAmount;
                     }
-                    // Current month is excluded (no addition)
+                    // Current month inclusion handled via last4Months when isDifference === true
                 }
 
                 // Update total
@@ -4288,13 +4319,19 @@ exports.exportPaymentFolderToExcel = async (req, res) => {
                 if (folder.assignTask) {
                     const task = folder.assignTask;
                     let statusText;
-                    
-                    // Check if task is rescheduled
+
                     if (task.isRescheduledTask === true) {
-                        statusText = "Rescheduled";
+                        const oldDate =
+                            task.originalTaskId && task.originalTaskId.date
+                                ? moment(task.originalTaskId.date).format("DD-MM-YYYY")
+                                : "-";
+                        const newDate =
+                            folder.assignedDate
+                                ? moment(folder.assignedDate).format("DD-MM-YYYY")
+                                : (task.date ? moment(task.date).format("DD-MM-YYYY") : "-");
+                        statusText = `Rescheduled (Old: ${oldDate} → New: ${newDate})`;
                     } else {
                         statusText = task.status || "Pending";
-                        // Capitalize first letter
                         statusText = statusText.charAt(0).toUpperCase() + statusText.slice(1).toLowerCase();
                     }
                     
@@ -4332,7 +4369,16 @@ exports.exportPaymentFolderToExcel = async (req, res) => {
                 });
 
                 // Format currency columns
-                const currencyColumns = [5, ...Array.from({ length: 4 }, (_, i) => 6 + i), 10, 11];
+                const monthColumnStart = 6;
+                const monthCount = monthColumns.length;
+                const totalColIndex = monthColumnStart + monthCount;
+                const differenceColIndex = totalColIndex + 1;
+                const currencyColumns = [
+                    5, // OLD
+                    ...Array.from({ length: monthCount }, (_, i) => monthColumnStart + i),
+                    totalColIndex,
+                    differenceColIndex
+                ];
                 currencyColumns.forEach(col => {
                     newRow.getCell(col).numFmt = '#,##0';
                 });
