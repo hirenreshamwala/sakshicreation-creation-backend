@@ -9,6 +9,17 @@ const Inventory = require("../models/inventory.model");
 const ProductItem = require("../models/productItem.model");
 const moment = require("moment");
 
+const computeNotificationSummary = async () => {
+  const [designer, printer, binder, bookletBinder] = await Promise.all([
+    Order.countDocuments({ designerNotificationUnread: true }),
+    Order.countDocuments({ printerNotificationUnread: true }),
+    Order.countDocuments({ binderNotificationUnread: true }),
+    Order.countDocuments({ bookletBinderNotificationUnread: true }),
+  ]);
+
+  return { designer, printer, binder, bookletBinder };
+};
+
 // const Size = require('../models/size.model');
 exports.createOrder = async (req, res) => {
   try {
@@ -1018,6 +1029,30 @@ exports.updateOrder = async (req, res) => {
       });
     }
 
+    const actorRole =
+      (req.user && typeof req.user.role === "string"
+        ? req.user.role.toLowerCase()
+        : null) || null;
+
+    if (actorRole === "designer" && updateData.designerStatus === "Done") {
+      updateData.designerNotificationUnread = true;
+    }
+
+    if (actorRole === "printer" && updateData.printerStatus === "Done") {
+      updateData.printerNotificationUnread = true;
+    }
+
+    if (actorRole === "binder" && updateData.binderStatus === "Done") {
+      updateData.binderNotificationUnread = true;
+    }
+
+    if (
+      actorRole === "booklet & folder binder" &&
+      updateData.bookletBinderStatus === "Done"
+    ) {
+      updateData.bookletBinderNotificationUnread = true;
+    }
+
     if (typeof isGst !== "undefined") {
       updateData.isGst = isGst;
     }
@@ -1425,6 +1460,19 @@ exports.updateOrder = async (req, res) => {
 
     console.log("✅ Order updated successfully:", order._id);
 
+    try {
+      const io = req.app.get("io");
+      if (io) {
+        const summary = await computeNotificationSummary();
+        io.emit("orderNotificationUpdated", {
+          orderId: order._id,
+          summary,
+        });
+      }
+    } catch (socketError) {
+      console.error("WebSocket notification error (updateOrder):", socketError);
+    }
+
     res.status(200).json({
       success: true,
       message: "Order updated successfully",
@@ -1435,6 +1483,93 @@ exports.updateOrder = async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Failed to update order",
+      error: error.message,
+    });
+  }
+};
+
+exports.getNotificationSummary = async (req, res) => {
+  try {
+    const summary = await computeNotificationSummary();
+    return res.status(200).json({
+      success: true,
+      data: summary,
+    });
+  } catch (error) {
+    console.error("❌ Get notification summary error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch notification summary",
+      error: error.message,
+    });
+  }
+};
+
+exports.markNotificationRead = async (req, res) => {
+  try {
+    const { orderId } = req.params;
+    const { roleType } = req.body;
+
+    if (!mongoose.Types.ObjectId.isValid(orderId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid Order ID",
+      });
+    }
+
+    const allowedRoles = ["designer", "printer", "binder", "bookletBinder"];
+    if (!roleType || !allowedRoles.includes(roleType)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid roleType",
+      });
+    }
+
+    const notificationField =
+      roleType === "designer"
+        ? "designerNotificationUnread"
+        : roleType === "printer"
+        ? "printerNotificationUnread"
+        : roleType === "binder"
+        ? "binderNotificationUnread"
+        : "bookletBinderNotificationUnread";
+
+    const updatedOrder = await Order.findByIdAndUpdate(
+      orderId,
+      { [notificationField]: false },
+      { new: true }
+    );
+
+    if (!updatedOrder) {
+      return res.status(404).json({
+        success: false,
+        message: "Order not found",
+      });
+    }
+
+    try {
+      const io = req.app.get("io");
+      if (io) {
+        const summary = await computeNotificationSummary();
+        io.emit("orderNotificationUpdated", {
+          orderId: updatedOrder._id,
+          summary,
+        });
+      }
+    } catch (socketError) {
+      console.error("WebSocket notification error (markNotificationRead):", socketError);
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Notification marked as read",
+      data: updatedOrder,
+    });
+  } catch (error) {
+    console.error("❌ Mark notification read error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to mark notification as read",
       error: error.message,
     });
   }
@@ -2347,16 +2482,27 @@ exports.updateStaffStatus = async (req, res) => {
 
     // Update order status
     const updateField = `${statusType}Status`;
+    const notificationField =
+      statusType === "printer"
+        ? "printerNotificationUnread"
+        : statusType === "binder"
+        ? "binderNotificationUnread"
+        : "bookletBinderNotificationUnread";
+
     console.log("📝 Updating order status:", updateField, "=>", status);
 
-    const updatedOrder = await Order.findByIdAndUpdate(
-      orderId,
-      {
-        [updateField]: status,
-        ...startedAtUpdate,
-      },
-      { new: true }
-    )
+    const updatePayload = {
+      [updateField]: status,
+      ...startedAtUpdate,
+    };
+
+    if (status === "Done") {
+      updatePayload[notificationField] = true;
+    }
+
+    const updatedOrder = await Order.findByIdAndUpdate(orderId, updatePayload, {
+      new: true,
+    })
       .populate("companyName", "companyName avatar")
       .populate({
         path: "party",
@@ -2392,6 +2538,19 @@ exports.updateStaffStatus = async (req, res) => {
       .populate("productItem", "itemName");
 
     console.log("✅ Order updated successfully:", updatedOrder._id);
+
+    try {
+      const io = req.app.get("io");
+      if (io) {
+        const summary = await computeNotificationSummary();
+        io.emit("orderNotificationUpdated", {
+          orderId: updatedOrder._id,
+          summary,
+        });
+      }
+    } catch (socketError) {
+      console.error("WebSocket notification error (updateStaffStatus):", socketError);
+    }
 
     return res.status(200).json({
       success: true,

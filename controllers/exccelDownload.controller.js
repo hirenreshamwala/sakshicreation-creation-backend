@@ -122,718 +122,904 @@ exports.exportAccountMastersToExcel = async (req, res) => {
     }
 };
 
+// ============================================================
+//  FIXED: getTasksDataForExcel  (Standalone — No Pagination)
+//  Filters exactly match getAllAssignTasks logic:
+//    ✅ Pre-match before lookups (performance)
+//    ✅ Multiple comma-separated dates
+//    ✅ reason "other" logic
+//    ✅ assignBy (same field name as getAllAssignTasks)
+//    ✅ All post-lookup filters (unitNo, marketName, area, etc.)
+//    ✅ search functionality
+// ============================================================
+
+// ============================================================
+//  FIXED: getTasksDataForExcel  (Standalone — No Pagination)
+//  FIX 1: RESCHEDULE DATE — sirf tab show hoga jab
+//          task ka OWN status === "Rescheduled" ho
+//  FIX 2: Date double-formatting removed (Invalid date bug)
+//  FIX 3: rescheduleDate null/undefined safe check
+// ============================================================
+
+// ============================================================
+//  FIXED: getTasksDataForExcel  (Standalone — No Pagination)
+//  FIX 1: RESCHEDULE DATE — sirf tab dikhao jab originalTaskId populated ho
+//          (originalTaskId._id exist kare AND status === "Rescheduled")
+//  FIX 2: Date double-formatting removed (Invalid date bug)
+//  FIX 3: rescheduleDate null/undefined/NaN safe check
+// ============================================================
+
+// ============================================================
+//  FIXED: getTasksDataForExcel  (Standalone — No Pagination)
+//  FIX 1: RESCHEDULE DATE — sirf tab dikhao jab originalTaskId populated ho
+//          (originalTaskId._id exist kare AND status === "Rescheduled")
+//  FIX 2: Date double-formatting removed (Invalid date bug)
+//  FIX 3: rescheduleDate null/undefined/NaN safe check
+// ============================================================
+
 const getTasksDataForExcel = async (req) => {
-    try {
-        const {
-            staffId,
-            startDate,
-            endDate,
-            status,
-            companyName,
-            partyName,
-            reason,
-            priority,
-            date,
-            unitNo,
-            marketName,
-            mobile,
-            createdBy,
-            assignToFilter,
-            party,
-            area,
-            search,
-        } = req.body;
+  try {
+    const {
+      status,
+      companyName,
+      assignTo,
+      assignedTo,
+      priority,
+      startDate,
+      endDate,
+      date,
+      unitNo,
+      marketName,
+      mobile,
+      reason,
+      assignToFilter,
+      party,
+      area,
+      search,
+    } = req.body;
 
-        // Build match conditions
-        const matchConditions = {};
+    // Same as getAllAssignTasks: createdBy comes from assignBy field
+    const createdBy = req.body.assignBy;
 
-        /* ================================
-           DATE RANGE FILTER - Updated as per getAllAssignTasks
-        ================================ */
-        if (date) {
-            const startOfDay = new Date(date);
-            startOfDay.setHours(0, 0, 0, 0);
-            const endOfDay = new Date(date);
-            endOfDay.setHours(23, 59, 59, 999);
+    // PRE-MATCH (direct fields on AssignTask — applied BEFORE lookups)
+    const preMatchConditions = {};
 
-            matchConditions.date = {
-                $gte: startOfDay,
-                $lte: endOfDay,
-            };
-        } else if (startDate && endDate) {
-            matchConditions.date = {
-                $gte: new Date(startDate),
-                $lte: new Date(endDate),
-            };
+    // POST-MATCH (populated/nested fields — applied AFTER lookups)
+    const postMatchConditions = {};
+
+    /* ================================
+       DATE FILTER
+    ================================ */
+    if (date) {
+      if (typeof date === "string" && date.includes(",")) {
+        const dates = date.split(",").map((d) => d.trim()).filter((d) => d);
+        const dateConditions = [];
+
+        dates.forEach((dateStr) => {
+          const parsedDate = parseDateString(dateStr);
+          const startOfDay = new Date(parsedDate);
+          startOfDay.setHours(0, 0, 0, 0);
+          const endOfDay = new Date(parsedDate);
+          endOfDay.setHours(23, 59, 59, 999);
+          dateConditions.push({ date: { $gte: startOfDay, $lte: endOfDay } });
+        });
+
+        if (dateConditions.length > 0) {
+          preMatchConditions.$or = preMatchConditions.$or || [];
+          preMatchConditions.$or.push(...dateConditions);
         }
+      } else {
+        const parsedDate = parseDateString(date);
+        const startOfDay = new Date(parsedDate);
+        startOfDay.setHours(0, 0, 0, 0);
+        const endOfDay = new Date(parsedDate);
+        endOfDay.setHours(23, 59, 59, 999);
+        preMatchConditions.date = { $gte: startOfDay, $lte: endOfDay };
+      }
+    }
 
-        /* ================================
-           SEARCH FUNCTIONALITY
-        ================================ */
-        if (search && search.trim() !== '') {
-            const searchRegex = { $regex: search, $options: 'i' };
+    if (startDate && endDate && !date) {
+      preMatchConditions.date = {
+        $gte: new Date(startDate),
+        $lte: new Date(endDate),
+      };
+    }
 
-            // Create a separate search condition object
-            const searchCondition = {
-                $or: [
-                    { "companyData.companyName": searchRegex },
-                    { "partyData.partyName": searchRegex },
-                    { "assignToData.firstName": searchRegex },
-                    { "assignToData.lastName": searchRegex },
-                    { "partyData.ownerMobileNo": searchRegex },
-                    { "partyData.personMobileNo": searchRegex },
-                    { "partyData.contactMobileNo": searchRegex },
-                    { "partyData.ownerWhatsAppNo": searchRegex },
-                    { "partyData.personWhatsAppNo": searchRegex },
-                    { "partyData.contactWhatsAppNo": searchRegex },
-                    { "partyData.address.unitNo": searchRegex },
-                    { "marketNameData.marketName": searchRegex },
-                    { "areaData.area": searchRegex },
-                    { reasonForVisit: searchRegex },
-                    { status: searchRegex },
-                    { remarks: searchRegex },
-                    { feedback: searchRegex },
-                    {
-                        $expr: {
-                            $regexMatch: {
-                                input: { $concat: ["$assignToData.firstName", " ", "$assignToData.lastName"] },
-                                regex: search,
-                                options: "i"
-                            }
-                        }
-                    },
-                    {
-                        $expr: {
-                            $regexMatch: {
-                                input: { $concat: ["$accountData.createdByData.firstName", " ", "$accountData.createdByData.lastName"] },
-                                regex: search,
-                                options: "i"
-                            }
-                        }
-                    }
-                ]
-            };
+    /* ================================
+       COMPANY FILTER
+    ================================ */
+    if (companyName) {
+      if (mongoose.Types.ObjectId.isValid(companyName)) {
+        preMatchConditions.companyName = new mongoose.Types.ObjectId(companyName);
+      } else {
+        postMatchConditions["companyData.companyName"] = {
+          $regex: companyName,
+          $options: "i",
+        };
+      }
+    }
 
-            // If there are existing conditions, combine with $and
-            if (Object.keys(matchConditions).length > 0) {
-                // Create a new object to avoid circular references
-                const combinedConditions = {
-                    $and: [
-                        { ...matchConditions }, // Spread existing conditions
-                        searchCondition
-                    ]
-                };
+    /* ================================
+       STATUS FILTER
+    ================================ */
+    if (status && status.length > 0) {
+      const statusArray = Array.isArray(status) ? status : status.split(",");
+      preMatchConditions.status = {
+        $in: statusArray.map((s) => new RegExp(`^${s}$`, "i")),
+      };
+    }
 
-                // Replace matchConditions with the new combined conditions
-                Object.keys(matchConditions).forEach(key => delete matchConditions[key]);
-                Object.assign(matchConditions, combinedConditions);
-            } else {
-                // No existing conditions, just use the search condition
-                Object.assign(matchConditions, searchCondition);
+    /* ================================
+       PRIORITY FILTER
+    ================================ */
+    if (priority) {
+      preMatchConditions.priority = new RegExp(`^${priority}$`, "i");
+    }
+
+    /* ================================
+       REASON FOR VISIT FILTER
+    ================================ */
+    if (reason) {
+      const predefinedReasons = [
+        "delivery",
+        "get payment",
+        "visit",
+        "order",
+        "complain",
+        "sample approval",
+      ];
+      const reasons = reason
+        .split(",")
+        .map((r) => r.trim().toLowerCase())
+        .filter((r) => r);
+
+      if (reasons.length > 0) {
+        const otherIncluded = reasons.includes("other");
+        const specificReasons = reasons.filter((r) => r !== "other");
+
+        if (otherIncluded && specificReasons.length === 0) {
+          preMatchConditions.reasonForVisit = {
+            $nin: predefinedReasons.map((r) => new RegExp(`^${r}$`, "i")),
+          };
+        } else if (otherIncluded && specificReasons.length > 0) {
+          preMatchConditions.$or = preMatchConditions.$or || [];
+          preMatchConditions.$or.push(
+            {
+              reasonForVisit: {
+                $in: specificReasons.map((r) => new RegExp(`^${r}$`, "i")),
+              },
+            },
+            {
+              reasonForVisit: {
+                $nin: predefinedReasons.map((r) => new RegExp(`^${r}$`, "i")),
+              },
             }
+          );
+        } else {
+          preMatchConditions.reasonForVisit = {
+            $in: specificReasons.map((r) => new RegExp(`^${r}$`, "i")),
+          };
         }
+      }
+    }
 
-        /* ================================
-           COMPANY FILTER
-        ================================ */
-        if (companyName) {
-            if (mongoose.Types.ObjectId.isValid(companyName)) {
-                matchConditions.companyName = new mongoose.Types.ObjectId(companyName);
-            } else {
-                matchConditions["companyData.companyName"] = {
-                    $regex: companyName,
-                    $options: "i",
-                };
-            }
+    /* ================================
+       BASE PIPELINE
+    ================================ */
+    const pipeline = [
+      ...(Object.keys(preMatchConditions).length > 0
+        ? [{ $match: preMatchConditions }]
+        : []),
+
+      // 1. TASK → COMPANY
+      {
+        $lookup: {
+          from: "companynames",
+          localField: "companyName",
+          foreignField: "_id",
+          as: "companyData",
+        },
+      },
+      { $unwind: { path: "$companyData", preserveNullAndEmptyArrays: true } },
+
+      // 2. TASK → PARTY
+      {
+        $lookup: {
+          from: "parties",
+          localField: "partyName",
+          foreignField: "_id",
+          as: "partyData",
+        },
+      },
+      { $unwind: { path: "$partyData", preserveNullAndEmptyArrays: true } },
+
+      // 3. TASK → ASSIGN TO (STAFF)
+      {
+        $lookup: {
+          from: "staffs",
+          localField: "assignTo",
+          foreignField: "_id",
+          as: "assignToData",
+        },
+      },
+      { $unwind: { path: "$assignToData", preserveNullAndEmptyArrays: true } },
+
+      // 4. STAFF → ROLE
+      {
+        $lookup: {
+          from: "roles",
+          localField: "assignToData.role",
+          foreignField: "_id",
+          as: "assignToData.roleData",
+        },
+      },
+      {
+        $unwind: {
+          path: "$assignToData.roleData",
+          preserveNullAndEmptyArrays: true,
+        },
+      },
+
+      // 5. STAFF → DEPARTMENT
+      {
+        $lookup: {
+          from: "departments",
+          localField: "assignToData.department",
+          foreignField: "_id",
+          as: "assignToData.departmentData",
+        },
+      },
+      {
+        $unwind: {
+          path: "$assignToData.departmentData",
+          preserveNullAndEmptyArrays: true,
+        },
+      },
+
+      // 6. PARTY ADDRESS → MARKET NAME
+      {
+        $lookup: {
+          from: "markets",
+          localField: "partyData.address.marketName",
+          foreignField: "_id",
+          as: "marketNameData",
+        },
+      },
+
+      // 7. PARTY ADDRESS → AREA
+      {
+        $lookup: {
+          from: "markets",
+          localField: "partyData.address.area",
+          foreignField: "_id",
+          as: "areaData",
+        },
+      },
+
+      // 8. PARTY ADDRESS → LANDMARK
+      {
+        $lookup: {
+          from: "markets",
+          localField: "partyData.address.landMark",
+          foreignField: "_id",
+          as: "landMarkData",
+        },
+      },
+
+      // 9. PARTY ADDRESS → PINCODE
+      {
+        $lookup: {
+          from: "markets",
+          localField: "partyData.address.pincode",
+          foreignField: "_id",
+          as: "pincodeData",
+        },
+      },
+
+      // 10. COMPANY → OWNER
+      {
+        $lookup: {
+          from: "users",
+          localField: "companyData.owner",
+          foreignField: "_id",
+          as: "companyData.ownerData",
+        },
+      },
+      {
+        $unwind: {
+          path: "$companyData.ownerData",
+          preserveNullAndEmptyArrays: true,
+        },
+      },
+
+      // 11. ACCOUNT MASTER FOR CREATED BY
+      {
+        $lookup: {
+          from: "accountmasters",
+          let: { partyId: "$partyName", companyId: "$companyName" },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $and: [
+                    { $eq: ["$party", "$$partyId"] },
+                    { $eq: ["$companyName", "$$companyId"] },
+                  ],
+                },
+              },
+            },
+            {
+              $lookup: {
+                from: "staffs",
+                localField: "createdBy",
+                foreignField: "_id",
+                as: "createdByData",
+              },
+            },
+            { $unwind: "$createdByData" },
+          ],
+          as: "accountData",
+        },
+      },
+      { $unwind: { path: "$accountData", preserveNullAndEmptyArrays: true } },
+
+      // 12. ORIGINAL TASK (IF RESCHEDULED)
+      {
+        $lookup: {
+          from: "assigntasks",
+          localField: "originalTaskId",
+          foreignField: "_id",
+          as: "originalTaskData",
+        },
+      },
+      {
+        $unwind: {
+          path: "$originalTaskData",
+          preserveNullAndEmptyArrays: true,
+        },
+      },
+    ];
+
+    /* ================================
+       POST-LOOKUP FILTERS
+    ================================ */
+
+    // UNIT NO FILTER
+    if (unitNo) {
+      const unitNos = unitNo.split(",").map((u) => u.trim()).filter((u) => u);
+      if (unitNos.length > 0) {
+        postMatchConditions["partyData.address.unitNo"] = {
+          $in: unitNos.map((unit) => new RegExp(`^${unit}$`, "i")),
+        };
+      }
+    }
+
+    // MARKET NAME FILTER
+    if (marketName) {
+      const marketNames = marketName.split(",").map((m) => m.trim()).filter((m) => m);
+      if (marketNames.length > 0) {
+        postMatchConditions["marketNameData.marketName"] = {
+          $in: marketNames.map((name) => new RegExp(name, "i")),
+        };
+      }
+    }
+
+    // MOBILE NUMBER FILTER
+    if (mobile) {
+      postMatchConditions.$or = postMatchConditions.$or || [];
+      postMatchConditions.$or.push(
+        { "partyData.ownerMobileNo": { $regex: mobile, $options: "i" } },
+        { "partyData.personMobileNo": { $regex: mobile, $options: "i" } },
+        { "partyData.contactMobileNo": { $regex: mobile, $options: "i" } },
+        { "partyData.ownerWhatsAppNo": { $regex: mobile, $options: "i" } },
+        { "partyData.personWhatsAppNo": { $regex: mobile, $options: "i" } },
+        { "partyData.contactWhatsAppNo": { $regex: mobile, $options: "i" } }
+      );
+    }
+
+    // CREATED BY FILTER
+    if (createdBy) {
+      const createdByNames = createdBy
+        .split(",")
+        .map((name) => name.trim())
+        .filter(Boolean);
+
+      const createdByConditions = [];
+
+      createdByNames.forEach((name) => {
+        const parts = name.split(" ").filter(Boolean);
+
+        if (parts.length >= 2) {
+          const firstName = parts[0];
+          const lastName = parts.slice(1).join(" ");
+          createdByConditions.push({
+            $and: [
+              {
+                "accountData.createdByData.firstName": {
+                  $regex: `^${firstName}$`,
+                  $options: "i",
+                },
+              },
+              {
+                "accountData.createdByData.lastName": {
+                  $regex: `^${lastName}$`,
+                  $options: "i",
+                },
+              },
+            ],
+          });
+        } else {
+          createdByConditions.push({
+            "accountData.createdByData.firstName": {
+              $regex: `^${parts[0]}$`,
+              $options: "i",
+            },
+          });
         }
+      });
 
-        /* ================================
-           STATUS FILTER
-        ================================ */
-        if (status && status.length > 0) {
-            const statusArray = Array.isArray(status) ? status : status.split(",");
-            matchConditions.status = {
-                $in: statusArray.map((s) => new RegExp(`^${s}$`, "i")),
-            };
+      if (createdByConditions.length > 0) {
+        postMatchConditions.$or = createdByConditions;
+      }
+    }
+
+    // ASSIGN TO FILTER (assignedTo / assignTo)
+    const assignToValue = assignedTo || assignTo;
+    let finalAssignToIds = [];
+
+    if (assignToValue && assignToValue.trim() !== "") {
+      if (mongoose.Types.ObjectId.isValid(assignToValue)) {
+        finalAssignToIds.push(new mongoose.Types.ObjectId(assignToValue));
+      } else {
+        const staffs = await mongoose.model("Staff").find({
+          $or: [
+            { firstName: { $regex: assignToValue, $options: "i" } },
+            { lastName: { $regex: assignToValue, $options: "i" } },
+            {
+              $expr: {
+                $regexMatch: {
+                  input: { $concat: ["$firstName", " ", "$lastName"] },
+                  regex: assignToValue,
+                  options: "i",
+                },
+              },
+            },
+          ],
+        }).select("_id firstName lastName");
+
+        if (staffs.length > 0) {
+          finalAssignToIds = staffs.map((staff) => staff._id);
+        } else {
+          return { success: true, data: [], count: 0 };
         }
+      }
+    }
 
-        /* ================================
-           PRIORITY FILTER
-        ================================ */
-        if (priority) {
-            matchConditions.priority = new RegExp(`^${priority}$`, "i");
-        }
+    // ASSIGN TO FILTER (comma-separated assignToFilter)
+    if (assignToFilter && assignToFilter.trim() !== "") {
+      const assignToNames = assignToFilter
+        .split(",")
+        .map((name) => name.trim())
+        .filter((name) => name !== "");
 
-        /* ================================
-           ASSIGN TO FILTER (staffId parameter)
-        ================================ */
-        if (staffId) {
-            if (mongoose.Types.ObjectId.isValid(staffId)) {
-                matchConditions.assignTo = new mongoose.Types.ObjectId(staffId);
-            } else {
-                const staffs = await mongoose.model("Staff").find({
-                    $or: [
-                        { firstName: { $regex: staffId, $options: "i" } },
-                        { lastName: { $regex: staffId, $options: "i" } },
-                        {
-                            $expr: {
-                                $regexMatch: {
-                                    input: { $concat: ["$firstName", " ", "$lastName"] },
-                                    regex: staffId,
-                                    options: "i"
-                                }
-                            }
-                        }
-                    ]
-                }).select("_id");
+      let filterStaffIds = [];
 
-                if (staffs.length > 0) {
-                    const staffIds = staffs.map(staff => staff._id);
-                    matchConditions.assignTo = { $in: staffIds };
-                } else {
-                    return {
-                        success: true,
-                        data: [],
-                        count: 0,
-                    };
-                }
-            }
-        }
+      for (const name of assignToNames) {
+        if (mongoose.Types.ObjectId.isValid(name)) {
+          filterStaffIds.push(new mongoose.Types.ObjectId(name));
+        } else {
+          const parts = name.split(" ").filter(Boolean);
+          let staffQuery = { $or: [] };
 
-        /* ================================
-           PARTY NAME FILTER
-        ================================ */
-        if (partyName) {
-            if (mongoose.Types.ObjectId.isValid(partyName)) {
-                matchConditions.partyName = new mongoose.Types.ObjectId(partyName);
-            } else {
-                const parties = await mongoose.model("Party").find({
-                    partyName: { $regex: partyName, $options: "i" }
-                }).select("_id");
-
-                if (parties.length > 0) {
-                    const partyIds = parties.map(party => party._id);
-                    matchConditions.partyName = { $in: partyIds };
-                } else {
-                    return {
-                        success: true,
-                        data: [],
-                        count: 0,
-                    };
-                }
-            }
-        }
-
-        /* ================================
-           UNIT NO FILTER
-        ================================ */
-        if (unitNo) {
-            const unitNos = unitNo.split(',').map(u => u.trim()).filter(u => u);
-            if (unitNos.length > 0) {
-                matchConditions["partyData.address.unitNo"] = {
-                    $in: unitNos.map(unit => new RegExp(`^${unit}$`, "i"))
-                };
-            }
-        }
-
-        /* ================================
-           MARKET NAME FILTER
-        ================================ */
-        if (marketName) {
-            const marketNames = marketName.split(',').map(m => m.trim()).filter(m => m);
-            if (marketNames.length > 0) {
-                matchConditions["marketNameData.marketName"] = {
-                    $in: marketNames.map(name => new RegExp(name, "i"))
-                };
-            }
-        }
-
-        /* ================================
-           MOBILE NUMBER FILTER
-        ================================ */
-        if (mobile) {
-            matchConditions.$or = matchConditions.$or || [];
-            matchConditions.$or.push(
-                { "partyData.ownerMobileNo": { $regex: mobile, $options: "i" } },
-                { "partyData.personMobileNo": { $regex: mobile, $options: "i" } },
-                { "partyData.contactMobileNo": { $regex: mobile, $options: "i" } },
-                { "partyData.ownerWhatsAppNo": { $regex: mobile, $options: "i" } },
-                { "partyData.personWhatsAppNo": { $regex: mobile, $options: "i" } },
-                { "partyData.contactWhatsAppNo": { $regex: mobile, $options: "i" } }
-            );
-        }
-
-        /* ================================
-           REASON FOR VISIT FILTER
-        ================================ */
-        if (reason) {
-            const reasons = reason.split(',').map(r => r.trim()).filter(r => r);
-            if (reasons.length > 0) {
-                matchConditions.reasonForVisit = {
-                    $in: reasons.map(r => new RegExp(r, "i"))
-                };
-            }
-        }
-
-        /* ================================
-           CREATED BY FILTER
-        ================================ */
-        if (createdBy) {
-            const createdByNames = createdBy.split(',').map(name => name.trim()).filter(name => name);
-            const createdByConditions = [];
-
-            createdByNames.forEach(name => {
-                const parts = name.split(' ').filter(Boolean);
-                const firstNamePart = parts[0] || "";
-                const lastNamePart = parts.slice(1).join(" ") || "";
-
-                const nameCondition = {
-                    $or: []
-                };
-
-                if (firstNamePart) {
-                    nameCondition.$or.push(
-                        { "accountData.createdByData.firstName": { $regex: firstNamePart, $options: "i" } }
-                    );
-                }
-
-                if (lastNamePart) {
-                    nameCondition.$or.push(
-                        { "accountData.createdByData.lastName": { $regex: lastNamePart, $options: "i" } }
-                    );
-                }
-
-                if (firstNamePart && lastNamePart) {
-                    nameCondition.$or.push({
-                        $expr: {
-                            $regexMatch: {
-                                input: {
-                                    $concat: [
-                                        "$accountData.createdByData.firstName",
-                                        " ",
-                                        "$accountData.createdByData.lastName",
-                                    ],
-                                },
-                                regex: name,
-                                options: "i",
-                            },
-                        },
-                    });
-                }
-
-                if (nameCondition.$or.length > 0) {
-                    createdByConditions.push(nameCondition);
-                }
+          if (parts.length >= 2) {
+            staffQuery.$or.push({
+              $and: [
+                { firstName: { $regex: `^${parts[0]}$`, $options: "i" } },
+                { lastName: { $regex: `^${parts.slice(1).join(" ")}$`, $options: "i" } },
+              ],
             });
+          } else {
+            staffQuery.$or.push({
+              firstName: { $regex: `^${parts[0]}$`, $options: "i" },
+            });
+          }
 
-            if (createdByConditions.length > 0) {
-                matchConditions.$and = matchConditions.$and || [];
-                matchConditions.$and.push({ $or: createdByConditions });
-            }
+          const staffs = await mongoose
+            .model("Staff")
+            .find(staffQuery)
+            .select("_id firstName lastName");
+          filterStaffIds.push(...staffs.map((s) => s._id));
         }
+      }
 
-        /* ================================
-           ASSIGN TO FILTER (assignToFilter)
-        ================================ */
-        if (assignToFilter) {
-            const assignToNames = assignToFilter.split(',').map(name => name.trim()).filter(name => name);
-            let allStaffIds = [];
+      filterStaffIds = [
+        ...new Set(filterStaffIds.map((id) => id.toString())),
+      ].map((id) => new mongoose.Types.ObjectId(id));
 
-            for (const name of assignToNames) {
-                const staffs = await mongoose.model("Staff").find({
-                    $or: [
-                        { firstName: { $regex: name, $options: "i" } },
-                        { lastName: { $regex: name, $options: "i" } },
-                        {
-                            $expr: {
-                                $regexMatch: {
-                                    input: { $concat: ["$firstName", " ", "$lastName"] },
-                                    regex: name,
-                                    options: "i"
-                                }
-                            }
-                        }
-                    ]
-                }).select("_id");
+      if (filterStaffIds.length === 0) {
+        return { success: true, data: [], count: 0 };
+      }
 
-                const staffIds = staffs.map(staff => staff._id);
-                allStaffIds = [...allStaffIds, ...staffIds];
-            }
-
-            if (allStaffIds.length > 0) {
-                if (matchConditions.assignTo) {
-                    // If assignTo already exists, combine with $and
-                    const existingCondition = matchConditions.assignTo;
-                    delete matchConditions.assignTo;
-
-                    matchConditions.$and = matchConditions.$and || [];
-                    matchConditions.$and.push(
-                        existingCondition,
-                        { assignTo: { $in: allStaffIds } }
-                    );
-                } else {
-                    matchConditions.assignTo = { $in: allStaffIds };
-                }
-            } else {
-                return {
-                    success: true,
-                    data: [],
-                    count: 0,
-                };
-            }
+      if (finalAssignToIds.length > 0) {
+        const intersection = finalAssignToIds.filter((id) =>
+          filterStaffIds.some((fid) => fid.toString() === id.toString())
+        );
+        if (intersection.length === 0) {
+          return { success: true, data: [], count: 0 };
         }
+        finalAssignToIds = intersection;
+      } else {
+        finalAssignToIds = filterStaffIds;
+      }
+    }
 
-        /* ================================
-           PARTY FILTER
-        ================================ */
-        if (party) {
-            const partyNames = party.split(',').map(p => p.trim()).filter(p => p);
-            if (partyNames.length > 0) {
-                matchConditions["partyData.partyName"] = {
-                    $in: partyNames.map(name => new RegExp(name, "i"))
-                };
-            }
-        }
+    if (finalAssignToIds.length > 0) {
+      postMatchConditions["assignToData._id"] = { $in: finalAssignToIds };
+    }
 
-        /* ================================
-           AREA FILTER
-        ================================ */
-        if (area) {
-            const areaNames = area.split(',').map(a => a.trim()).filter(a => a);
-            if (areaNames.length > 0) {
-                matchConditions["areaData.area"] = {
-                    $in: areaNames.map(name => new RegExp(name, "i"))
-                };
-            }
-        }
+    // PARTY FILTER
+    if (party) {
+      const partyNames = party.split(",").map((p) => p.trim()).filter((p) => p);
+      if (partyNames.length > 0) {
+        postMatchConditions["partyData.partyName"] = {
+          $in: partyNames.map((name) => new RegExp(name, "i")),
+        };
+      }
+    }
 
-        const pipeline = [
-            // 1. TASK → COMPANY
+    // AREA FILTER
+    if (area) {
+      const areaNames = area.split(",").map((a) => a.trim()).filter((a) => a);
+      if (areaNames.length > 0) {
+        postMatchConditions["areaData.area"] = {
+          $in: areaNames.map((name) => new RegExp(name, "i")),
+        };
+      }
+    }
+
+    // Apply post-match conditions
+    if (Object.keys(postMatchConditions).length > 0) {
+      pipeline.push({ $match: postMatchConditions });
+    }
+
+    /* ================================
+       SEARCH
+    ================================ */
+    if (search && search.trim() !== "") {
+      const searchRegex = { $regex: search, $options: "i" };
+
+      pipeline.push({
+        $match: {
+          $or: [
+            { "companyData.companyName": searchRegex },
+            { "partyData.partyName": searchRegex },
+            { "assignToData.firstName": searchRegex },
+            { "assignToData.lastName": searchRegex },
+            { "partyData.ownerMobileNo": searchRegex },
+            { "partyData.personMobileNo": searchRegex },
+            { "partyData.contactMobileNo": searchRegex },
+            { "partyData.ownerWhatsAppNo": searchRegex },
+            { "partyData.personWhatsAppNo": searchRegex },
+            { "partyData.contactWhatsAppNo": searchRegex },
+            { "partyData.address.unitNo": searchRegex },
+            { "marketNameData.marketName": searchRegex },
+            { "areaData.area": searchRegex },
+            { reasonForVisit: searchRegex },
+            { status: searchRegex },
+            { remarks: searchRegex },
+            { feedback: searchRegex },
             {
-                $lookup: {
-                    from: "companynames",
-                    localField: "companyName",
-                    foreignField: "_id",
-                    as: "companyData"
-                }
+              $expr: {
+                $regexMatch: {
+                  input: {
+                    $concat: ["$assignToData.firstName", " ", "$assignToData.lastName"],
+                  },
+                  regex: search,
+                  options: "i",
+                },
+              },
             },
-            { $unwind: { path: "$companyData", preserveNullAndEmptyArrays: true } },
-
-            // 2. TASK → PARTY
             {
-                $lookup: {
-                    from: "parties",
-                    localField: "partyName",
-                    foreignField: "_id",
-                    as: "partyData"
-                }
-            },
-            { $unwind: { path: "$partyData", preserveNullAndEmptyArrays: true } },
-
-            // 3. TASK → ASSIGN TO (STAFF)
-            {
-                $lookup: {
-                    from: "staffs",
-                    localField: "assignTo",
-                    foreignField: "_id",
-                    as: "assignToData"
-                }
-            },
-            { $unwind: { path: "$assignToData", preserveNullAndEmptyArrays: true } },
-
-            // 4. STAFF → ROLE
-            {
-                $lookup: {
-                    from: "roles",
-                    localField: "assignToData.role",
-                    foreignField: "_id",
-                    as: "assignToData.roleData"
-                }
-            },
-            { $unwind: { path: "$assignToData.roleData", preserveNullAndEmptyArrays: true } },
-
-            // 5. PARTY ADDRESS → MARKET NAME
-            {
-                $lookup: {
-                    from: "markets",
-                    localField: "partyData.address.marketName",
-                    foreignField: "_id",
-                    as: "marketNameData"
-                }
-            },
-
-            // 6. PARTY ADDRESS → AREA
-            {
-                $lookup: {
-                    from: "markets",
-                    localField: "partyData.address.area",
-                    foreignField: "_id",
-                    as: "areaData"
-                }
-            },
-
-            // 7. ACCOUNT MASTER FOR CREATED BY
-            {
-                $lookup: {
-                    from: "accountmasters",
-                    let: { partyId: "$partyName", companyId: "$companyName" },
-                    pipeline: [
-                        {
-                            $match: {
-                                $expr: {
-                                    $and: [
-                                        { $eq: ["$party", "$$partyId"] },
-                                        { $eq: ["$companyName", "$$companyId"] }
-                                    ]
-                                }
-                            }
-                        },
-                        {
-                            $lookup: {
-                                from: "staffs",
-                                localField: "createdBy",
-                                foreignField: "_id",
-                                as: "createdByData"
-                            }
-                        },
-                        { $unwind: "$createdByData" }
+              $expr: {
+                $regexMatch: {
+                  input: {
+                    $concat: [
+                      "$accountData.createdByData.firstName",
+                      " ",
+                      "$accountData.createdByData.lastName",
                     ],
-                    as: "accountData"
-                }
+                  },
+                  regex: search,
+                  options: "i",
+                },
+              },
             },
-            { $unwind: { path: "$accountData", preserveNullAndEmptyArrays: true } },
+          ],
+        },
+      });
+    }
 
-            // Apply all match conditions
-            { $match: matchConditions },
+    // Sort
+    pipeline.push({ $sort: { createdAt: -1 } });
 
-            // Sort by createdAt
-            { $sort: { createdAt: -1 } },
+    /* ================================
+       PROJECT — raw fields chahiye, transform JS mein karenge
+    ================================ */
+    pipeline.push({
+      $project: {
+        _id: 0,
+        date: 1,
+        rescheduleDate: 1,       // raw Date object — JS mein format karenge
+        isRescheduledTask: 1,    // ✅ KEY FIELD: false = original task, true = nayi task
+        status: 1,
+        reasonForVisit: 1,
+        remarks: 1,
+        feedback: 1,
+        visitDate: 1,
+        visitTime: 1,
+        priority: 1,
+        "companyData.companyName": 1,
+        "partyData.partyName": 1,
+        "partyData.ownerName": 1,
+        "partyData.ownerMobileNo": 1,
+        "partyData.contactPerson": 1,
+        "partyData.personMobileNo": 1,
+        "partyData.contactMobileNo": 1,
+        "partyData.partyTag": 1,
+        "partyData.partyType": 1,
+        "partyData.address.unitNo": 1,
+        "marketNameData.marketName": 1,
+        "areaData.area": 1,
+        "assignToData.firstName": 1,
+        "assignToData.lastName": 1,
+        "accountData.createdByData.firstName": 1,
+        "accountData.createdByData.lastName": 1,
+        // originalTaskData — lookup se aata hai, iska _id check karo
+        // originalTaskId = raw ObjectId field hai
+        // originalTaskData = populated object after $lookup + $unwind
+        "originalTaskData._id": 1,
+      },
+    });
 
-            // Project only required fields for Excel
-            {
-                $project: {
-                    _id: 0,
-                    // DATE - Format date as YYYY-MM-DD
-                    DATE: {
-                        $dateToString: {
-                            format: "%Y-%m-%d",
-                            date: "$date"
-                        }
-                    },
-                    // RESCHEDULE DATE - Show only for rescheduled tasks
-            "RESCHEDULE DATE": {
-                $cond: {
-                    if: { 
-                        $and: [
-                            { $eq: ["$status", "Rescheduled"] },
-                            "$rescheduleDate"
-                        ]
-                    },
-                    then: {
-                        $dateToString: {
-                            format: "%Y-%m-%d",
-                            date: "$rescheduleDate"
-                        }
-                    },
-                    else: ""
-                }
-            },
-                    // PARTY NAME
-                    "PARTY NAME": "$partyData.partyName",
-                    // UNIT NO
-                    "UNIT NO": "$partyData.address.unitNo",
-                    // MKT NAME
-                    "MKT NAME": { $arrayElemAt: ["$marketNameData.marketName", 0] },
-                    // AREA
-                    AREA: { $arrayElemAt: ["$areaData.area", 0] },
-                    // CONTACT PERSON - Choose appropriate contact person
-                    "CONTACT P": {
-                        $cond: {
-                            if: { $and: ["$partyData.contactPerson", { $ne: ["$partyData.contactPerson", ""] }] },
-                            then: "$partyData.contactPerson",
-                            else: "$partyData.ownerName"
-                        }
-                    },
-                    // MOBILE NO - Choose appropriate mobile number
-                    "MOBILE NO": {
-                        $cond: {
-                            if: { $and: ["$partyData.contactMobileNo", { $ne: ["$partyData.contactMobileNo", ""] }] },
-                            then: "$partyData.contactMobileNo",
-                            else: {
-                                $cond: {
-                                    if: { $and: ["$partyData.personMobileNo", { $ne: ["$partyData.personMobileNo", ""] }] },
-                                    then: "$partyData.personMobileNo",
-                                    else: "$partyData.ownerMobileNo"
-                                }
-                            }
-                        }
-                    },
-                    // TAG
-                    TAG: "$partyData.partyTag",
-                    // TYPE
-                    TYPE: "$partyData.partyType",
-                    // STATUS
-                    STATUS: "$status",
-                    // REMARKS
-                    REMARKS: "$remarks",
-                    // FEEDBACK
-                    FEEDBACK: "$feedback",
-                    // Additional useful fields for reference
-                    "REASON FOR VISIT": "$reasonForVisit",
-                    "ASSIGNED TO": {
-                        $concat: ["$assignToData.firstName", " ", "$assignToData.lastName"]
-                    },
-                    "CREATED BY": {
-                        $cond: {
-                            if: { $and: ["$accountData.createdByData", "$accountData.createdByData.firstName"] },
-                            then: {
-                                $concat: [
-                                    { $ifNull: ["$accountData.createdByData.firstName", ""] },
-                                    " ",
-                                    { $ifNull: ["$accountData.createdByData.lastName", ""] }
-                                ]
-                            },
-                            else: "N/A"
-                        }
-                    },
-                    "COMPANY NAME": "$companyData.companyName",
-                    "VISIT DATE": {
-                        $cond: {
-                            if: "$visitDate",
-                            then: { $dateToString: { format: "%Y-%m-%d", date: "$visitDate" } },
-                            else: "Not Visited"
-                        }
-                    },
-                    "VISIT TIME": "$visitTime",
-                    PRIORITY: "$priority"
+    const rawTasks = await assignTaskModel.aggregate(pipeline);
+
+    /* ================================
+       TRANSFORM
+    ================================ */
+    const transformedTasks = rawTasks.map((task) => {
+      // ─── Assign Date ───────────────────────────────────────
+      const assignDate = task.date ? new Date(task.date) : null;
+
+      // ─── ✅ RESCHEDULE DATE FIX ────────────────────────────
+      // Sirf tab show karo jab:
+      // 1. status === "Rescheduled"   (task reschedule hua hai)
+      // 2. isRescheduledTask === false (ye ORIGINAL task hai, nayi wali nahi)
+      // 3. rescheduleDate exist kare aur valid ho
+      //
+      // Kyun: Jab reschedule hota hai to 2 records bante hain:
+      //   Original task → status="Rescheduled", isRescheduledTask=false ← yahan date dikhao
+      //   Nayi task     → status="Pending",     isRescheduledTask=true  ← yahan mat dikhao
+      // CORRECT FIX (data se confirmed):
+      // CHIRAG PRINTS  → originalTaskId._id exist karta hai (populated) → date dikhao ✅
+      // KRISHNA SAREES → originalTaskId = {} (empty)                    → date mat dikhao ❌
+      // HEMLATA        → originalTaskId = {} (empty)                    → date mat dikhao ❌
+      // originalTaskData = $lookup se populated object
+      // Agar originalTaskData._id exist kare → yeh task kisi original task ka reschedule hai
+      // Agar originalTaskData._id null/undefined → naya task hai, koi original nahi
+      const hasOriginalTask =
+        task.originalTaskData &&
+        task.originalTaskData._id != null;
+
+      let rescheduleDateFormatted = "";
+      if (
+        task.status &&
+        task.status.toLowerCase() === "rescheduled" &&
+        hasOriginalTask &&
+        task.rescheduleDate
+      ) {
+        const rd = new Date(task.rescheduleDate);
+        if (!isNaN(rd.getTime())) {
+          rescheduleDateFormatted = moment(rd).format("DD-MM-YYYY");
         }
-    }
-        ];
+      }
 
-        const tasks = await assignTaskModel.aggregate(pipeline);
+      const party = task.partyData || {};
+      const address = party.address || {};
 
-        return {
-            success: true,
-            count: tasks.length,
-            data: tasks,
-        };
+      // marketName — array from lookup
+      const mktName =
+        Array.isArray(task.marketNameData) && task.marketNameData.length > 0
+          ? task.marketNameData[0].marketName || ""
+          : "";
 
-    } catch (error) {
-        console.error("getTasksDataForExcel Error:", error);
-        return {
-            success: false,
-            message: "Failed to fetch tasks for Excel",
-            error: error.message,
-        };
-    }
+      // area — array from lookup
+      const areaVal =
+        Array.isArray(task.areaData) && task.areaData.length > 0
+          ? task.areaData[0].area || ""
+          : "";
+
+      const contactPerson =
+        party.contactPerson && party.contactPerson !== ""
+          ? party.contactPerson
+          : party.ownerName || "";
+
+      const mobileNo =
+        party.contactMobileNo && party.contactMobileNo !== ""
+          ? party.contactMobileNo
+          : party.personMobileNo && party.personMobileNo !== ""
+          ? party.personMobileNo
+          : party.ownerMobileNo || "";
+
+      const assignedTo = task.assignToData || {};
+
+      let createdByName = "N/A";
+      const cb = task.accountData?.createdByData;
+      if (cb) {
+        const full = `${cb.firstName || ""} ${cb.lastName || ""}`.trim();
+        if (full) createdByName = full;
+      }
+
+      const companyName = task.companyData?.companyName || "";
+
+      // ─── Visit Date ────────────────────────────────────────
+      let visitDateValue = "Not Visited";
+      if (task.visitDate) {
+        const vd = new Date(task.visitDate);
+        if (!isNaN(vd.getTime())) {
+          visitDateValue = moment(vd).format("DD-MM-YYYY");
+        }
+      }
+
+      return {
+        // ✅ DATE already formatted here — exportAssignTasksToExcel use karega as-is
+        DATE: assignDate && !isNaN(assignDate.getTime())
+          ? moment(assignDate).format("DD-MM-YYYY")
+          : "",
+        "RESCHEDULE DATE": rescheduleDateFormatted, // "" ya "DD-MM-YYYY"
+        "PARTY NAME": party.partyName || "",
+        "UNIT NO": address.unitNo || "",
+        "MKT NAME": mktName,
+        AREA: areaVal,
+        "CONTACT P": contactPerson,
+        "MOBILE NO": mobileNo,
+        TAG: party.partyTag || "",
+        TYPE: party.partyType || "",
+        STATUS: task.status || "",
+        REMARKS: task.remarks || "",
+        FEEDBACK: task.feedback || "",
+        "REASON FOR VISIT": task.reasonForVisit || "",
+        "ASSIGNED TO":
+          assignedTo.firstName || assignedTo.lastName
+            ? `${assignedTo.firstName || ""} ${assignedTo.lastName || ""}`.trim()
+            : "",
+        "CREATED BY": createdByName,
+        "COMPANY NAME": companyName,
+        "VISIT DATE": visitDateValue,
+        "VISIT TIME": task.visitTime || "",
+        PRIORITY: task.priority || "",
+      };
+    });
+
+    return {
+      success: true,
+      count: transformedTasks.length,
+      data: transformedTasks,
+    };
+  } catch (error) {
+    console.error("getTasksDataForExcel Error:", error);
+    return {
+      success: false,
+      message: "Failed to fetch tasks for Excel",
+      error: error.message,
+    };
+  }
 };
 
 
-// API function to export tasks to Excel (returns Excel file)
+// ─────────────────────────────────────────────────────────────
+//  EXPORT API
+// ─────────────────────────────────────────────────────────────
 exports.exportAssignTasksToExcel = async (req, res) => {
-    try {
-        // Get data using helper function
-        const result = await getTasksDataForExcel(req);
+  try {
+    const result = await getTasksDataForExcel(req);
 
-        if (!result.success || !result.data || result.data.length === 0) {
-            return res.status(404).json({
-                success: false,
-                message: 'No data found to export'
-            });
-        }
-
-        const tasks = result.data;
-
-        // Create Excel workbook
-        const workbook = new ExcelJS.Workbook();
-        const worksheet = workbook.addWorksheet('Assign Tasks');
-
-        // Define only required columns
-        worksheet.columns = [
-            { header: 'Sr no', key: 'Sr no', width: 10 },
-            { header: 'ASSIGN DATE', key: 'DATE', width: 12 },
-            { header: 'RESCHEDULE DATE', key: 'RESCHEDULE DATE', width: 12 },
-            { header: 'PARTY NAME', key: 'PARTY NAME', width: 25 },
-            { header: 'UNIT NO', key: 'UNIT NO', width: 12 },
-            { header: 'MKT NAME', key: 'MKT NAME', width: 20 },
-            { header: 'AREA', key: 'AREA', width: 20 },
-            { header: 'CONTACT P', key: 'CONTACT P', width: 20 },
-            { header: 'MOBILE NO', key: 'MOBILE NO', width: 15 },
-            { header: 'TAG', key: 'TAG', width: 10 },
-            { header: 'TYPE', key: 'TYPE', width: 10 },
-            { header: 'REASON FOR VISIT', key: 'REASON FOR VISIT', width: 20 },
-            { header: 'STATUS', key: 'STATUS', width: 12 },
-            { header: 'ASSIGNED TO', key: 'ASSIGNED TO', width: 20 },
-            { header: 'REMARKS', key: 'REMARKS', width: 25 },
-            { header: 'FEEDBACK', key: 'FEEDBACK', width: 25 },
-        ];
-
-        // Add data rows with only required fields
-        tasks.forEach((task, index) => {
-            worksheet.addRow({
-                'Sr no': index + 1,
-                DATE: moment(task.DATE).format('DD-MM-YYYY') || '', // यहाँ formatting apply करें
-                 'RESCHEDULE DATE': task['RESCHEDULE DATE'] ? moment(task['RESCHEDULE DATE']).format('DD-MM-YYYY') : '',
-                'PARTY NAME': task['PARTY NAME'] || '',
-                'UNIT NO': task['UNIT NO'] || '',
-                'MKT NAME': task['MKT NAME'] || '',
-                AREA: task.AREA || '',
-                'CONTACT P': task['CONTACT P'] || '',
-                'MOBILE NO': task['MOBILE NO'] || '',
-                TAG: task.TAG || '',
-                'TYPE': task.TYPE || '',
-                'REASON FOR VISIT': task['REASON FOR VISIT'] || '',
-                STATUS: task.STATUS || '',
-                'ASSIGNED TO': task['ASSIGNED TO'] || '',
-                REMARKS: task.REMARKS || '',
-                FEEDBACK: task.FEEDBACK || '',
-            });
-        });
-
-        // Style the header row
-        worksheet.getRow(1).eachCell((cell) => {
-            cell.font = { bold: true };
-            cell.fill = {
-                type: 'pattern',
-                pattern: 'solid',
-                fgColor: { argb: 'FFD3D3D3' }
-            };
-        });
-
-        // Auto-fit columns
-        worksheet.columns.forEach(column => {
-            let maxLength = 0;
-            column.eachCell({ includeEmpty: true }, cell => {
-                const columnLength = cell.value ? cell.value.toString().length : 10;
-                if (columnLength > maxLength) {
-                    maxLength = columnLength;
-                }
-            });
-            column.width = maxLength < 10 ? 10 : maxLength + 2;
-        });
-
-        // Set response headers for Excel download
-        res.setHeader(
-            'Content-Type',
-            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-        );
-        res.setHeader(
-            'Content-Disposition',
-            `attachment; filename="assign_tasks_${new Date().toISOString().split('T')[0]}.xlsx"`
-        );
-
-        // Write to response
-        await workbook.xlsx.write(res);
-        res.end();
-
-    } catch (error) {
-        console.error("Error exporting assign tasks to Excel:", error);
-        res.status(500).json({
-            success: false,
-            message: "Failed to export tasks to Excel",
-            error: error.message
-        });
+    if (!result.success || !result.data || result.data.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "No data found to export",
+      });
     }
+
+    const tasks = result.data;
+
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet("Assign Tasks");
+
+    worksheet.columns = [
+      { header: "Sr no",            key: "Sr no",             width: 8  },
+      { header: "ASSIGN DATE",      key: "DATE",              width: 14 },
+      { header: "RESCHEDULE DATE",  key: "RESCHEDULE DATE",   width: 14 },
+      { header: "PARTY NAME",       key: "PARTY NAME",        width: 25 },
+      { header: "UNIT NO",          key: "UNIT NO",           width: 12 },
+      { header: "MKT NAME",         key: "MKT NAME",          width: 20 },
+      { header: "AREA",             key: "AREA",              width: 20 },
+      { header: "CONTACT P",        key: "CONTACT P",         width: 20 },
+      { header: "MOBILE NO",        key: "MOBILE NO",         width: 15 },
+      { header: "TAG",              key: "TAG",               width: 10 },
+      { header: "TYPE",             key: "TYPE",              width: 10 },
+      { header: "REASON FOR VISIT", key: "REASON FOR VISIT",  width: 20 },
+      { header: "STATUS",           key: "STATUS",            width: 12 },
+      { header: "ASSIGNED TO",      key: "ASSIGNED TO",       width: 20 },
+      { header: "REMARKS",          key: "REMARKS",           width: 25 },
+      { header: "FEEDBACK",         key: "FEEDBACK",          width: 25 },
+    ];
+
+    tasks.forEach((task, index) => {
+      worksheet.addRow({
+        "Sr no":           index + 1,
+        // ✅ FIX: getTasksDataForExcel already "DD-MM-YYYY" format deta hai
+        //    Yahan dobara moment() mat lagao — warna "Invalid date" aayega
+        DATE:              task.DATE || "",
+        "RESCHEDULE DATE": task["RESCHEDULE DATE"] || "",  // "" ya "DD-MM-YYYY"
+        "PARTY NAME":      task["PARTY NAME"]      || "",
+        "UNIT NO":         task["UNIT NO"]         || "",
+        "MKT NAME":        task["MKT NAME"]        || "",
+        AREA:              task.AREA               || "",
+        "CONTACT P":       task["CONTACT P"]       || "",
+        "MOBILE NO":       task["MOBILE NO"]       || "",
+        TAG:               task.TAG                || "",
+        TYPE:              task.TYPE               || "",
+        "REASON FOR VISIT": task["REASON FOR VISIT"] || "",
+        STATUS:            task.STATUS             || "",
+        "ASSIGNED TO":     task["ASSIGNED TO"]     || "",
+        REMARKS:           task.REMARKS            || "",
+        FEEDBACK:          task.FEEDBACK           || "",
+      });
+    });
+
+    // Style header row
+    const headerRow = worksheet.getRow(1);
+    headerRow.eachCell((cell) => {
+      cell.font = { bold: true, color: { argb: "FF000000" } };
+      cell.fill = {
+        type: "pattern",
+        pattern: "solid",
+        fgColor: { argb: "FFD3D3D3" },
+      };
+      cell.alignment = { vertical: "middle", horizontal: "center" };
+    });
+    headerRow.height = 20;
+
+    // Auto-fit columns
+    worksheet.columns.forEach((column) => {
+      let maxLen = column.header ? column.header.length : 10;
+      column.eachCell({ includeEmpty: true }, (cell) => {
+        const len = cell.value ? cell.value.toString().length : 0;
+        if (len > maxLen) maxLen = len;
+      });
+      column.width = Math.min(maxLen + 2, 50);
+    });
+
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    );
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="assign_tasks_${new Date().toISOString().split("T")[0]}.xlsx"`
+    );
+
+    await workbook.xlsx.write(res);
+    res.end();
+
+  } catch (error) {
+    console.error("Error exporting assign tasks to Excel:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to export tasks to Excel",
+      error: error.message,
+    });
+  }
 };
 
 const getLeadsDataForExcel = async (req) => {

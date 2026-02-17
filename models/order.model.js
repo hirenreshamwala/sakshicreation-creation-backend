@@ -258,6 +258,22 @@ const orderSchema = new mongoose.Schema(
       enum: ["Pending", "In Progress", "Done"],
       default: "Pending",
     },
+    designerNotificationUnread: {
+      type: Boolean,
+      default: false,
+    },
+    printerNotificationUnread: {
+      type: Boolean,
+      default: false,
+    },
+    binderNotificationUnread: {
+      type: Boolean,
+      default: false,
+    },
+    bookletBinderNotificationUnread: {
+      type: Boolean,
+      default: false,
+    },
     printerWastedSheet: {
       type: Number,
       min: 0,
