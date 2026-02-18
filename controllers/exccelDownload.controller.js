@@ -4629,6 +4629,633 @@ exports.exportPaymentFolderToExcel = async (req, res) => {
     }
 };
 
+exports.exportPaymentFolderDifferenceToExcel = async (req, res) => {
+    try {
+        const {
+            companyNames = [],
+            filters = {},
+            search = "",
+            startDate,
+            endDate,
+            isDifference
+        } = req.body;
+
+        if (!Array.isArray(companyNames) || companyNames.length === 0) {
+            return res.status(400).json({
+                success: false,
+                message: "No companies specified",
+            });
+        }
+
+        // =============================
+        // FETCH COMPANIES
+        // =============================
+        const companies = await CompanyName.find({
+            companyName: { $in: companyNames },
+        }).lean();
+
+        if (!companies.length) {
+            return res.status(400).json({
+                success: false,
+                message: "No matching companies found",
+            });
+        }
+
+        const workbook = new ExcelJS.Workbook();
+        const worksheet = workbook.addWorksheet("Payment Difference Report");
+
+        // =============================
+        // LAST 4 MONTHS (EXCLUDING CURRENT)
+        // =============================
+        const now = new Date();
+        const currentMonth = now.getMonth();
+        const currentYear = now.getFullYear();
+
+        const last4Months = [];
+        for (let i = 4; i >= 1; i--) {
+            const d = new Date(currentYear, currentMonth - i, 1);
+            last4Months.push({
+                month: d.getMonth() + 1,
+                year: d.getFullYear(),
+                label: d.toLocaleString("en-US", { month: "short" }).toUpperCase(),
+            });
+        }
+        
+        // Current month ko include karo (difference ke liye)
+        const curr = new Date(currentYear, currentMonth, 1);
+        last4Months.push({
+            month: curr.getMonth() + 1,
+            year: curr.getFullYear(),
+            label: curr.toLocaleString("en-US", { month: "short" }).toUpperCase(),
+        });
+
+        // Helper function to get payment term days
+        const getPaymentTermDays = (paymentTerms) => {
+            if (!paymentTerms) return 0;
+
+            const term = paymentTerms.toLowerCase();
+
+            if (term.includes("30") || term.includes("thirty")) {
+                return 30;
+            } else if (term.includes("60") || term.includes("sixty")) {
+                return 60;
+            } else if (term.includes("90") || term.includes("ninety")) {
+                return 90;
+            } else {
+                // Extract custom number of days
+                const match = term.match(/(\d+)\s*day/i);
+                if (match) {
+                    return parseInt(match[1]);
+                }
+            }
+            return 0;
+        };
+
+        const isInLast4Months = (month, year) => {
+            return last4Months.some(
+                (m) => m.month === month && m.year === year
+            );
+        };
+
+        const isOldDate = (month, year) => {
+            // Check if it's current month
+            if (month === currentMonth + 1 && year === currentYear) {
+                return false;
+            }
+            // Old = not in last 4 months and not current month
+            return !isInLast4Months(month, year);
+        };
+
+        // =============================
+        // EXCEL COLUMNS
+        // =============================
+        const monthColumns = last4Months.map((m) => ({
+            header: m.label,
+            key: m.label,
+            width: 14,
+        }));
+
+        worksheet.columns = [
+            { header: "S.NO", key: "srNo", width: 8 },
+            { header: "PARTY NAME", key: "partyName", width: 30 },
+            { header: "PHONE NO", key: "phoneNumber", width: 18 },
+            { header: "CONTACT PERSON NAME", key: "contactPerson", width: 22 },
+            { header: "OLD", key: "OLD", width: 14 },
+            ...monthColumns,
+            { header: "TOTAL", key: "TOTAL", width: 15 },
+            { header: "DIFFERENCE AMOUNT", key: "difference", width: 18 },
+            { header: "ASSIGN TO", key: "assignTo", width: 20 },
+            { header: "ASSIGN DATE", key: "assignDate", width: 18 },
+            { header: "TASK STATUS", key: "taskStatus", width: 15 },
+            { header: "REMARKS", key: "remarks", width: 30 },
+        ];
+
+        worksheet.getRow(1).font = { bold: true };
+        worksheet.getRow(1).alignment = { horizontal: "center", vertical: "middle" };
+
+        let srNo = 1;
+
+        // =============================
+        // LOOP COMPANIES
+        // =============================
+        for (const comp of companies) {
+            const startRow = worksheet.lastRow
+                ? worksheet.lastRow.number + 1
+                : 2;
+
+            worksheet.mergeCells(
+                startRow,
+                1,
+                startRow,
+                worksheet.columns.length
+            );
+
+            const titleRow = worksheet.getRow(startRow);
+            titleRow.getCell(1).value = comp.companyName;
+            titleRow.font = { bold: true, size: 13 };
+            titleRow.alignment = { horizontal: "center" };
+            titleRow.fill = {
+                type: "pattern",
+                pattern: "solid",
+                fgColor: { argb: "FFE0E0E0" },
+            };
+
+            // =============================
+            // FETCH PAYMENT FOLDERS
+            // =============================
+            // Build query object
+            const query = {};
+
+            // Helper function to build multi-word search conditions
+            const buildMultiWordSearch = (searchStr, fields) => {
+                if (!searchStr || !searchStr.trim()) return [];
+                const parts = searchStr.trim().split(/\s+/).filter(p => p.length > 0);
+                if (parts.length === 0) return [];
+
+                const partConditions = parts.map(part => ({
+                    $or: fields.map(field => ({
+                        [field]: { $regex: part, $options: "i" }
+                    }))
+                }));
+
+                if (parts.length === 1) {
+                    return partConditions[0].$or;
+                } else {
+                    return [{ $and: partConditions }];
+                }
+            };
+
+            // Search functionality
+            if (search && search.trim()) {
+                const directOr = [
+                    { remarks: { $regex: search, $options: "i" } },
+                    { month: { $regex: search, $options: "i" } },
+                    { area: { $regex: search, $options: "i" } },
+                ];
+
+                // Company search with multi-word support
+                const companyFields = ['companyName'];
+                const companyConditions = buildMultiWordSearch(search, companyFields);
+                if (companyConditions.length > 0) {
+                    const matchingCompanies = await Company.find({
+                        $or: companyConditions
+                    }).select('_id').lean();
+                    const companyIds = matchingCompanies.map(c => c._id);
+                    if (companyIds.length > 0) {
+                        directOr.push({ company: { $in: companyIds } });
+                    }
+                }
+
+                // Party search with multi-word support
+                const partyFields = ['partyName'];
+                const partyConditions = buildMultiWordSearch(search, partyFields);
+                if (partyConditions.length > 0) {
+                    const matchingParties = await Party.find({
+                        $or: partyConditions
+                    }).select('_id').lean();
+                    const partyIds = matchingParties.map(p => p._id);
+                    if (partyIds.length > 0) {
+                        directOr.push({ party: { $in: partyIds } });
+                    }
+                }
+
+                // Assigned to (Staff) search with multi-word support
+                const staffFields = ['firstName', 'lastName', 'email'];
+                const staffConditions = buildMultiWordSearch(search, staffFields);
+                if (staffConditions.length > 0) {
+                    const matchingStaff = await Staff.find({
+                        $or: staffConditions
+                    }).select('_id').lean();
+                    const staffIds = matchingStaff.map(s => s._id);
+                    if (staffIds.length > 0) {
+                        directOr.push({ assignedTo: { $in: staffIds } });
+                    }
+                }
+
+                if (directOr.length > 0) {
+                    query.$or = directOr;
+                }
+            }
+
+            // AssignedDate filter - Match exact dates from array
+            if (filters.assignedDate && Array.isArray(filters.assignedDate) && filters.assignedDate.length > 0) {
+                // Filter out null/empty values
+                const validDates = filters.assignedDate.filter(d => d && d !== 'null');
+
+                if (validDates.length > 0) {
+                    // Create date range conditions for each date (match full day)
+                    const dateConditions = validDates.map(dateStr => {
+                        const startOfDay = new Date(dateStr);
+                        startOfDay.setHours(0, 0, 0, 0);
+
+                        const endOfDay = new Date(dateStr);
+                        endOfDay.setHours(23, 59, 59, 999);
+
+                        return {
+                            assignedDate: {
+                                $gte: startOfDay,
+                                $lte: endOfDay
+                            }
+                        };
+                    });
+
+                    // Use $or to match any of the dates
+                    if (dateConditions.length === 1) {
+                        query.assignedDate = dateConditions[0].assignedDate;
+                    } else {
+                        query.$or = query.$or
+                            ? [...query.$or, ...dateConditions]
+                            : dateConditions;
+                    }
+                }
+            }
+
+            // Top-level startDate/endDate (for date range if needed separately)
+            if ((startDate || endDate) && (!filters.assignedDate || filters.assignedDate.length === 0)) {
+                query.assignedDate = {};
+                if (startDate) {
+                    const start = new Date(startDate);
+                    start.setHours(0, 0, 0, 0);
+                    query.assignedDate.$gte = start;
+                }
+                if (endDate) {
+                    const end = new Date(endDate);
+                    end.setHours(23, 59, 59, 999);
+                    query.assignedDate.$lte = end;
+                }
+            }
+
+            // Company filter
+            if (filters.company && filters.company.length > 0) {
+                const companies = await CompanyName.find({
+                    companyName: { $in: filters.company }
+                }).select('_id').lean();
+                if (companies.length > 0) {
+                    query.company = { $in: companies.map(c => c._id) };
+                }
+            }
+
+            // Party filter
+            if (filters.party && filters.party.length > 0) {
+                const parties = await Party.find({
+                    partyName: { $in: filters.party }
+                }).select('_id').lean();
+                if (parties.length > 0) {
+                    query.party = { $in: parties.map(p => p._id) };
+                }
+            }
+
+            // Area filter
+            if (filters.area && filters.area.length > 0) {
+                query.area = { $in: filters.area };
+            }
+
+            // Month filter
+            if (filters.month && filters.month.length > 0) {
+                query.month = { $in: filters.month };
+            }
+
+            // Remarks filter
+            if (filters.remarks && filters.remarks.length > 0) {
+                query.remarks = { $in: filters.remarks };
+            }
+
+            // Assigned to filter
+            if (filters.assignTo && filters.assignTo.length > 0) {
+                const nameConditions = filters.assignTo.map(name => {
+                    const parts = name.split(' ');
+                    if (parts.length === 2) {
+                        return {
+                            firstName: { $regex: `^${parts[0]}`, $options: "i" },
+                            lastName: { $regex: `^${parts[1]}`, $options: "i" }
+                        };
+                    } else {
+                        return {
+                            $or: [
+                                { firstName: { $regex: `^${name}`, $options: "i" } },
+                                { lastName: { $regex: `^${name}`, $options: "i" } }
+                            ]
+                        };
+                    }
+                });
+                const matchingStaff = await Staff.find({
+                    $or: nameConditions
+                }).select('_id').lean();
+
+                if (matchingStaff.length > 0) {
+                    query.assignedTo = { $in: matchingStaff.map(s => s._id) };
+                }
+            }
+
+            // Payment amount range filter
+            if (filters.paymentAmount && (filters.paymentAmount.min !== undefined || filters.paymentAmount.max !== undefined)) {
+                query.paymentAmount = {};
+                if (filters.paymentAmount.min !== undefined) {
+                    query.paymentAmount.$gte = filters.paymentAmount.min;
+                }
+                if (filters.paymentAmount.max !== undefined) {
+                    query.paymentAmount.$lte = filters.paymentAmount.max;
+                }
+            }
+
+            // Task Status filter
+            if (filters.taskStatus && filters.taskStatus.length > 0) {
+                query.taskStatus = { $in: filters.taskStatus };
+            }
+
+            // SIRF DIFFERENCE WALA DATA - Only fetch folders with difference amount > 0
+            query.differenceAmount = { $gt: 0 };
+
+            const folders = await PaymentFolder.find({
+                company: comp._id,
+                ...query,
+            })
+                .populate({
+                    path: "party",
+                    select:
+                        "partyName contactMobileNo ownerMobileNo contactPerson ownerName contactWhatsAppNo contactForPayment",
+                })
+                .populate("assignedTo", "firstName lastName")
+                .populate({
+                    path: "assignTask",
+                    select: "status followUpDate followUpTime notes isRescheduledTask date rescheduleDate originalTaskId",
+                    populate: { path: "originalTaskId", select: "date" }
+                })
+                .sort({ createdAt: -1 });
+
+            // =============================
+            // SEARCH FILTER
+            // =============================
+            if (search?.trim()) {
+                const s = search.toLowerCase();
+                folders = folders.filter((f) => {
+                    const p = f.party || {};
+                    const task = f.assignTask || {};
+                    return (
+                        p.partyName?.toLowerCase().includes(s) ||
+                        p.contactPerson?.toLowerCase().includes(s) ||
+                        p.ownerName?.toLowerCase().includes(s) ||
+                        f.remarks?.toLowerCase().includes(s) ||
+                        task.status?.toLowerCase().includes(s)
+                    );
+                });
+            }
+
+            // =============================
+            // PARTY-WISE AGGREGATION - SIRF DIFFERENCE WALA DATA
+            // =============================
+            const partyMap = new Map();
+
+            for (const folder of folders) {
+                const payments = Array.isArray(folder.payments)
+                    ? folder.payments
+                    : [];
+
+                const totalReceived = payments.reduce(
+                    (sum, p) => sum + (p.amount || 0),
+                    0
+                );
+
+                // Get difference amount
+                const differenceAmount = folder.differenceAmount || 0;
+
+                // Sirf wahi folders jinka difference amount > 0 hai
+                if (differenceAmount <= 0) continue;
+
+                const party = folder.party;
+                if (!party?._id) continue;
+
+                const partyId = party._id.toString();
+
+                // Initialize party entry if not exists
+                if (!partyMap.has(partyId)) {
+                    const base = {
+                        partyName: party.partyName || "-",
+                        phoneNumber:
+                            party.contactMobileNo || party.ownerMobileNo || party.contactWhatsAppNo || "-",
+                        contactPerson:
+                            party.contactPerson || party.ownerName || party.contactForPayment || "-",
+                        OLD: 0,
+                        TOTAL: 0,
+                        difference: 0,
+                        assignTo: "",
+                        assignDate: "",
+                        taskStatus: "",
+                        remarks: "",
+                    };
+
+                    last4Months.forEach((m) => (base[m.label] = 0));
+                    partyMap.set(partyId, base);
+                }
+
+                const row = partyMap.get(partyId);
+
+                // Add difference amount to total difference (aggregate all difference amounts for this party)
+                row.difference += differenceAmount;
+
+                // Get month from folder.month field
+                if (folder.month) {
+                    // Parse month from "Aug" format
+                    let paymentMonth, paymentYear;
+
+                    // Format: "Aug", "SEP", etc.
+                    const monthNames = {
+                        JAN: 1, FEB: 2, MAR: 3, APR: 4, MAY: 5, JUN: 6,
+                        JUL: 7, AUG: 8, SEP: 9, OCT: 10, NOV: 11, DEC: 12
+                    };
+                    
+                    // Handle both uppercase and proper case month names
+                    const monthUpper = folder.month.toUpperCase();
+                    paymentMonth = monthNames[monthUpper];
+
+                    if (folder.assignedDate) {
+                        const assignDate = new Date(folder.assignedDate);
+                        const assignMonth = assignDate.getMonth() + 1;
+                        let assignYear = assignDate.getFullYear();
+
+                        // 🔥 FIX: Dec showing as OLD issue
+                        if (paymentMonth > assignMonth) {
+                            assignYear = assignYear - 1;
+                        }
+
+                        paymentYear = assignYear;
+                    } else {
+                        paymentYear = currentYear;
+                    }
+
+                    // Find matching month in last 4 months
+                    const matchingMonth = last4Months.find(
+                        (m) => m.month === paymentMonth && m.year === paymentYear
+                    );
+
+                    if (matchingMonth) {
+                        // Add difference amount to specific month column
+                        row[matchingMonth.label] += differenceAmount;
+                    } else if (isOldDate(paymentMonth, paymentYear)) {
+                        // Add to OLD if before last 4 months
+                        row.OLD += differenceAmount;
+                    }
+                }
+
+                // Update total (difference amount total)
+                row.TOTAL += differenceAmount;
+
+                // Update assignment details (use latest folder's details)
+                if (folder.assignedTo) {
+                    row.assignTo = `${folder.assignedTo.firstName || ""} ${folder.assignedTo.lastName || ""}`.trim();
+                }
+                if (folder.assignedDate) {
+                    row.assignDate = moment(folder.assignedDate).format("DD-MM-YYYY");
+                }
+                
+                // Get task status from populated assignTask
+                if (folder.assignTask) {
+                    const task = folder.assignTask;
+                    let statusText;
+
+                    if (task.isRescheduledTask === true) {
+                        const oldDate =
+                            task.originalTaskId && task.originalTaskId.date
+                                ? moment(task.originalTaskId.date).format("DD-MM-YYYY")
+                                : "-";
+                        const newDate =
+                            folder.assignedDate
+                                ? moment(folder.assignedDate).format("DD-MM-YYYY")
+                                : (task.date ? moment(task.date).format("DD-MM-YYYY") : "-");
+                        statusText = `Rescheduled (Old: ${oldDate} → New: ${newDate})`;
+                    } else {
+                        statusText = task.status || "Pending";
+                        statusText = statusText.charAt(0).toUpperCase() + statusText.slice(1).toLowerCase();
+                    }
+                    
+                    // Add follow-up info if available
+                    if (task.followUpDate) {
+                        const followUpDate = moment(task.followUpDate).format("DD-MM-YYYY");
+                        statusText += ` (Follow-up: ${followUpDate}`;
+                        if (task.followUpTime) {
+                            statusText += ` ${task.followUpTime}`;
+                        }
+                        statusText += `)`;
+                    }
+                    
+                    row.taskStatus = statusText;
+                } else {
+                    row.taskStatus = "Not Assigned";
+                }
+                
+                if (folder.remarks) {
+                    row.remarks = folder.remarks;
+                }
+            }
+
+            // =============================
+            // WRITE EXCEL ROWS - SIRF DIFFERENCE WALE PARTIES
+            // =============================
+            // Sirf un parties ko include karo jinka difference > 0 hai
+            const sortedParties = Array.from(partyMap.values())
+                .filter(party => party.difference > 0) // Extra filter to ensure only parties with difference
+                .sort((a, b) => a.partyName.localeCompare(b.partyName));
+
+            for (const data of sortedParties) {
+                const newRow = worksheet.addRow({
+                    srNo: srNo++,
+                    ...data,
+                });
+
+                // Format currency columns - SIRF NUMBER FORMATTING, KOI COLOR NAHI
+                const monthColumnStart = 6;
+                const monthCount = monthColumns.length;
+                const totalColIndex = monthColumnStart + monthCount;
+                const differenceColIndex = totalColIndex + 1;
+                const currencyColumns = [
+                    5, // OLD
+                    ...Array.from({ length: monthCount }, (_, i) => monthColumnStart + i),
+                    totalColIndex,
+                    differenceColIndex
+                ];
+                
+                // SIRF NUMBER FORMAT LAGAO, KOI COLOR NAHI
+                currencyColumns.forEach(col => {
+                    newRow.getCell(col).numFmt = '#,##0';
+                    // Color formatting hata diya - ab sirf number format hai
+                });
+
+                // Task status formatting (yeh required hai kyunki user ko status dikhna chahiye)
+                const statusCell = newRow.getCell(12); // Task Status column
+                // if (data.taskStatus.includes('Rescheduled')) {
+                //     statusCell.font = { color: { argb: 'FFFF9800' }, bold: true };
+                // } else if (data.taskStatus.includes('Pending')) {
+                //     statusCell.font = { color: { argb: 'FF9C27B0' }, bold: true };
+                // } else if (data.taskStatus.includes('Completed')) {
+                //     statusCell.font = { color: { argb: 'FF4CAF50' }, bold: true };
+                // } else if (data.taskStatus.includes('Not Assigned')) {
+                //     statusCell.font = { color: { argb: 'FF9E9E9E' }, italic: true };
+                // }
+            }
+
+            // Add empty row after each company
+            worksheet.addRow({});
+        }
+
+        // =============================
+        // AUTO-FIT COLUMNS
+        // =============================
+        worksheet.columns.forEach((column) => {
+            if (column.header) {
+                column.width = Math.max(
+                    column.width || 10,
+                    column.header.length + 2
+                );
+            }
+        });
+
+        // =============================
+        // SEND RESPONSE
+        // =============================
+        res.setHeader(
+            "Content-Type",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        );
+
+        res.setHeader(
+            "Content-Disposition",
+            `attachment; filename="Payment_Difference_Report_${moment().format(
+                "DDMMYYYY"
+            )}.xlsx"`
+        );
+
+        await workbook.xlsx.write(res);
+        res.end();
+    } catch (err) {
+        console.error("Export error:", err);
+        res.status(500).json({
+            success: false,
+            message: "Export failed",
+            error: err.message,
+        });
+    }
+};
+
 exports.exportPendingClientApprovalOrdersToExcel = async (req, res) => {
     try {
         const { startDate, endDate } = req.body;

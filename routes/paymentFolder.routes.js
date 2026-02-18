@@ -15,4 +15,5 @@ router.post("/assign-task/:id", paymentFolderController.assignTaskToFolder);
 router.post("/filter-options/:field", paymentFolderController.getPaymentFolderFilterOptions);
 
 router.post("/export-payment-folder-excel", ExcelDownloadController.exportPaymentFolderToExcel);
+router.post("/export-difference-payment-folder-excel", ExcelDownloadController.exportPaymentFolderDifferenceToExcel);
 module.exports = router;
