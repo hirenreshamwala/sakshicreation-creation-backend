@@ -122,797 +122,774 @@ exports.exportAccountMastersToExcel = async (req, res) => {
     }
 };
 
-// ============================================================
-//  FIXED: getTasksDataForExcel  (Standalone — No Pagination)
-//  Filters exactly match getAllAssignTasks logic:
-//    ✅ Pre-match before lookups (performance)
-//    ✅ Multiple comma-separated dates
-//    ✅ reason "other" logic
-//    ✅ assignBy (same field name as getAllAssignTasks)
-//    ✅ All post-lookup filters (unitNo, marketName, area, etc.)
-//    ✅ search functionality
-// ============================================================
-
-// ============================================================
-//  FIXED: getTasksDataForExcel  (Standalone — No Pagination)
-//  FIX 1: RESCHEDULE DATE — sirf tab show hoga jab
-//          task ka OWN status === "Rescheduled" ho
-//  FIX 2: Date double-formatting removed (Invalid date bug)
-//  FIX 3: rescheduleDate null/undefined safe check
-// ============================================================
-
-// ============================================================
-//  FIXED: getTasksDataForExcel  (Standalone — No Pagination)
-//  FIX 1: RESCHEDULE DATE — sirf tab dikhao jab originalTaskId populated ho
-//          (originalTaskId._id exist kare AND status === "Rescheduled")
-//  FIX 2: Date double-formatting removed (Invalid date bug)
-//  FIX 3: rescheduleDate null/undefined/NaN safe check
-// ============================================================
-
-// ============================================================
-//  FIXED: getTasksDataForExcel  (Standalone — No Pagination)
-//  FIX 1: RESCHEDULE DATE — sirf tab dikhao jab originalTaskId populated ho
-//          (originalTaskId._id exist kare AND status === "Rescheduled")
-//  FIX 2: Date double-formatting removed (Invalid date bug)
-//  FIX 3: rescheduleDate null/undefined/NaN safe check
-// ============================================================
-
 const getTasksDataForExcel = async (req) => {
-  try {
-    const {
-      status,
-      companyName,
-      assignTo,
-      assignedTo,
-      priority,
-      startDate,
-      endDate,
-      date,
-      unitNo,
-      marketName,
-      mobile,
-      reason,
-      assignToFilter,
-      party,
-      area,
-      search,
-    } = req.body;
+    try {
+        const {
+            status,
+            companyName,
+            assignTo,
+            assignedTo,
+            priority,
+            startDate,
+            endDate,
+            date,
+            unitNo,
+            marketName,
+            mobile,
+            reason,
+            assignToFilter,
+            party,
+            area,
+            search,
+        } = req.body;
 
-    // Same as getAllAssignTasks: createdBy comes from assignBy field
-    const createdBy = req.body.assignBy;
+        // Same as getAllAssignTasks: createdBy comes from assignBy field
+        const createdBy = req.body.assignBy;
 
-    // PRE-MATCH (direct fields on AssignTask — applied BEFORE lookups)
-    const preMatchConditions = {};
+        // PRE-MATCH (direct fields on AssignTask — applied BEFORE lookups)
+        const preMatchConditions = {};
 
-    // POST-MATCH (populated/nested fields — applied AFTER lookups)
-    const postMatchConditions = {};
+        // POST-MATCH (populated/nested fields — applied AFTER lookups)
+        const postMatchConditions = {};
 
-    /* ================================
-       DATE FILTER
-    ================================ */
-    if (date) {
-      if (typeof date === "string" && date.includes(",")) {
-        const dates = date.split(",").map((d) => d.trim()).filter((d) => d);
-        const dateConditions = [];
+        /* ================================
+           DATE FILTER
+        ================================ */
+        if (date) {
+            if (typeof date === "string" && date.includes(",")) {
+                const dates = date.split(",").map((d) => d.trim()).filter((d) => d);
+                const dateConditions = [];
 
-        dates.forEach((dateStr) => {
-          const parsedDate = parseDateString(dateStr);
-          const startOfDay = new Date(parsedDate);
-          startOfDay.setHours(0, 0, 0, 0);
-          const endOfDay = new Date(parsedDate);
-          endOfDay.setHours(23, 59, 59, 999);
-          dateConditions.push({ date: { $gte: startOfDay, $lte: endOfDay } });
+                dates.forEach((dateStr) => {
+                    const parsedDate = parseDateString(dateStr);
+                    const startOfDay = new Date(parsedDate);
+                    startOfDay.setHours(0, 0, 0, 0);
+                    const endOfDay = new Date(parsedDate);
+                    endOfDay.setHours(23, 59, 59, 999);
+                    dateConditions.push({ date: { $gte: startOfDay, $lte: endOfDay } });
+                });
+
+                if (dateConditions.length > 0) {
+                    preMatchConditions.$or = preMatchConditions.$or || [];
+                    preMatchConditions.$or.push(...dateConditions);
+                }
+            } else {
+                const parsedDate = parseDateString(date);
+                const startOfDay = new Date(parsedDate);
+                startOfDay.setHours(0, 0, 0, 0);
+                const endOfDay = new Date(parsedDate);
+                endOfDay.setHours(23, 59, 59, 999);
+                preMatchConditions.date = { $gte: startOfDay, $lte: endOfDay };
+            }
+        }
+
+        if (startDate && endDate && !date) {
+            preMatchConditions.date = {
+                $gte: new Date(startDate),
+                $lte: new Date(endDate),
+            };
+        }
+
+        /* ================================
+           COMPANY FILTER
+        ================================ */
+        if (companyName) {
+            if (mongoose.Types.ObjectId.isValid(companyName)) {
+                preMatchConditions.companyName = new mongoose.Types.ObjectId(companyName);
+            } else {
+                postMatchConditions["companyData.companyName"] = {
+                    $regex: companyName,
+                    $options: "i",
+                };
+            }
+        }
+
+        /* ================================
+           STATUS FILTER
+        ================================ */
+        if (status && status.length > 0) {
+            const statusArray = Array.isArray(status) ? status : status.split(",");
+            preMatchConditions.status = {
+                $in: statusArray.map((s) => new RegExp(`^${s}$`, "i")),
+            };
+        }
+
+        /* ================================
+           PRIORITY FILTER
+        ================================ */
+        if (priority) {
+            preMatchConditions.priority = new RegExp(`^${priority}$`, "i");
+        }
+
+        /* ================================
+           REASON FOR VISIT FILTER
+        ================================ */
+        if (reason) {
+            const predefinedReasons = [
+                "delivery",
+                "get payment",
+                "visit",
+                "order",
+                "complain",
+                "sample approval",
+            ];
+            const reasons = reason
+                .split(",")
+                .map((r) => r.trim().toLowerCase())
+                .filter((r) => r);
+
+            if (reasons.length > 0) {
+                const otherIncluded = reasons.includes("other");
+                const specificReasons = reasons.filter((r) => r !== "other");
+
+                if (otherIncluded && specificReasons.length === 0) {
+                    preMatchConditions.reasonForVisit = {
+                        $nin: predefinedReasons.map((r) => new RegExp(`^${r}$`, "i")),
+                    };
+                } else if (otherIncluded && specificReasons.length > 0) {
+                    preMatchConditions.$or = preMatchConditions.$or || [];
+                    preMatchConditions.$or.push(
+                        {
+                            reasonForVisit: {
+                                $in: specificReasons.map((r) => new RegExp(`^${r}$`, "i")),
+                            },
+                        },
+                        {
+                            reasonForVisit: {
+                                $nin: predefinedReasons.map((r) => new RegExp(`^${r}$`, "i")),
+                            },
+                        }
+                    );
+                } else {
+                    preMatchConditions.reasonForVisit = {
+                        $in: specificReasons.map((r) => new RegExp(`^${r}$`, "i")),
+                    };
+                }
+            }
+        }
+
+        /* ================================
+           BASE PIPELINE
+        ================================ */
+        const pipeline = [
+            ...(Object.keys(preMatchConditions).length > 0
+                ? [{ $match: preMatchConditions }]
+                : []),
+
+            // 1. TASK → COMPANY
+            {
+                $lookup: {
+                    from: "companynames",
+                    localField: "companyName",
+                    foreignField: "_id",
+                    as: "companyData",
+                },
+            },
+            { $unwind: { path: "$companyData", preserveNullAndEmptyArrays: true } },
+
+            // 2. TASK → PARTY
+            {
+                $lookup: {
+                    from: "parties",
+                    localField: "partyName",
+                    foreignField: "_id",
+                    as: "partyData",
+                },
+            },
+            { $unwind: { path: "$partyData", preserveNullAndEmptyArrays: true } },
+
+            // 3. TASK → ASSIGN TO (STAFF)
+            {
+                $lookup: {
+                    from: "staffs",
+                    localField: "assignTo",
+                    foreignField: "_id",
+                    as: "assignToData",
+                },
+            },
+            { $unwind: { path: "$assignToData", preserveNullAndEmptyArrays: true } },
+
+            // 4. STAFF → ROLE
+            {
+                $lookup: {
+                    from: "roles",
+                    localField: "assignToData.role",
+                    foreignField: "_id",
+                    as: "assignToData.roleData",
+                },
+            },
+            {
+                $unwind: {
+                    path: "$assignToData.roleData",
+                    preserveNullAndEmptyArrays: true,
+                },
+            },
+
+            // 5. STAFF → DEPARTMENT
+            {
+                $lookup: {
+                    from: "departments",
+                    localField: "assignToData.department",
+                    foreignField: "_id",
+                    as: "assignToData.departmentData",
+                },
+            },
+            {
+                $unwind: {
+                    path: "$assignToData.departmentData",
+                    preserveNullAndEmptyArrays: true,
+                },
+            },
+
+            // 6. PARTY ADDRESS → MARKET NAME
+            {
+                $lookup: {
+                    from: "markets",
+                    localField: "partyData.address.marketName",
+                    foreignField: "_id",
+                    as: "marketNameData",
+                },
+            },
+
+            // 7. PARTY ADDRESS → AREA
+            {
+                $lookup: {
+                    from: "markets",
+                    localField: "partyData.address.area",
+                    foreignField: "_id",
+                    as: "areaData",
+                },
+            },
+
+            // 8. PARTY ADDRESS → LANDMARK
+            {
+                $lookup: {
+                    from: "markets",
+                    localField: "partyData.address.landMark",
+                    foreignField: "_id",
+                    as: "landMarkData",
+                },
+            },
+
+            // 9. PARTY ADDRESS → PINCODE
+            {
+                $lookup: {
+                    from: "markets",
+                    localField: "partyData.address.pincode",
+                    foreignField: "_id",
+                    as: "pincodeData",
+                },
+            },
+
+            // 10. COMPANY → OWNER
+            {
+                $lookup: {
+                    from: "users",
+                    localField: "companyData.owner",
+                    foreignField: "_id",
+                    as: "companyData.ownerData",
+                },
+            },
+            {
+                $unwind: {
+                    path: "$companyData.ownerData",
+                    preserveNullAndEmptyArrays: true,
+                },
+            },
+
+            // 11. ACCOUNT MASTER FOR CREATED BY
+            {
+                $lookup: {
+                    from: "accountmasters",
+                    let: { partyId: "$partyName", companyId: "$companyName" },
+                    pipeline: [
+                        {
+                            $match: {
+                                $expr: {
+                                    $and: [
+                                        { $eq: ["$party", "$$partyId"] },
+                                        { $eq: ["$companyName", "$$companyId"] },
+                                    ],
+                                },
+                            },
+                        },
+                        {
+                            $lookup: {
+                                from: "staffs",
+                                localField: "createdBy",
+                                foreignField: "_id",
+                                as: "createdByData",
+                            },
+                        },
+                        { $unwind: "$createdByData" },
+                    ],
+                    as: "accountData",
+                },
+            },
+            { $unwind: { path: "$accountData", preserveNullAndEmptyArrays: true } },
+
+            // 12. ORIGINAL TASK (IF RESCHEDULED)
+            {
+                $lookup: {
+                    from: "assigntasks",
+                    localField: "originalTaskId",
+                    foreignField: "_id",
+                    as: "originalTaskData",
+                },
+            },
+            {
+                $unwind: {
+                    path: "$originalTaskData",
+                    preserveNullAndEmptyArrays: true,
+                },
+            },
+        ];
+
+        /* ================================
+           POST-LOOKUP FILTERS
+        ================================ */
+
+        // UNIT NO FILTER
+        if (unitNo) {
+            const unitNos = unitNo.split(",").map((u) => u.trim()).filter((u) => u);
+            if (unitNos.length > 0) {
+                postMatchConditions["partyData.address.unitNo"] = {
+                    $in: unitNos.map((unit) => new RegExp(`^${unit}$`, "i")),
+                };
+            }
+        }
+
+        // MARKET NAME FILTER
+        if (marketName) {
+            const marketNames = marketName.split(",").map((m) => m.trim()).filter((m) => m);
+            if (marketNames.length > 0) {
+                postMatchConditions["marketNameData.marketName"] = {
+                    $in: marketNames.map((name) => new RegExp(name, "i")),
+                };
+            }
+        }
+
+        // MOBILE NUMBER FILTER
+        if (mobile) {
+            postMatchConditions.$or = postMatchConditions.$or || [];
+            postMatchConditions.$or.push(
+                { "partyData.ownerMobileNo": { $regex: mobile, $options: "i" } },
+                { "partyData.personMobileNo": { $regex: mobile, $options: "i" } },
+                { "partyData.contactMobileNo": { $regex: mobile, $options: "i" } },
+                { "partyData.ownerWhatsAppNo": { $regex: mobile, $options: "i" } },
+                { "partyData.personWhatsAppNo": { $regex: mobile, $options: "i" } },
+                { "partyData.contactWhatsAppNo": { $regex: mobile, $options: "i" } }
+            );
+        }
+
+        // CREATED BY FILTER
+        if (createdBy) {
+            const createdByNames = createdBy
+                .split(",")
+                .map((name) => name.trim())
+                .filter(Boolean);
+
+            const createdByConditions = [];
+
+            createdByNames.forEach((name) => {
+                const parts = name.split(" ").filter(Boolean);
+
+                if (parts.length >= 2) {
+                    const firstName = parts[0];
+                    const lastName = parts.slice(1).join(" ");
+                    createdByConditions.push({
+                        $and: [
+                            {
+                                "accountData.createdByData.firstName": {
+                                    $regex: `^${firstName}$`,
+                                    $options: "i",
+                                },
+                            },
+                            {
+                                "accountData.createdByData.lastName": {
+                                    $regex: `^${lastName}$`,
+                                    $options: "i",
+                                },
+                            },
+                        ],
+                    });
+                } else {
+                    createdByConditions.push({
+                        "accountData.createdByData.firstName": {
+                            $regex: `^${parts[0]}$`,
+                            $options: "i",
+                        },
+                    });
+                }
+            });
+
+            if (createdByConditions.length > 0) {
+                postMatchConditions.$or = createdByConditions;
+            }
+        }
+
+        // ASSIGN TO FILTER (assignedTo / assignTo)
+        const assignToValue = assignedTo || assignTo;
+        let finalAssignToIds = [];
+
+        if (assignToValue && assignToValue.trim() !== "") {
+            if (mongoose.Types.ObjectId.isValid(assignToValue)) {
+                finalAssignToIds.push(new mongoose.Types.ObjectId(assignToValue));
+            } else {
+                const staffs = await mongoose.model("Staff").find({
+                    $or: [
+                        { firstName: { $regex: assignToValue, $options: "i" } },
+                        { lastName: { $regex: assignToValue, $options: "i" } },
+                        {
+                            $expr: {
+                                $regexMatch: {
+                                    input: { $concat: ["$firstName", " ", "$lastName"] },
+                                    regex: assignToValue,
+                                    options: "i",
+                                },
+                            },
+                        },
+                    ],
+                }).select("_id firstName lastName");
+
+                if (staffs.length > 0) {
+                    finalAssignToIds = staffs.map((staff) => staff._id);
+                } else {
+                    return { success: true, data: [], count: 0 };
+                }
+            }
+        }
+
+        // ASSIGN TO FILTER (comma-separated assignToFilter)
+        if (assignToFilter && assignToFilter.trim() !== "") {
+            const assignToNames = assignToFilter
+                .split(",")
+                .map((name) => name.trim())
+                .filter((name) => name !== "");
+
+            let filterStaffIds = [];
+
+            for (const name of assignToNames) {
+                if (mongoose.Types.ObjectId.isValid(name)) {
+                    filterStaffIds.push(new mongoose.Types.ObjectId(name));
+                } else {
+                    const parts = name.split(" ").filter(Boolean);
+                    let staffQuery = { $or: [] };
+
+                    if (parts.length >= 2) {
+                        staffQuery.$or.push({
+                            $and: [
+                                { firstName: { $regex: `^${parts[0]}$`, $options: "i" } },
+                                { lastName: { $regex: `^${parts.slice(1).join(" ")}$`, $options: "i" } },
+                            ],
+                        });
+                    } else {
+                        staffQuery.$or.push({
+                            firstName: { $regex: `^${parts[0]}$`, $options: "i" },
+                        });
+                    }
+
+                    const staffs = await mongoose
+                        .model("Staff")
+                        .find(staffQuery)
+                        .select("_id firstName lastName");
+                    filterStaffIds.push(...staffs.map((s) => s._id));
+                }
+            }
+
+            filterStaffIds = [
+                ...new Set(filterStaffIds.map((id) => id.toString())),
+            ].map((id) => new mongoose.Types.ObjectId(id));
+
+            if (filterStaffIds.length === 0) {
+                return { success: true, data: [], count: 0 };
+            }
+
+            if (finalAssignToIds.length > 0) {
+                const intersection = finalAssignToIds.filter((id) =>
+                    filterStaffIds.some((fid) => fid.toString() === id.toString())
+                );
+                if (intersection.length === 0) {
+                    return { success: true, data: [], count: 0 };
+                }
+                finalAssignToIds = intersection;
+            } else {
+                finalAssignToIds = filterStaffIds;
+            }
+        }
+
+        if (finalAssignToIds.length > 0) {
+            postMatchConditions["assignToData._id"] = { $in: finalAssignToIds };
+        }
+
+        // PARTY FILTER
+        if (party) {
+            const partyNames = party.split(",").map((p) => p.trim()).filter((p) => p);
+            if (partyNames.length > 0) {
+                postMatchConditions["partyData.partyName"] = {
+                    $in: partyNames.map((name) => new RegExp(name, "i")),
+                };
+            }
+        }
+
+        // AREA FILTER
+        if (area) {
+            const areaNames = area.split(",").map((a) => a.trim()).filter((a) => a);
+            if (areaNames.length > 0) {
+                postMatchConditions["areaData.area"] = {
+                    $in: areaNames.map((name) => new RegExp(name, "i")),
+                };
+            }
+        }
+
+        // Apply post-match conditions
+        if (Object.keys(postMatchConditions).length > 0) {
+            pipeline.push({ $match: postMatchConditions });
+        }
+
+        /* ================================
+           SEARCH
+        ================================ */
+        if (search && search.trim() !== "") {
+            const searchRegex = { $regex: search, $options: "i" };
+
+            pipeline.push({
+                $match: {
+                    $or: [
+                        { "companyData.companyName": searchRegex },
+                        { "partyData.partyName": searchRegex },
+                        { "assignToData.firstName": searchRegex },
+                        { "assignToData.lastName": searchRegex },
+                        { "partyData.ownerMobileNo": searchRegex },
+                        { "partyData.personMobileNo": searchRegex },
+                        { "partyData.contactMobileNo": searchRegex },
+                        { "partyData.ownerWhatsAppNo": searchRegex },
+                        { "partyData.personWhatsAppNo": searchRegex },
+                        { "partyData.contactWhatsAppNo": searchRegex },
+                        { "partyData.address.unitNo": searchRegex },
+                        { "marketNameData.marketName": searchRegex },
+                        { "areaData.area": searchRegex },
+                        { reasonForVisit: searchRegex },
+                        { status: searchRegex },
+                        { remarks: searchRegex },
+                        { feedback: searchRegex },
+                        {
+                            $expr: {
+                                $regexMatch: {
+                                    input: {
+                                        $concat: ["$assignToData.firstName", " ", "$assignToData.lastName"],
+                                    },
+                                    regex: search,
+                                    options: "i",
+                                },
+                            },
+                        },
+                        {
+                            $expr: {
+                                $regexMatch: {
+                                    input: {
+                                        $concat: [
+                                            "$accountData.createdByData.firstName",
+                                            " ",
+                                            "$accountData.createdByData.lastName",
+                                        ],
+                                    },
+                                    regex: search,
+                                    options: "i",
+                                },
+                            },
+                        },
+                    ],
+                },
+            });
+        }
+
+        // Sort
+        pipeline.push({ $sort: { createdAt: -1 } });
+
+        /* ================================
+           PROJECT — raw fields chahiye, transform JS mein karenge
+        ================================ */
+        pipeline.push({
+            $project: {
+                _id: 0,
+                date: 1,
+                rescheduleDate: 1,       // raw Date object — JS mein format karenge
+                isRescheduledTask: 1,    // ✅ KEY FIELD: false = original task, true = nayi task
+                status: 1,
+                reasonForVisit: 1,
+                remarks: 1,
+                feedback: 1,
+                visitDate: 1,
+                visitTime: 1,
+                priority: 1,
+                "companyData.companyName": 1,
+                "partyData.partyName": 1,
+                "partyData.ownerName": 1,
+                "partyData.ownerMobileNo": 1,
+                "partyData.contactPerson": 1,
+                "partyData.personMobileNo": 1,
+                "partyData.contactMobileNo": 1,
+                "partyData.partyTag": 1,
+                "partyData.partyType": 1,
+                "partyData.address.unitNo": 1,
+                "marketNameData.marketName": 1,
+                "areaData.area": 1,
+                "assignToData.firstName": 1,
+                "assignToData.lastName": 1,
+                "accountData.createdByData.firstName": 1,
+                "accountData.createdByData.lastName": 1,
+                // Rescheduled task fields
+                isRescheduledTask: 1,
+                originalTaskId: 1,
+                "originalTaskData._id": 1,
+                "originalTaskData.date": 1,   // original task ki assign date
+            },
         });
 
-        if (dateConditions.length > 0) {
-          preMatchConditions.$or = preMatchConditions.$or || [];
-          preMatchConditions.$or.push(...dateConditions);
-        }
-      } else {
-        const parsedDate = parseDateString(date);
-        const startOfDay = new Date(parsedDate);
-        startOfDay.setHours(0, 0, 0, 0);
-        const endOfDay = new Date(parsedDate);
-        endOfDay.setHours(23, 59, 59, 999);
-        preMatchConditions.date = { $gte: startOfDay, $lte: endOfDay };
-      }
-    }
+        const rawTasks = await assignTaskModel.aggregate(pipeline);
 
-    if (startDate && endDate && !date) {
-      preMatchConditions.date = {
-        $gte: new Date(startDate),
-        $lte: new Date(endDate),
-      };
-    }
+        /* ================================
+           TRANSFORM
+        ================================ */
+        const transformedTasks = rawTasks.map((task) => {
+            // ─── RESCHEDULE DATE LOGIC ────────────────────────────
+            // isRescheduledTask: true  → YEH nayi task hai jab original reschedule hua
+            //   - task.date             = new scheduled date (reschedule date)
+            //   - originalTaskData.date = original task ki assign date
+            // isRescheduledTask: false → Normal / original task hai
+            //
+            // Excel mein:
+            //   isRescheduledTask=true  → ASSIGN DATE = originalTaskData.date, RESCHEDULE DATE = task.date
+            //   isRescheduledTask=false → ASSIGN DATE = task.date, RESCHEDULE DATE = ""
 
-    /* ================================
-       COMPANY FILTER
-    ================================ */
-    if (companyName) {
-      if (mongoose.Types.ObjectId.isValid(companyName)) {
-        preMatchConditions.companyName = new mongoose.Types.ObjectId(companyName);
-      } else {
-        postMatchConditions["companyData.companyName"] = {
-          $regex: companyName,
-          $options: "i",
-        };
-      }
-    }
+            const isRescheduled = task.isRescheduledTask === true
+            // task.originalTaskData &&
+            // task.originalTaskData._id != null;
 
-    /* ================================
-       STATUS FILTER
-    ================================ */
-    if (status && status.length > 0) {
-      const statusArray = Array.isArray(status) ? status : status.split(",");
-      preMatchConditions.status = {
-        $in: statusArray.map((s) => new RegExp(`^${s}$`, "i")),
-      };
-    }
+            let assignDateFormatted = "";
+            let rescheduleDateFormatted = "";
 
-    /* ================================
-       PRIORITY FILTER
-    ================================ */
-    if (priority) {
-      preMatchConditions.priority = new RegExp(`^${priority}$`, "i");
-    }
+            if (isRescheduled) {
+                // Original assign date
+                const origDate = task?.originalTaskData?.date
+                    ? new Date(task.originalTaskData.date)
+                    : null;
 
-    /* ================================
-       REASON FOR VISIT FILTER
-    ================================ */
-    if (reason) {
-      const predefinedReasons = [
-        "delivery",
-        "get payment",
-        "visit",
-        "order",
-        "complain",
-        "sample approval",
-      ];
-      const reasons = reason
-        .split(",")
-        .map((r) => r.trim().toLowerCase())
-        .filter((r) => r);
+                if (origDate && !isNaN(origDate.getTime())) {
+                    assignDateFormatted = moment(origDate).format("DD-MM-YYYY");
+                }
 
-      if (reasons.length > 0) {
-        const otherIncluded = reasons.includes("other");
-        const specificReasons = reasons.filter((r) => r !== "other");
+                // Reschedule date (new task date)
+                const reschedDate = task?.date
+                    ? new Date(task.date)
+                    : null;
 
-        if (otherIncluded && specificReasons.length === 0) {
-          preMatchConditions.reasonForVisit = {
-            $nin: predefinedReasons.map((r) => new RegExp(`^${r}$`, "i")),
-          };
-        } else if (otherIncluded && specificReasons.length > 0) {
-          preMatchConditions.$or = preMatchConditions.$or || [];
-          preMatchConditions.$or.push(
-            {
-              reasonForVisit: {
-                $in: specificReasons.map((r) => new RegExp(`^${r}$`, "i")),
-              },
-            },
-            {
-              reasonForVisit: {
-                $nin: predefinedReasons.map((r) => new RegExp(`^${r}$`, "i")),
-              },
+                if (reschedDate && !isNaN(reschedDate.getTime())) {
+                    rescheduleDateFormatted = moment(reschedDate).format("DD-MM-YYYY");
+                } else {
+                    rescheduleDateFormatted = ""; // 👈 explicitly blank
+                }
+
+            } else {
+                // Normal task
+                const assignDate = task?.date
+                    ? new Date(task.date)
+                    : null;
+
+                if (assignDate && !isNaN(assignDate.getTime())) {
+                    assignDateFormatted = moment(assignDate).format("DD-MM-YYYY");
+                }
             }
-          );
-        } else {
-          preMatchConditions.reasonForVisit = {
-            $in: specificReasons.map((r) => new RegExp(`^${r}$`, "i")),
-          };
-        }
-      }
-    }
 
-    /* ================================
-       BASE PIPELINE
-    ================================ */
-    const pipeline = [
-      ...(Object.keys(preMatchConditions).length > 0
-        ? [{ $match: preMatchConditions }]
-        : []),
 
-      // 1. TASK → COMPANY
-      {
-        $lookup: {
-          from: "companynames",
-          localField: "companyName",
-          foreignField: "_id",
-          as: "companyData",
-        },
-      },
-      { $unwind: { path: "$companyData", preserveNullAndEmptyArrays: true } },
+            const party = task.partyData || {};
+            const address = party.address || {};
 
-      // 2. TASK → PARTY
-      {
-        $lookup: {
-          from: "parties",
-          localField: "partyName",
-          foreignField: "_id",
-          as: "partyData",
-        },
-      },
-      { $unwind: { path: "$partyData", preserveNullAndEmptyArrays: true } },
+            // marketName — array from lookup
+            const mktName =
+                Array.isArray(task.marketNameData) && task.marketNameData.length > 0
+                    ? task.marketNameData[0].marketName || ""
+                    : "";
 
-      // 3. TASK → ASSIGN TO (STAFF)
-      {
-        $lookup: {
-          from: "staffs",
-          localField: "assignTo",
-          foreignField: "_id",
-          as: "assignToData",
-        },
-      },
-      { $unwind: { path: "$assignToData", preserveNullAndEmptyArrays: true } },
+            // area — array from lookup
+            const areaVal =
+                Array.isArray(task.areaData) && task.areaData.length > 0
+                    ? task.areaData[0].area || ""
+                    : "";
 
-      // 4. STAFF → ROLE
-      {
-        $lookup: {
-          from: "roles",
-          localField: "assignToData.role",
-          foreignField: "_id",
-          as: "assignToData.roleData",
-        },
-      },
-      {
-        $unwind: {
-          path: "$assignToData.roleData",
-          preserveNullAndEmptyArrays: true,
-        },
-      },
+            const contactPerson =
+                party.contactPerson && party.contactPerson !== ""
+                    ? party.contactPerson
+                    : party.ownerName || "";
 
-      // 5. STAFF → DEPARTMENT
-      {
-        $lookup: {
-          from: "departments",
-          localField: "assignToData.department",
-          foreignField: "_id",
-          as: "assignToData.departmentData",
-        },
-      },
-      {
-        $unwind: {
-          path: "$assignToData.departmentData",
-          preserveNullAndEmptyArrays: true,
-        },
-      },
+            const mobileNo =
+                party.contactMobileNo && party.contactMobileNo !== ""
+                    ? party.contactMobileNo
+                    : party.personMobileNo && party.personMobileNo !== ""
+                        ? party.personMobileNo
+                        : party.ownerMobileNo || "";
 
-      // 6. PARTY ADDRESS → MARKET NAME
-      {
-        $lookup: {
-          from: "markets",
-          localField: "partyData.address.marketName",
-          foreignField: "_id",
-          as: "marketNameData",
-        },
-      },
+            const assignedTo = task.assignToData || {};
 
-      // 7. PARTY ADDRESS → AREA
-      {
-        $lookup: {
-          from: "markets",
-          localField: "partyData.address.area",
-          foreignField: "_id",
-          as: "areaData",
-        },
-      },
+            let createdByName = "N/A";
+            const cb = task.accountData?.createdByData;
+            if (cb) {
+                const full = `${cb.firstName || ""} ${cb.lastName || ""}`.trim();
+                if (full) createdByName = full;
+            }
 
-      // 8. PARTY ADDRESS → LANDMARK
-      {
-        $lookup: {
-          from: "markets",
-          localField: "partyData.address.landMark",
-          foreignField: "_id",
-          as: "landMarkData",
-        },
-      },
+            const companyName = task.companyData?.companyName || "";
 
-      // 9. PARTY ADDRESS → PINCODE
-      {
-        $lookup: {
-          from: "markets",
-          localField: "partyData.address.pincode",
-          foreignField: "_id",
-          as: "pincodeData",
-        },
-      },
+            // ─── Visit Date ────────────────────────────────────────
+            let visitDateValue = "Not Visited";
+            if (task.visitDate) {
+                const vd = new Date(task.visitDate);
+                if (!isNaN(vd.getTime())) {
+                    visitDateValue = moment(vd).format("DD-MM-YYYY");
+                }
+            }
 
-      // 10. COMPANY → OWNER
-      {
-        $lookup: {
-          from: "users",
-          localField: "companyData.owner",
-          foreignField: "_id",
-          as: "companyData.ownerData",
-        },
-      },
-      {
-        $unwind: {
-          path: "$companyData.ownerData",
-          preserveNullAndEmptyArrays: true,
-        },
-      },
+            return {
+                DATE: assignDateFormatted,                 // Original task date (ya originalTaskData.date for rescheduled)
+                "RESCHEDULE DATE": rescheduleDateFormatted, // Nayi date (sirf isRescheduledTask=true wale tasks mein)
+                "PARTY NAME": party.partyName || "",
+                "UNIT NO": address.unitNo || "",
+                "MKT NAME": mktName,
+                AREA: areaVal,
+                "CONTACT P": contactPerson,
+                "MOBILE NO": mobileNo,
+                TAG: party.partyTag || "",
+                TYPE: party.partyType || "",
+                STATUS: task.status || "",
+                REMARKS: task.remarks || "",
+                FEEDBACK: task.feedback || "",
+                "REASON FOR VISIT": task.reasonForVisit || "",
+                "ASSIGNED TO":
+                    assignedTo.firstName || assignedTo.lastName
+                        ? `${assignedTo.firstName || ""} ${assignedTo.lastName || ""}`.trim()
+                        : "",
+                "CREATED BY": createdByName,
+                "COMPANY NAME": companyName,
+                "VISIT DATE": visitDateValue,
+                "VISIT TIME": task.visitTime || "",
+                PRIORITY: task.priority || "",
+            };
+        });
 
-      // 11. ACCOUNT MASTER FOR CREATED BY
-      {
-        $lookup: {
-          from: "accountmasters",
-          let: { partyId: "$partyName", companyId: "$companyName" },
-          pipeline: [
-            {
-              $match: {
-                $expr: {
-                  $and: [
-                    { $eq: ["$party", "$$partyId"] },
-                    { $eq: ["$companyName", "$$companyId"] },
-                  ],
-                },
-              },
-            },
-            {
-              $lookup: {
-                from: "staffs",
-                localField: "createdBy",
-                foreignField: "_id",
-                as: "createdByData",
-              },
-            },
-            { $unwind: "$createdByData" },
-          ],
-          as: "accountData",
-        },
-      },
-      { $unwind: { path: "$accountData", preserveNullAndEmptyArrays: true } },
-
-      // 12. ORIGINAL TASK (IF RESCHEDULED)
-      {
-        $lookup: {
-          from: "assigntasks",
-          localField: "originalTaskId",
-          foreignField: "_id",
-          as: "originalTaskData",
-        },
-      },
-      {
-        $unwind: {
-          path: "$originalTaskData",
-          preserveNullAndEmptyArrays: true,
-        },
-      },
-    ];
-
-    /* ================================
-       POST-LOOKUP FILTERS
-    ================================ */
-
-    // UNIT NO FILTER
-    if (unitNo) {
-      const unitNos = unitNo.split(",").map((u) => u.trim()).filter((u) => u);
-      if (unitNos.length > 0) {
-        postMatchConditions["partyData.address.unitNo"] = {
-          $in: unitNos.map((unit) => new RegExp(`^${unit}$`, "i")),
+        return {
+            success: true,
+            count: transformedTasks.length,
+            data: transformedTasks,
         };
-      }
-    }
-
-    // MARKET NAME FILTER
-    if (marketName) {
-      const marketNames = marketName.split(",").map((m) => m.trim()).filter((m) => m);
-      if (marketNames.length > 0) {
-        postMatchConditions["marketNameData.marketName"] = {
-          $in: marketNames.map((name) => new RegExp(name, "i")),
+    } catch (error) {
+        console.error("getTasksDataForExcel Error:", error);
+        return {
+            success: false,
+            message: "Failed to fetch tasks for Excel",
+            error: error.message,
         };
-      }
     }
-
-    // MOBILE NUMBER FILTER
-    if (mobile) {
-      postMatchConditions.$or = postMatchConditions.$or || [];
-      postMatchConditions.$or.push(
-        { "partyData.ownerMobileNo": { $regex: mobile, $options: "i" } },
-        { "partyData.personMobileNo": { $regex: mobile, $options: "i" } },
-        { "partyData.contactMobileNo": { $regex: mobile, $options: "i" } },
-        { "partyData.ownerWhatsAppNo": { $regex: mobile, $options: "i" } },
-        { "partyData.personWhatsAppNo": { $regex: mobile, $options: "i" } },
-        { "partyData.contactWhatsAppNo": { $regex: mobile, $options: "i" } }
-      );
-    }
-
-    // CREATED BY FILTER
-    if (createdBy) {
-      const createdByNames = createdBy
-        .split(",")
-        .map((name) => name.trim())
-        .filter(Boolean);
-
-      const createdByConditions = [];
-
-      createdByNames.forEach((name) => {
-        const parts = name.split(" ").filter(Boolean);
-
-        if (parts.length >= 2) {
-          const firstName = parts[0];
-          const lastName = parts.slice(1).join(" ");
-          createdByConditions.push({
-            $and: [
-              {
-                "accountData.createdByData.firstName": {
-                  $regex: `^${firstName}$`,
-                  $options: "i",
-                },
-              },
-              {
-                "accountData.createdByData.lastName": {
-                  $regex: `^${lastName}$`,
-                  $options: "i",
-                },
-              },
-            ],
-          });
-        } else {
-          createdByConditions.push({
-            "accountData.createdByData.firstName": {
-              $regex: `^${parts[0]}$`,
-              $options: "i",
-            },
-          });
-        }
-      });
-
-      if (createdByConditions.length > 0) {
-        postMatchConditions.$or = createdByConditions;
-      }
-    }
-
-    // ASSIGN TO FILTER (assignedTo / assignTo)
-    const assignToValue = assignedTo || assignTo;
-    let finalAssignToIds = [];
-
-    if (assignToValue && assignToValue.trim() !== "") {
-      if (mongoose.Types.ObjectId.isValid(assignToValue)) {
-        finalAssignToIds.push(new mongoose.Types.ObjectId(assignToValue));
-      } else {
-        const staffs = await mongoose.model("Staff").find({
-          $or: [
-            { firstName: { $regex: assignToValue, $options: "i" } },
-            { lastName: { $regex: assignToValue, $options: "i" } },
-            {
-              $expr: {
-                $regexMatch: {
-                  input: { $concat: ["$firstName", " ", "$lastName"] },
-                  regex: assignToValue,
-                  options: "i",
-                },
-              },
-            },
-          ],
-        }).select("_id firstName lastName");
-
-        if (staffs.length > 0) {
-          finalAssignToIds = staffs.map((staff) => staff._id);
-        } else {
-          return { success: true, data: [], count: 0 };
-        }
-      }
-    }
-
-    // ASSIGN TO FILTER (comma-separated assignToFilter)
-    if (assignToFilter && assignToFilter.trim() !== "") {
-      const assignToNames = assignToFilter
-        .split(",")
-        .map((name) => name.trim())
-        .filter((name) => name !== "");
-
-      let filterStaffIds = [];
-
-      for (const name of assignToNames) {
-        if (mongoose.Types.ObjectId.isValid(name)) {
-          filterStaffIds.push(new mongoose.Types.ObjectId(name));
-        } else {
-          const parts = name.split(" ").filter(Boolean);
-          let staffQuery = { $or: [] };
-
-          if (parts.length >= 2) {
-            staffQuery.$or.push({
-              $and: [
-                { firstName: { $regex: `^${parts[0]}$`, $options: "i" } },
-                { lastName: { $regex: `^${parts.slice(1).join(" ")}$`, $options: "i" } },
-              ],
-            });
-          } else {
-            staffQuery.$or.push({
-              firstName: { $regex: `^${parts[0]}$`, $options: "i" },
-            });
-          }
-
-          const staffs = await mongoose
-            .model("Staff")
-            .find(staffQuery)
-            .select("_id firstName lastName");
-          filterStaffIds.push(...staffs.map((s) => s._id));
-        }
-      }
-
-      filterStaffIds = [
-        ...new Set(filterStaffIds.map((id) => id.toString())),
-      ].map((id) => new mongoose.Types.ObjectId(id));
-
-      if (filterStaffIds.length === 0) {
-        return { success: true, data: [], count: 0 };
-      }
-
-      if (finalAssignToIds.length > 0) {
-        const intersection = finalAssignToIds.filter((id) =>
-          filterStaffIds.some((fid) => fid.toString() === id.toString())
-        );
-        if (intersection.length === 0) {
-          return { success: true, data: [], count: 0 };
-        }
-        finalAssignToIds = intersection;
-      } else {
-        finalAssignToIds = filterStaffIds;
-      }
-    }
-
-    if (finalAssignToIds.length > 0) {
-      postMatchConditions["assignToData._id"] = { $in: finalAssignToIds };
-    }
-
-    // PARTY FILTER
-    if (party) {
-      const partyNames = party.split(",").map((p) => p.trim()).filter((p) => p);
-      if (partyNames.length > 0) {
-        postMatchConditions["partyData.partyName"] = {
-          $in: partyNames.map((name) => new RegExp(name, "i")),
-        };
-      }
-    }
-
-    // AREA FILTER
-    if (area) {
-      const areaNames = area.split(",").map((a) => a.trim()).filter((a) => a);
-      if (areaNames.length > 0) {
-        postMatchConditions["areaData.area"] = {
-          $in: areaNames.map((name) => new RegExp(name, "i")),
-        };
-      }
-    }
-
-    // Apply post-match conditions
-    if (Object.keys(postMatchConditions).length > 0) {
-      pipeline.push({ $match: postMatchConditions });
-    }
-
-    /* ================================
-       SEARCH
-    ================================ */
-    if (search && search.trim() !== "") {
-      const searchRegex = { $regex: search, $options: "i" };
-
-      pipeline.push({
-        $match: {
-          $or: [
-            { "companyData.companyName": searchRegex },
-            { "partyData.partyName": searchRegex },
-            { "assignToData.firstName": searchRegex },
-            { "assignToData.lastName": searchRegex },
-            { "partyData.ownerMobileNo": searchRegex },
-            { "partyData.personMobileNo": searchRegex },
-            { "partyData.contactMobileNo": searchRegex },
-            { "partyData.ownerWhatsAppNo": searchRegex },
-            { "partyData.personWhatsAppNo": searchRegex },
-            { "partyData.contactWhatsAppNo": searchRegex },
-            { "partyData.address.unitNo": searchRegex },
-            { "marketNameData.marketName": searchRegex },
-            { "areaData.area": searchRegex },
-            { reasonForVisit: searchRegex },
-            { status: searchRegex },
-            { remarks: searchRegex },
-            { feedback: searchRegex },
-            {
-              $expr: {
-                $regexMatch: {
-                  input: {
-                    $concat: ["$assignToData.firstName", " ", "$assignToData.lastName"],
-                  },
-                  regex: search,
-                  options: "i",
-                },
-              },
-            },
-            {
-              $expr: {
-                $regexMatch: {
-                  input: {
-                    $concat: [
-                      "$accountData.createdByData.firstName",
-                      " ",
-                      "$accountData.createdByData.lastName",
-                    ],
-                  },
-                  regex: search,
-                  options: "i",
-                },
-              },
-            },
-          ],
-        },
-      });
-    }
-
-    // Sort
-    pipeline.push({ $sort: { createdAt: -1 } });
-
-    /* ================================
-       PROJECT — raw fields chahiye, transform JS mein karenge
-    ================================ */
-    pipeline.push({
-      $project: {
-        _id: 0,
-        date: 1,
-        rescheduleDate: 1,       // raw Date object — JS mein format karenge
-        isRescheduledTask: 1,    // ✅ KEY FIELD: false = original task, true = nayi task
-        status: 1,
-        reasonForVisit: 1,
-        remarks: 1,
-        feedback: 1,
-        visitDate: 1,
-        visitTime: 1,
-        priority: 1,
-        "companyData.companyName": 1,
-        "partyData.partyName": 1,
-        "partyData.ownerName": 1,
-        "partyData.ownerMobileNo": 1,
-        "partyData.contactPerson": 1,
-        "partyData.personMobileNo": 1,
-        "partyData.contactMobileNo": 1,
-        "partyData.partyTag": 1,
-        "partyData.partyType": 1,
-        "partyData.address.unitNo": 1,
-        "marketNameData.marketName": 1,
-        "areaData.area": 1,
-        "assignToData.firstName": 1,
-        "assignToData.lastName": 1,
-        "accountData.createdByData.firstName": 1,
-        "accountData.createdByData.lastName": 1,
-        // originalTaskData — lookup se aata hai, iska _id check karo
-        // originalTaskId = raw ObjectId field hai
-        // originalTaskData = populated object after $lookup + $unwind
-        "originalTaskData._id": 1,
-      },
-    });
-
-    const rawTasks = await assignTaskModel.aggregate(pipeline);
-
-    /* ================================
-       TRANSFORM
-    ================================ */
-    const transformedTasks = rawTasks.map((task) => {
-      // ─── Assign Date ───────────────────────────────────────
-      const assignDate = task.date ? new Date(task.date) : null;
-
-      // ─── ✅ RESCHEDULE DATE FIX ────────────────────────────
-      // Sirf tab show karo jab:
-      // 1. status === "Rescheduled"   (task reschedule hua hai)
-      // 2. isRescheduledTask === false (ye ORIGINAL task hai, nayi wali nahi)
-      // 3. rescheduleDate exist kare aur valid ho
-      //
-      // Kyun: Jab reschedule hota hai to 2 records bante hain:
-      //   Original task → status="Rescheduled", isRescheduledTask=false ← yahan date dikhao
-      //   Nayi task     → status="Pending",     isRescheduledTask=true  ← yahan mat dikhao
-      // CORRECT FIX (data se confirmed):
-      // CHIRAG PRINTS  → originalTaskId._id exist karta hai (populated) → date dikhao ✅
-      // KRISHNA SAREES → originalTaskId = {} (empty)                    → date mat dikhao ❌
-      // HEMLATA        → originalTaskId = {} (empty)                    → date mat dikhao ❌
-      // originalTaskData = $lookup se populated object
-      // Agar originalTaskData._id exist kare → yeh task kisi original task ka reschedule hai
-      // Agar originalTaskData._id null/undefined → naya task hai, koi original nahi
-      const hasOriginalTask =
-        task.originalTaskData &&
-        task.originalTaskData._id != null;
-
-      let rescheduleDateFormatted = "";
-      if (
-        task.status &&
-        task.status.toLowerCase() === "rescheduled" &&
-        hasOriginalTask &&
-        task.rescheduleDate
-      ) {
-        const rd = new Date(task.rescheduleDate);
-        if (!isNaN(rd.getTime())) {
-          rescheduleDateFormatted = moment(rd).format("DD-MM-YYYY");
-        }
-      }
-
-      const party = task.partyData || {};
-      const address = party.address || {};
-
-      // marketName — array from lookup
-      const mktName =
-        Array.isArray(task.marketNameData) && task.marketNameData.length > 0
-          ? task.marketNameData[0].marketName || ""
-          : "";
-
-      // area — array from lookup
-      const areaVal =
-        Array.isArray(task.areaData) && task.areaData.length > 0
-          ? task.areaData[0].area || ""
-          : "";
-
-      const contactPerson =
-        party.contactPerson && party.contactPerson !== ""
-          ? party.contactPerson
-          : party.ownerName || "";
-
-      const mobileNo =
-        party.contactMobileNo && party.contactMobileNo !== ""
-          ? party.contactMobileNo
-          : party.personMobileNo && party.personMobileNo !== ""
-          ? party.personMobileNo
-          : party.ownerMobileNo || "";
-
-      const assignedTo = task.assignToData || {};
-
-      let createdByName = "N/A";
-      const cb = task.accountData?.createdByData;
-      if (cb) {
-        const full = `${cb.firstName || ""} ${cb.lastName || ""}`.trim();
-        if (full) createdByName = full;
-      }
-
-      const companyName = task.companyData?.companyName || "";
-
-      // ─── Visit Date ────────────────────────────────────────
-      let visitDateValue = "Not Visited";
-      if (task.visitDate) {
-        const vd = new Date(task.visitDate);
-        if (!isNaN(vd.getTime())) {
-          visitDateValue = moment(vd).format("DD-MM-YYYY");
-        }
-      }
-
-      return {
-        // ✅ DATE already formatted here — exportAssignTasksToExcel use karega as-is
-        DATE: assignDate && !isNaN(assignDate.getTime())
-          ? moment(assignDate).format("DD-MM-YYYY")
-          : "",
-        "RESCHEDULE DATE": rescheduleDateFormatted, // "" ya "DD-MM-YYYY"
-        "PARTY NAME": party.partyName || "",
-        "UNIT NO": address.unitNo || "",
-        "MKT NAME": mktName,
-        AREA: areaVal,
-        "CONTACT P": contactPerson,
-        "MOBILE NO": mobileNo,
-        TAG: party.partyTag || "",
-        TYPE: party.partyType || "",
-        STATUS: task.status || "",
-        REMARKS: task.remarks || "",
-        FEEDBACK: task.feedback || "",
-        "REASON FOR VISIT": task.reasonForVisit || "",
-        "ASSIGNED TO":
-          assignedTo.firstName || assignedTo.lastName
-            ? `${assignedTo.firstName || ""} ${assignedTo.lastName || ""}`.trim()
-            : "",
-        "CREATED BY": createdByName,
-        "COMPANY NAME": companyName,
-        "VISIT DATE": visitDateValue,
-        "VISIT TIME": task.visitTime || "",
-        PRIORITY: task.priority || "",
-      };
-    });
-
-    return {
-      success: true,
-      count: transformedTasks.length,
-      data: transformedTasks,
-    };
-  } catch (error) {
-    console.error("getTasksDataForExcel Error:", error);
-    return {
-      success: false,
-      message: "Failed to fetch tasks for Excel",
-      error: error.message,
-    };
-  }
 };
 
 
@@ -920,106 +897,110 @@ const getTasksDataForExcel = async (req) => {
 //  EXPORT API
 // ─────────────────────────────────────────────────────────────
 exports.exportAssignTasksToExcel = async (req, res) => {
-  try {
-    const result = await getTasksDataForExcel(req);
+    try {
+        const result = await getTasksDataForExcel(req);
 
-    if (!result.success || !result.data || result.data.length === 0) {
-      return res.status(404).json({
-        success: false,
-        message: "No data found to export",
-      });
+        if (!result.success || !result.data || result.data.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: "No data found to export",
+            });
+        }
+
+        const tasks = result.data;
+
+        const workbook = new ExcelJS.Workbook();
+        const worksheet = workbook.addWorksheet("Assign Tasks");
+
+        worksheet.columns = [
+            { header: "Sr no", key: "Sr no", width: 8 },
+            { header: "ASSIGN DATE", key: "DATE", width: 14 },
+            { header: "RESCHEDULE DATE", key: "RESCHEDULE DATE", width: 14 },
+            { header: "PARTY NAME", key: "PARTY NAME", width: 25 },
+            { header: "UNIT NO", key: "UNIT NO", width: 12 },
+            { header: "MKT NAME", key: "MKT NAME", width: 20 },
+            { header: "AREA", key: "AREA", width: 20 },
+            { header: "CONTACT P", key: "CONTACT P", width: 20 },
+            { header: "MOBILE NO", key: "MOBILE NO", width: 15 },
+            { header: "TAG", key: "TAG", width: 10 },
+            { header: "TYPE", key: "TYPE", width: 10 },
+            { header: "REASON FOR VISIT", key: "REASON FOR VISIT", width: 20 },
+            { header: "STATUS", key: "STATUS", width: 12 },
+            { header: "ASSIGNED TO", key: "ASSIGNED TO", width: 20 },
+            { header: "REMARKS", key: "REMARKS", width: 25 },
+            { header: "FEEDBACK", key: "FEEDBACK", width: 25 },
+        ];
+
+        tasks.forEach((task, index) => {
+            worksheet.addRow({
+                "Sr no": index + 1,
+                DATE: task.DATE || "",
+                "RESCHEDULE DATE": task["RESCHEDULE DATE"] || "",
+                "PARTY NAME": task["PARTY NAME"] || "",
+                "UNIT NO": task["UNIT NO"] || "",
+                "MKT NAME": task["MKT NAME"] || "",
+                AREA: task.AREA || "",
+                "CONTACT P": task["CONTACT P"] || "",
+                "MOBILE NO": task["MOBILE NO"] || "",
+                TAG: task.TAG || "",
+                TYPE: task.TYPE || "",
+                "REASON FOR VISIT": task["REASON FOR VISIT"] || "",
+
+                // ✅ STATUS AUTO CHANGE
+                STATUS: task["RESCHEDULE DATE"]
+                    ? "Rescheduled"
+                    : task.STATUS || "",
+
+                "ASSIGNED TO": task["ASSIGNED TO"] || "",
+                REMARKS: task.REMARKS || "",
+                FEEDBACK: task.FEEDBACK || "",
+            });
+        });
+
+
+        // Style header row
+        const headerRow = worksheet.getRow(1);
+        headerRow.eachCell((cell) => {
+            cell.font = { bold: true, color: { argb: "FF000000" } };
+            cell.fill = {
+                type: "pattern",
+                pattern: "solid",
+                fgColor: { argb: "FFD3D3D3" },
+            };
+            cell.alignment = { vertical: "middle", horizontal: "center" };
+        });
+        headerRow.height = 20;
+
+        // Auto-fit columns
+        worksheet.columns.forEach((column) => {
+            let maxLen = column.header ? column.header.length : 10;
+            column.eachCell({ includeEmpty: true }, (cell) => {
+                const len = cell.value ? cell.value.toString().length : 0;
+                if (len > maxLen) maxLen = len;
+            });
+            column.width = Math.min(maxLen + 2, 50);
+        });
+
+        res.setHeader(
+            "Content-Type",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        );
+        res.setHeader(
+            "Content-Disposition",
+            `attachment; filename="assign_tasks_${new Date().toISOString().split("T")[0]}.xlsx"`
+        );
+
+        await workbook.xlsx.write(res);
+        res.end();
+
+    } catch (error) {
+        console.error("Error exporting assign tasks to Excel:", error);
+        res.status(500).json({
+            success: false,
+            message: "Failed to export tasks to Excel",
+            error: error.message,
+        });
     }
-
-    const tasks = result.data;
-
-    const workbook = new ExcelJS.Workbook();
-    const worksheet = workbook.addWorksheet("Assign Tasks");
-
-    worksheet.columns = [
-      { header: "Sr no",            key: "Sr no",             width: 8  },
-      { header: "ASSIGN DATE",      key: "DATE",              width: 14 },
-      { header: "RESCHEDULE DATE",  key: "RESCHEDULE DATE",   width: 14 },
-      { header: "PARTY NAME",       key: "PARTY NAME",        width: 25 },
-      { header: "UNIT NO",          key: "UNIT NO",           width: 12 },
-      { header: "MKT NAME",         key: "MKT NAME",          width: 20 },
-      { header: "AREA",             key: "AREA",              width: 20 },
-      { header: "CONTACT P",        key: "CONTACT P",         width: 20 },
-      { header: "MOBILE NO",        key: "MOBILE NO",         width: 15 },
-      { header: "TAG",              key: "TAG",               width: 10 },
-      { header: "TYPE",             key: "TYPE",              width: 10 },
-      { header: "REASON FOR VISIT", key: "REASON FOR VISIT",  width: 20 },
-      { header: "STATUS",           key: "STATUS",            width: 12 },
-      { header: "ASSIGNED TO",      key: "ASSIGNED TO",       width: 20 },
-      { header: "REMARKS",          key: "REMARKS",           width: 25 },
-      { header: "FEEDBACK",         key: "FEEDBACK",          width: 25 },
-    ];
-
-    tasks.forEach((task, index) => {
-      worksheet.addRow({
-        "Sr no":           index + 1,
-        // ✅ FIX: getTasksDataForExcel already "DD-MM-YYYY" format deta hai
-        //    Yahan dobara moment() mat lagao — warna "Invalid date" aayega
-        DATE:              task.DATE || "",
-        "RESCHEDULE DATE": task["RESCHEDULE DATE"] || "",  // "" ya "DD-MM-YYYY"
-        "PARTY NAME":      task["PARTY NAME"]      || "",
-        "UNIT NO":         task["UNIT NO"]         || "",
-        "MKT NAME":        task["MKT NAME"]        || "",
-        AREA:              task.AREA               || "",
-        "CONTACT P":       task["CONTACT P"]       || "",
-        "MOBILE NO":       task["MOBILE NO"]       || "",
-        TAG:               task.TAG                || "",
-        TYPE:              task.TYPE               || "",
-        "REASON FOR VISIT": task["REASON FOR VISIT"] || "",
-        STATUS:            task.STATUS             || "",
-        "ASSIGNED TO":     task["ASSIGNED TO"]     || "",
-        REMARKS:           task.REMARKS            || "",
-        FEEDBACK:          task.FEEDBACK           || "",
-      });
-    });
-
-    // Style header row
-    const headerRow = worksheet.getRow(1);
-    headerRow.eachCell((cell) => {
-      cell.font = { bold: true, color: { argb: "FF000000" } };
-      cell.fill = {
-        type: "pattern",
-        pattern: "solid",
-        fgColor: { argb: "FFD3D3D3" },
-      };
-      cell.alignment = { vertical: "middle", horizontal: "center" };
-    });
-    headerRow.height = 20;
-
-    // Auto-fit columns
-    worksheet.columns.forEach((column) => {
-      let maxLen = column.header ? column.header.length : 10;
-      column.eachCell({ includeEmpty: true }, (cell) => {
-        const len = cell.value ? cell.value.toString().length : 0;
-        if (len > maxLen) maxLen = len;
-      });
-      column.width = Math.min(maxLen + 2, 50);
-    });
-
-    res.setHeader(
-      "Content-Type",
-      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    );
-    res.setHeader(
-      "Content-Disposition",
-      `attachment; filename="assign_tasks_${new Date().toISOString().split("T")[0]}.xlsx"`
-    );
-
-    await workbook.xlsx.write(res);
-    res.end();
-
-  } catch (error) {
-    console.error("Error exporting assign tasks to Excel:", error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to export tasks to Excel",
-      error: error.message,
-    });
-  }
 };
 
 const getLeadsDataForExcel = async (req) => {
@@ -2855,1146 +2836,6 @@ exports.exportComplainToExcel = async (req, res) => {
     }
 };
 
-// exports.exportPaymentFolderToExcel = async (req, res) => {
-//     try {
-//         const {
-//             companyNames = [],
-//             filters = {},
-//             search = "",
-//             startDate,
-//             endDate,
-//         } = req.body;
-
-//         if (!Array.isArray(companyNames) || companyNames.length === 0) {
-//             return res.status(400).json({
-//                 success: false,
-//                 message: "No companies specified",
-//             });
-//         }
-
-//         // =============================
-//         // FETCH COMPANIES
-//         // =============================
-//         const companies = await CompanyName.find({
-//             companyName: { $in: companyNames },
-//         }).lean();
-
-//         if (!companies.length) {
-//             return res.status(400).json({
-//                 success: false,
-//                 message: "No matching companies found",
-//             });
-//         }
-
-//         const workbook = new ExcelJS.Workbook();
-//         const worksheet = workbook.addWorksheet("Payment Pending Report");
-
-//         // =============================
-//         // LAST 4 MONTHS (EXCLUDING CURRENT)
-//         // =============================
-//         const now = new Date();
-//         const currentMonth = now.getMonth();
-//         const currentYear = now.getFullYear();
-
-//         const last4Months = [];
-//         for (let i = 4; i >= 1; i--) {
-//             const d = new Date(currentYear, currentMonth - i, 1);
-//             last4Months.push({
-//                 month: d.getMonth() + 1,
-//                 year: d.getFullYear(),
-//                 label: d.toLocaleString("en-US", { month: "short" }).toUpperCase(),
-//             });
-//         }
-
-//         // Helper function to get payment term days
-//         const getPaymentTermDays = (paymentTerms) => {
-//             if (!paymentTerms) return 0;
-
-//             const term = paymentTerms.toLowerCase();
-
-//             if (term.includes("30") || term.includes("thirty")) {
-//                 return 30;
-//             } else if (term.includes("60") || term.includes("sixty")) {
-//                 return 60;
-//             } else if (term.includes("90") || term.includes("ninety")) {
-//                 return 90;
-//             } else {
-//                 // Extract custom number of days
-//                 const match = term.match(/(\d+)\s*day/i);
-//                 if (match) {
-//                     return parseInt(match[1]);
-//                 }
-//             }
-//             return 0;
-//         };
-
-//         const isInLast4Months = (month, year) => {
-//             return last4Months.some(
-//                 (m) => m.month === month && m.year === year
-//             );
-//         };
-
-//         const isOldDate = (month, year) => {
-//             // Check if it's current month
-//             if (month === currentMonth + 1 && year === currentYear) {
-//                 return false;
-//             }
-//             // Old = not in last 4 months and not current month
-//             return !isInLast4Months(month, year);
-//         };
-
-//         // =============================
-//         // EXCEL COLUMNS
-//         // =============================
-//         worksheet.columns = [
-//             { header: "S.NO", key: "srNo", width: 8 },
-//             { header: "PARTY NAME", key: "partyName", width: 30 },
-//             { header: "PHONE NO", key: "phoneNumber", width: 18 },
-//             { header: "CONTACT PERSON NAME", key: "contactPerson", width: 22 },
-//             { header: "OLD", key: "OLD", width: 14 },
-//             ...last4Months.map((m) => ({
-//                 header: m.label,
-//                 key: m.label,
-//                 width: 14,
-//             })),
-//             { header: "DIFFERENCE", key: "difference", width: 15 },
-//             { header: "TOTAL", key: "TOTAL", width: 15 },
-//             { header: "ASSIGN TO", key: "assignTo", width: 20 },
-//             { header: "ASSIGN DATE", key: "assignDate", width: 18 },
-//             { header: "REMARKS", key: "remarks", width: 30 },
-//         ];
-
-//         worksheet.getRow(1).font = { bold: true };
-//         worksheet.getRow(1).alignment = { horizontal: "center", vertical: "middle" };
-
-//         let srNo = 1;
-
-//         // =============================
-//         // LOOP COMPANIES
-//         // =============================
-//         for (const comp of companies) {
-//             const startRow = worksheet.lastRow
-//                 ? worksheet.lastRow.number + 1
-//                 : 2;
-
-//             worksheet.mergeCells(
-//                 startRow,
-//                 1,
-//                 startRow,
-//                 worksheet.columns.length
-//             );
-
-//             const titleRow = worksheet.getRow(startRow);
-//             titleRow.getCell(1).value = comp.companyName;
-//             titleRow.font = { bold: true, size: 13 };
-//             titleRow.alignment = { horizontal: "center" };
-//             titleRow.fill = {
-//                 type: "pattern",
-//                 pattern: "solid",
-//                 fgColor: { argb: "FFE0E0E0" },
-//             };
-
-//             // =============================
-//             // FETCH PAYMENT FOLDERS
-//             // =============================
-//             // Build query object
-//             const query = {};
-
-//             // Helper function to build multi-word search conditions
-//             const buildMultiWordSearch = (searchStr, fields) => {
-//                 if (!searchStr || !searchStr.trim()) return [];
-//                 const parts = searchStr.trim().split(/\s+/).filter(p => p.length > 0);
-//                 if (parts.length === 0) return [];
-
-//                 const partConditions = parts.map(part => ({
-//                     $or: fields.map(field => ({
-//                         [field]: { $regex: part, $options: "i" }
-//                     }))
-//                 }));
-
-//                 if (parts.length === 1) {
-//                     return partConditions[0].$or;
-//                 } else {
-//                     return [{ $and: partConditions }];
-//                 }
-//             };
-
-//             // Search functionality
-//             if (search && search.trim()) {
-//                 const directOr = [
-//                     { remarks: { $regex: search, $options: "i" } },
-//                     { month: { $regex: search, $options: "i" } },
-//                     { area: { $regex: search, $options: "i" } },
-//                 ];
-
-//                 // Company search with multi-word support
-//                 const companyFields = ['companyName'];
-//                 const companyConditions = buildMultiWordSearch(search, companyFields);
-//                 if (companyConditions.length > 0) {
-//                     const matchingCompanies = await Company.find({
-//                         $or: companyConditions
-//                     }).select('_id').lean();
-//                     const companyIds = matchingCompanies.map(c => c._id);
-//                     if (companyIds.length > 0) {
-//                         directOr.push({ company: { $in: companyIds } });
-//                     }
-//                 }
-
-//                 // Party search with multi-word support
-//                 const partyFields = ['partyName'];
-//                 const partyConditions = buildMultiWordSearch(search, partyFields);
-//                 if (partyConditions.length > 0) {
-//                     const matchingParties = await Party.find({
-//                         $or: partyConditions
-//                     }).select('_id').lean();
-//                     const partyIds = matchingParties.map(p => p._id);
-//                     if (partyIds.length > 0) {
-//                         directOr.push({ party: { $in: partyIds } });
-//                     }
-//                 }
-
-//                 // Assigned to (Staff) search with multi-word support
-//                 const staffFields = ['firstName', 'lastName', 'email'];
-//                 const staffConditions = buildMultiWordSearch(search, staffFields);
-//                 if (staffConditions.length > 0) {
-//                     const matchingStaff = await Staff.find({
-//                         $or: staffConditions
-//                     }).select('_id').lean();
-//                     const staffIds = matchingStaff.map(s => s._id);
-//                     if (staffIds.length > 0) {
-//                         directOr.push({ assignedTo: { $in: staffIds } });
-//                     }
-//                 }
-
-//                 if (directOr.length > 0) {
-//                     query.$or = directOr;
-//                 }
-//             }
-
-//             // AssignedDate filter - Match exact dates from array
-//             if (filters.assignedDate && Array.isArray(filters.assignedDate) && filters.assignedDate.length > 0) {
-//                 // Filter out null/empty values
-//                 const validDates = filters.assignedDate.filter(d => d && d !== 'null');
-
-//                 if (validDates.length > 0) {
-//                     // Create date range conditions for each date (match full day)
-//                     const dateConditions = validDates.map(dateStr => {
-//                         const startOfDay = new Date(dateStr);
-//                         startOfDay.setHours(0, 0, 0, 0);
-
-//                         const endOfDay = new Date(dateStr);
-//                         endOfDay.setHours(23, 59, 59, 999);
-
-//                         return {
-//                             assignedDate: {
-//                                 $gte: startOfDay,
-//                                 $lte: endOfDay
-//                             }
-//                         };
-//                     });
-
-//                     // Use $or to match any of the dates
-//                     if (dateConditions.length === 1) {
-//                         query.assignedDate = dateConditions[0].assignedDate;
-//                     } else {
-//                         query.$or = query.$or
-//                             ? [...query.$or, ...dateConditions]
-//                             : dateConditions;
-//                     }
-//                 }
-//             }
-
-//             // Top-level startDate/endDate (for date range if needed separately)
-//             if ((startDate || endDate) && (!filters.assignedDate || filters.assignedDate.length === 0)) {
-//                 query.assignedDate = {};
-//                 if (startDate) {
-//                     const start = new Date(startDate);
-//                     start.setHours(0, 0, 0, 0);
-//                     query.assignedDate.$gte = start;
-//                 }
-//                 if (endDate) {
-//                     const end = new Date(endDate);
-//                     end.setHours(23, 59, 59, 999);
-//                     query.assignedDate.$lte = end;
-//                 }
-//             }
-
-//             // Company filter
-//             if (filters.company && filters.company.length > 0) {
-//                 const companies = await CompanyName.find({
-//                     companyName: { $in: filters.company }
-//                 }).select('_id').lean();
-//                 if (companies.length > 0) {
-//                     query.company = { $in: companies.map(c => c._id) };
-//                 }
-//             }
-
-//             // Party filter
-//             if (filters.party && filters.party.length > 0) {
-//                 const parties = await Party.find({
-//                     partyName: { $in: filters.party }
-//                 }).select('_id').lean();
-//                 if (parties.length > 0) {
-//                     query.party = { $in: parties.map(p => p._id) };
-//                 }
-//             }
-
-//             // Area filter
-//             if (filters.area && filters.area.length > 0) {
-//                 query.area = { $in: filters.area };
-//             }
-
-//             // Month filter
-//             if (filters.month && filters.month.length > 0) {
-//                 query.month = { $in: filters.month };
-//             }
-
-//             // Remarks filter
-//             if (filters.remarks && filters.remarks.length > 0) {
-//                 query.remarks = { $in: filters.remarks };
-//             }
-
-//             // Assigned to filter
-//             if (filters.assignTo && filters.assignTo.length > 0) {
-//                 const nameConditions = filters.assignTo.map(name => {
-//                     const parts = name.split(' ');
-//                     if (parts.length === 2) {
-//                         return {
-//                             firstName: { $regex: `^${parts[0]}`, $options: "i" },
-//                             lastName: { $regex: `^${parts[1]}`, $options: "i" }
-//                         };
-//                     } else {
-//                         return {
-//                             $or: [
-//                                 { firstName: { $regex: `^${name}`, $options: "i" } },
-//                                 { lastName: { $regex: `^${name}`, $options: "i" } }
-//                             ]
-//                         };
-//                     }
-//                 });
-//                 const matchingStaff = await Staff.find({
-//                     $or: nameConditions
-//                 }).select('_id').lean();
-
-//                 if (matchingStaff.length > 0) {
-//                     query.assignedTo = { $in: matchingStaff.map(s => s._id) };
-//                 }
-//             }
-
-//             // Payment amount range filter
-//             if (filters.paymentAmount && (filters.paymentAmount.min !== undefined || filters.paymentAmount.max !== undefined)) {
-//                 query.paymentAmount = {};
-//                 if (filters.paymentAmount.min !== undefined) {
-//                     query.paymentAmount.$gte = filters.paymentAmount.min;
-//                 }
-//                 if (filters.paymentAmount.max !== undefined) {
-//                     query.paymentAmount.$lte = filters.paymentAmount.max;
-//                 }
-//             }
-
-//             const folders = await PaymentFolder.find({
-//                 company: comp._id,
-//                 ...query,
-//             })
-//                 .populate({
-//                     path: "party",
-//                     select:
-//                         "partyName contactMobileNo ownerMobileNo contactPerson ownerName contactWhatsAppNo contactForPayment",
-//                 })
-//                 .populate("assignedTo", "firstName lastName")
-//                 .sort({ createdAt: -1 });
-
-
-//             // =============================
-//             // SEARCH FILTER
-//             // =============================
-//             if (search?.trim()) {
-//                 const s = search.toLowerCase();
-//                 folders = folders.filter((f) => {
-//                     const p = f.party || {};
-//                     return (
-//                         p.partyName?.toLowerCase().includes(s) ||
-//                         p.contactPerson?.toLowerCase().includes(s) ||
-//                         p.ownerName?.toLowerCase().includes(s) ||
-//                         f.remarks?.toLowerCase().includes(s)
-//                     );
-//                 });
-//             }
-
-//             // =============================
-//             // PARTY-WISE AGGREGATION
-//             // =============================
-//             const partyMap = new Map();
-
-//             for (const folder of folders) {
-//                 const payments = Array.isArray(folder.payments)
-//                     ? folder.payments
-//                     : [];
-
-//                 const totalReceived = payments.reduce(
-//                     (sum, p) => sum + (p.amount || 0),
-//                     0
-//                 );
-
-//                 // Calculate pending amount WITHOUT subtracting difference amount
-//                 const pendingAmount = (folder.paymentAmount || 0) - totalReceived;
-                
-//                 // Get difference amount
-//                 const differenceAmount = folder.differenceAmount || 0;
-
-//                 // Only include if payment is NOT fully received AND there's pending amount
-//                 if (pendingAmount <= 0) continue;
-
-//                 const party = folder.party;
-//                 if (!party?._id) continue;
-
-//                 const partyId = party._id.toString();
-
-//                 // Initialize party entry if not exists
-//                 if (!partyMap.has(partyId)) {
-//                     const base = {
-//                         partyName: party.partyName || "-",
-//                         phoneNumber:
-//                             party.contactMobileNo || party.ownerMobileNo || party.contactWhatsAppNo || "-",
-//                         contactPerson:
-//                             party.contactPerson || party.ownerName || party.contactForPayment || "-",
-//                         OLD: 0,
-//                         TOTAL: 0,
-//                         difference: 0,
-//                         assignTo: "",
-//                         assignDate: "",
-//                         remarks: "",
-//                     };
-
-//                     last4Months.forEach((m) => (base[m.label] = 0));
-//                     partyMap.set(partyId, base);
-//                 }
-
-//                 const row = partyMap.get(partyId);
-
-//                 // Add difference amount to total difference (aggregate all difference amounts for this party)
-//                 row.difference += differenceAmount;
-
-//                 // Get month from folder.month field
-//                 if (folder.month) {
-//                     // Parse month from "Aug" format
-//                     let paymentMonth, paymentYear;
-
-//                     // Format: "Aug", "SEP", etc.
-//                     const monthNames = {
-//                         JAN: 1, FEB: 2, MAR: 3, APR: 4, MAY: 5, JUN: 6,
-//                         JUL: 7, AUG: 8, SEP: 9, OCT: 10, NOV: 11, DEC: 12
-//                     };
-                    
-//                     // Handle both uppercase and proper case month names
-//                     const monthUpper = folder.month.toUpperCase();
-//                     paymentMonth = monthNames[monthUpper];
-
-//                     if (folder.assignedDate) {
-//                         const assignDate = new Date(folder.assignedDate);
-//                         const assignMonth = assignDate.getMonth() + 1;
-//                         let assignYear = assignDate.getFullYear();
-
-//                         // 🔥 FIX: Dec showing as OLD issue
-//                         if (paymentMonth > assignMonth) {
-//                             assignYear = assignYear - 1;
-//                         }
-
-//                         paymentYear = assignYear;
-//                     } else {
-//                         paymentYear = currentYear;
-//                     }
-
-//                     // Find matching month in last 4 months
-//                     const matchingMonth = last4Months.find(
-//                         (m) => m.month === paymentMonth && m.year === paymentYear
-//                     );
-
-//                     if (matchingMonth) {
-//                         // Add pending amount to specific month column
-//                         row[matchingMonth.label] += pendingAmount;
-//                     } else if (isOldDate(paymentMonth, paymentYear)) {
-//                         // Add to OLD if before last 4 months
-//                         row.OLD += pendingAmount;
-//                     }
-//                     // Current month is excluded (no addition)
-//                 }
-
-//                 // Update total
-//                 row.TOTAL += pendingAmount;
-
-//                 // Update assignment details (use latest folder's details)
-//                 if (folder.assignedTo) {
-//                     row.assignTo = `${folder.assignedTo.firstName || ""} ${folder.assignedTo.lastName || ""}`.trim();
-//                 }
-//                 if (folder.assignedDate) {
-//                     row.assignDate = moment(folder.assignedDate).format("DD-MM-YYYY");
-//                 }
-//                 if (folder.remarks) {
-//                     row.remarks = folder.remarks;
-//                 }
-//             }
-
-//             // =============================
-//             // WRITE EXCEL ROWS
-//             // =============================
-//             const sortedParties = Array.from(partyMap.values()).sort((a, b) =>
-//                 a.partyName.localeCompare(b.partyName)
-//             );
-
-//             for (const data of sortedParties) {
-//                 const newRow = worksheet.addRow({
-//                     srNo: srNo++,
-//                     ...data,
-//                 });
-
-//                 // Format currency columns
-//                 const currencyColumns = [5, ...Array.from({ length: 4 }, (_, i) => 6 + i), 10, 11]; // Added column 11 for DIFFERENCE
-//                 currencyColumns.forEach(col => {
-//                     newRow.getCell(col).numFmt = '#,##0';
-//                 });
-//             }
-
-//             // Add empty row after each company
-//             worksheet.addRow({});
-//         }
-
-//         // =============================
-//         // AUTO-FIT COLUMNS
-//         // =============================
-//         worksheet.columns.forEach((column) => {
-//             if (column.header) {
-//                 column.width = Math.max(
-//                     column.width || 10,
-//                     column.header.length + 2
-//                 );
-//             }
-//         });
-
-//         // =============================
-//         // SEND RESPONSE
-//         // =============================
-//         res.setHeader(
-//             "Content-Type",
-//             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-//         );
-
-//         res.setHeader(
-//             "Content-Disposition",
-//             `attachment; filename="Pending_Payment_Report_${moment().format(
-//                 "DDMMYYYY"
-//             )}.xlsx"`
-//         );
-
-//         await workbook.xlsx.write(res);
-//         res.end();
-//     } catch (err) {
-//         console.error("Export error:", err);
-//         res.status(500).json({
-//             success: false,
-//             message: "Export failed",
-//             error: err.message,
-//         });
-//     }
-// };
-
-
-// exports.exportPaymentFolderToExcel = async (req, res) => {
-//     try {
-//         const {
-//             companyNames = [],
-//             filters = {},
-//             search = "",
-//             startDate,
-//             endDate,
-//         } = req.body;
-
-//         if (!Array.isArray(companyNames) || companyNames.length === 0) {
-//             return res.status(400).json({
-//                 success: false,
-//                 message: "No companies specified",
-//             });
-//         }
-
-//         // =============================
-//         // FETCH COMPANIES
-//         // =============================
-//         const companies = await CompanyName.find({
-//             companyName: { $in: companyNames },
-//         }).lean();
-
-//         if (!companies.length) {
-//             return res.status(400).json({
-//                 success: false,
-//                 message: "No matching companies found",
-//             });
-//         }
-
-//         const workbook = new ExcelJS.Workbook();
-//         const worksheet = workbook.addWorksheet("Payment Pending Report");
-
-//         // =============================
-//         // LAST 4 MONTHS (EXCLUDING CURRENT)
-//         // =============================
-//         const now = new Date();
-//         const currentMonth = now.getMonth();
-//         const currentYear = now.getFullYear();
-
-//         const last4Months = [];
-//         for (let i = 4; i >= 1; i--) {
-//             const d = new Date(currentYear, currentMonth - i, 1);
-//             last4Months.push({
-//                 month: d.getMonth() + 1,
-//                 year: d.getFullYear(),
-//                 label: d.toLocaleString("en-US", { month: "short" }).toUpperCase(),
-//             });
-//         }
-
-//         // Helper function to get payment term days
-//         const getPaymentTermDays = (paymentTerms) => {
-//             if (!paymentTerms) return 0;
-
-//             const term = paymentTerms.toLowerCase();
-
-//             if (term.includes("30") || term.includes("thirty")) {
-//                 return 30;
-//             } else if (term.includes("60") || term.includes("sixty")) {
-//                 return 60;
-//             } else if (term.includes("90") || term.includes("ninety")) {
-//                 return 90;
-//             } else {
-//                 // Extract custom number of days
-//                 const match = term.match(/(\d+)\s*day/i);
-//                 if (match) {
-//                     return parseInt(match[1]);
-//                 }
-//             }
-//             return 0;
-//         };
-
-//         const isInLast4Months = (month, year) => {
-//             return last4Months.some(
-//                 (m) => m.month === month && m.year === year
-//             );
-//         };
-
-//         const isOldDate = (month, year) => {
-//             // Check if it's current month
-//             if (month === currentMonth + 1 && year === currentYear) {
-//                 return false;
-//             }
-//             // Old = not in last 4 months and not current month
-//             return !isInLast4Months(month, year);
-//         };
-
-//         // =============================
-//         // EXCEL COLUMNS
-//         // =============================
-//         worksheet.columns = [
-//             { header: "S.NO", key: "srNo", width: 8 },
-//             { header: "PARTY NAME", key: "partyName", width: 30 },
-//             { header: "PHONE NO", key: "phoneNumber", width: 18 },
-//             { header: "CONTACT PERSON NAME", key: "contactPerson", width: 22 },
-//             { header: "OLD", key: "OLD", width: 14 },
-//             ...last4Months.map((m) => ({
-//                 header: m.label,
-//                 key: m.label,
-//                 width: 14,
-//             })),
-//             { header: "DIFFERENCE", key: "difference", width: 15 },
-//             { header: "TOTAL", key: "TOTAL", width: 15 },
-//             { header: "ASSIGN TO", key: "assignTo", width: 20 },
-//             { header: "ASSIGN DATE", key: "assignDate", width: 18 },
-//             { header: "TASK STATUS", key: "taskStatus", width: 15 },
-//             { header: "REMARKS", key: "remarks", width: 30 },
-//         ];
-
-//         worksheet.getRow(1).font = { bold: true };
-//         worksheet.getRow(1).alignment = { horizontal: "center", vertical: "middle" };
-
-//         let srNo = 1;
-
-//         // =============================
-//         // LOOP COMPANIES
-//         // =============================
-//         for (const comp of companies) {
-//             const startRow = worksheet.lastRow
-//                 ? worksheet.lastRow.number + 1
-//                 : 2;
-
-//             worksheet.mergeCells(
-//                 startRow,
-//                 1,
-//                 startRow,
-//                 worksheet.columns.length
-//             );
-
-//             const titleRow = worksheet.getRow(startRow);
-//             titleRow.getCell(1).value = comp.companyName;
-//             titleRow.font = { bold: true, size: 13 };
-//             titleRow.alignment = { horizontal: "center" };
-//             titleRow.fill = {
-//                 type: "pattern",
-//                 pattern: "solid",
-//                 fgColor: { argb: "FFE0E0E0" },
-//             };
-
-//             // =============================
-//             // FETCH PAYMENT FOLDERS
-//             // =============================
-//             // Build query object
-//             const query = {};
-
-//             // Helper function to build multi-word search conditions
-//             const buildMultiWordSearch = (searchStr, fields) => {
-//                 if (!searchStr || !searchStr.trim()) return [];
-//                 const parts = searchStr.trim().split(/\s+/).filter(p => p.length > 0);
-//                 if (parts.length === 0) return [];
-
-//                 const partConditions = parts.map(part => ({
-//                     $or: fields.map(field => ({
-//                         [field]: { $regex: part, $options: "i" }
-//                     }))
-//                 }));
-
-//                 if (parts.length === 1) {
-//                     return partConditions[0].$or;
-//                 } else {
-//                     return [{ $and: partConditions }];
-//                 }
-//             };
-
-//             // Search functionality
-//             if (search && search.trim()) {
-//                 const directOr = [
-//                     { remarks: { $regex: search, $options: "i" } },
-//                     { month: { $regex: search, $options: "i" } },
-//                     { area: { $regex: search, $options: "i" } },
-//                 ];
-
-//                 // Company search with multi-word support
-//                 const companyFields = ['companyName'];
-//                 const companyConditions = buildMultiWordSearch(search, companyFields);
-//                 if (companyConditions.length > 0) {
-//                     const matchingCompanies = await Company.find({
-//                         $or: companyConditions
-//                     }).select('_id').lean();
-//                     const companyIds = matchingCompanies.map(c => c._id);
-//                     if (companyIds.length > 0) {
-//                         directOr.push({ company: { $in: companyIds } });
-//                     }
-//                 }
-
-//                 // Party search with multi-word support
-//                 const partyFields = ['partyName'];
-//                 const partyConditions = buildMultiWordSearch(search, partyFields);
-//                 if (partyConditions.length > 0) {
-//                     const matchingParties = await Party.find({
-//                         $or: partyConditions
-//                     }).select('_id').lean();
-//                     const partyIds = matchingParties.map(p => p._id);
-//                     if (partyIds.length > 0) {
-//                         directOr.push({ party: { $in: partyIds } });
-//                     }
-//                 }
-
-//                 // Assigned to (Staff) search with multi-word support
-//                 const staffFields = ['firstName', 'lastName', 'email'];
-//                 const staffConditions = buildMultiWordSearch(search, staffFields);
-//                 if (staffConditions.length > 0) {
-//                     const matchingStaff = await Staff.find({
-//                         $or: staffConditions
-//                     }).select('_id').lean();
-//                     const staffIds = matchingStaff.map(s => s._id);
-//                     if (staffIds.length > 0) {
-//                         directOr.push({ assignedTo: { $in: staffIds } });
-//                     }
-//                 }
-
-//                 if (directOr.length > 0) {
-//                     query.$or = directOr;
-//                 }
-//             }
-
-//             // AssignedDate filter - Match exact dates from array
-//             if (filters.assignedDate && Array.isArray(filters.assignedDate) && filters.assignedDate.length > 0) {
-//                 // Filter out null/empty values
-//                 const validDates = filters.assignedDate.filter(d => d && d !== 'null');
-
-//                 if (validDates.length > 0) {
-//                     // Create date range conditions for each date (match full day)
-//                     const dateConditions = validDates.map(dateStr => {
-//                         const startOfDay = new Date(dateStr);
-//                         startOfDay.setHours(0, 0, 0, 0);
-
-//                         const endOfDay = new Date(dateStr);
-//                         endOfDay.setHours(23, 59, 59, 999);
-
-//                         return {
-//                             assignedDate: {
-//                                 $gte: startOfDay,
-//                                 $lte: endOfDay
-//                             }
-//                         };
-//                     });
-
-//                     // Use $or to match any of the dates
-//                     if (dateConditions.length === 1) {
-//                         query.assignedDate = dateConditions[0].assignedDate;
-//                     } else {
-//                         query.$or = query.$or
-//                             ? [...query.$or, ...dateConditions]
-//                             : dateConditions;
-//                     }
-//                 }
-//             }
-
-//             // Top-level startDate/endDate (for date range if needed separately)
-//             if ((startDate || endDate) && (!filters.assignedDate || filters.assignedDate.length === 0)) {
-//                 query.assignedDate = {};
-//                 if (startDate) {
-//                     const start = new Date(startDate);
-//                     start.setHours(0, 0, 0, 0);
-//                     query.assignedDate.$gte = start;
-//                 }
-//                 if (endDate) {
-//                     const end = new Date(endDate);
-//                     end.setHours(23, 59, 59, 999);
-//                     query.assignedDate.$lte = end;
-//                 }
-//             }
-
-//             // Company filter
-//             if (filters.company && filters.company.length > 0) {
-//                 const companies = await CompanyName.find({
-//                     companyName: { $in: filters.company }
-//                 }).select('_id').lean();
-//                 if (companies.length > 0) {
-//                     query.company = { $in: companies.map(c => c._id) };
-//                 }
-//             }
-
-//             // Party filter
-//             if (filters.party && filters.party.length > 0) {
-//                 const parties = await Party.find({
-//                     partyName: { $in: filters.party }
-//                 }).select('_id').lean();
-//                 if (parties.length > 0) {
-//                     query.party = { $in: parties.map(p => p._id) };
-//                 }
-//             }
-
-//             // Area filter
-//             if (filters.area && filters.area.length > 0) {
-//                 query.area = { $in: filters.area };
-//             }
-
-//             // Month filter
-//             if (filters.month && filters.month.length > 0) {
-//                 query.month = { $in: filters.month };
-//             }
-
-//             // Remarks filter
-//             if (filters.remarks && filters.remarks.length > 0) {
-//                 query.remarks = { $in: filters.remarks };
-//             }
-
-//             // Assigned to filter
-//             if (filters.assignTo && filters.assignTo.length > 0) {
-//                 const nameConditions = filters.assignTo.map(name => {
-//                     const parts = name.split(' ');
-//                     if (parts.length === 2) {
-//                         return {
-//                             firstName: { $regex: `^${parts[0]}`, $options: "i" },
-//                             lastName: { $regex: `^${parts[1]}`, $options: "i" }
-//                         };
-//                     } else {
-//                         return {
-//                             $or: [
-//                                 { firstName: { $regex: `^${name}`, $options: "i" } },
-//                                 { lastName: { $regex: `^${name}`, $options: "i" } }
-//                             ]
-//                         };
-//                     }
-//                 });
-//                 const matchingStaff = await Staff.find({
-//                     $or: nameConditions
-//                 }).select('_id').lean();
-
-//                 if (matchingStaff.length > 0) {
-//                     query.assignedTo = { $in: matchingStaff.map(s => s._id) };
-//                 }
-//             }
-
-//             // Payment amount range filter
-//             if (filters.paymentAmount && (filters.paymentAmount.min !== undefined || filters.paymentAmount.max !== undefined)) {
-//                 query.paymentAmount = {};
-//                 if (filters.paymentAmount.min !== undefined) {
-//                     query.paymentAmount.$gte = filters.paymentAmount.min;
-//                 }
-//                 if (filters.paymentAmount.max !== undefined) {
-//                     query.paymentAmount.$lte = filters.paymentAmount.max;
-//                 }
-//             }
-
-//             // Task Status filter
-//             if (filters.taskStatus && filters.taskStatus.length > 0) {
-//                 query.taskStatus = { $in: filters.taskStatus };
-//             }
-
-//             const folders = await PaymentFolder.find({
-//                 company: comp._id,
-//                 ...query,
-//             })
-//                 .populate({
-//                     path: "party",
-//                     select:
-//                         "partyName contactMobileNo ownerMobileNo contactPerson ownerName contactWhatsAppNo contactForPayment",
-//                 })
-//                 .populate("assignedTo", "firstName lastName")
-//                 .populate({
-//                     path: "assignTask",
-//                     select: "status followUpDate followUpTime notes"
-//                 })
-//                 .sort({ createdAt: -1 });
-
-//             // =============================
-//             // SEARCH FILTER
-//             // =============================
-//             if (search?.trim()) {
-//                 const s = search.toLowerCase();
-//                 folders = folders.filter((f) => {
-//                     const p = f.party || {};
-//                     const task = f.assignTask || {};
-//                     return (
-//                         p.partyName?.toLowerCase().includes(s) ||
-//                         p.contactPerson?.toLowerCase().includes(s) ||
-//                         p.ownerName?.toLowerCase().includes(s) ||
-//                         f.remarks?.toLowerCase().includes(s) ||
-//                         task.status?.toLowerCase().includes(s)
-//                     );
-//                 });
-//             }
-
-//             // =============================
-//             // PARTY-WISE AGGREGATION
-//             // =============================
-//             const partyMap = new Map();
-
-//             for (const folder of folders) {
-//                 const payments = Array.isArray(folder.payments)
-//                     ? folder.payments
-//                     : [];
-
-//                 const totalReceived = payments.reduce(
-//                     (sum, p) => sum + (p.amount || 0),
-//                     0
-//                 );
-
-//                 // Calculate pending amount WITHOUT subtracting difference amount
-//                 const pendingAmount = (folder.paymentAmount || 0) - totalReceived;
-                
-//                 // Get difference amount
-//                 const differenceAmount = folder.differenceAmount || 0;
-
-//                 // Only include if payment is NOT fully received AND there's pending amount
-//                 if (pendingAmount <= 0) continue;
-
-//                 const party = folder.party;
-//                 if (!party?._id) continue;
-
-//                 const partyId = party._id.toString();
-
-//                 // Initialize party entry if not exists
-//                 if (!partyMap.has(partyId)) {
-//                     const base = {
-//                         partyName: party.partyName || "-",
-//                         phoneNumber:
-//                             party.contactMobileNo || party.ownerMobileNo || party.contactWhatsAppNo || "-",
-//                         contactPerson:
-//                             party.contactPerson || party.ownerName || party.contactForPayment || "-",
-//                         OLD: 0,
-//                         TOTAL: 0,
-//                         difference: 0,
-//                         assignTo: "",
-//                         assignDate: "",
-//                         taskStatus: "",
-//                         remarks: "",
-//                     };
-
-//                     last4Months.forEach((m) => (base[m.label] = 0));
-//                     partyMap.set(partyId, base);
-//                 }
-
-//                 const row = partyMap.get(partyId);
-
-//                 // Add difference amount to total difference (aggregate all difference amounts for this party)
-//                 row.difference += differenceAmount;
-
-//                 // Get month from folder.month field
-//                 if (folder.month) {
-//                     // Parse month from "Aug" format
-//                     let paymentMonth, paymentYear;
-
-//                     // Format: "Aug", "SEP", etc.
-//                     const monthNames = {
-//                         JAN: 1, FEB: 2, MAR: 3, APR: 4, MAY: 5, JUN: 6,
-//                         JUL: 7, AUG: 8, SEP: 9, OCT: 10, NOV: 11, DEC: 12
-//                     };
-                    
-//                     // Handle both uppercase and proper case month names
-//                     const monthUpper = folder.month.toUpperCase();
-//                     paymentMonth = monthNames[monthUpper];
-
-//                     if (folder.assignedDate) {
-//                         const assignDate = new Date(folder.assignedDate);
-//                         const assignMonth = assignDate.getMonth() + 1;
-//                         let assignYear = assignDate.getFullYear();
-
-//                         // 🔥 FIX: Dec showing as OLD issue
-//                         if (paymentMonth > assignMonth) {
-//                             assignYear = assignYear - 1;
-//                         }
-
-//                         paymentYear = assignYear;
-//                     } else {
-//                         paymentYear = currentYear;
-//                     }
-
-//                     // Find matching month in last 4 months
-//                     const matchingMonth = last4Months.find(
-//                         (m) => m.month === paymentMonth && m.year === paymentYear
-//                     );
-
-//                     if (matchingMonth) {
-//                         // Add pending amount to specific month column
-//                         row[matchingMonth.label] += pendingAmount;
-//                     } else if (isOldDate(paymentMonth, paymentYear)) {
-//                         // Add to OLD if before last 4 months
-//                         row.OLD += pendingAmount;
-//                     }
-//                     // Current month is excluded (no addition)
-//                 }
-
-//                 // Update total
-//                 row.TOTAL += pendingAmount;
-
-//                 // Update assignment details (use latest folder's details)
-//                 if (folder.assignedTo) {
-//                     row.assignTo = `${folder.assignedTo.firstName || ""} ${folder.assignedTo.lastName || ""}`.trim();
-//                 }
-//                 if (folder.assignedDate) {
-//                     row.assignDate = moment(folder.assignedDate).format("DD-MM-YYYY");
-//                 }
-                
-//                 // Get task status from populated assignTask
-//                 if (folder.assignTask) {
-//                     const task = folder.assignTask;
-//                     let statusText = task.status || "Pending";
-                    
-//                     // Capitalize first letter
-//                     statusText = statusText.charAt(0).toUpperCase() + statusText.slice(1).toLowerCase();
-                    
-//                     // Add follow-up info if available
-//                     if (task.followUpDate) {
-//                         const followUpDate = moment(task.followUpDate).format("DD-MM-YYYY");
-//                         statusText += ` (Follow-up: ${followUpDate}`;
-//                         if (task.followUpTime) {
-//                             statusText += ` ${task.followUpTime}`;
-//                         }
-//                         statusText += `)`;
-//                     }
-                    
-//                     row.taskStatus = statusText;
-//                 } else {
-//                     row.taskStatus = "Not Assigned";
-//                 }
-                
-//                 if (folder.remarks) {
-//                     row.remarks = folder.remarks;
-//                 }
-//             }
-
-//             // =============================
-//             // WRITE EXCEL ROWS
-//             // =============================
-//             const sortedParties = Array.from(partyMap.values()).sort((a, b) =>
-//                 a.partyName.localeCompare(b.partyName)
-//             );
-
-//             for (const data of sortedParties) {
-//                 const newRow = worksheet.addRow({
-//                     srNo: srNo++,
-//                     ...data,
-//                 });
-
-//                 // Format currency columns
-//                 const currencyColumns = [5, ...Array.from({ length: 4 }, (_, i) => 6 + i), 10, 11];
-//                 currencyColumns.forEach(col => {
-//                     newRow.getCell(col).numFmt = '#,##0';
-//                 });
-
-//                 // Apply conditional formatting for task status
-//                 const statusCell = newRow.getCell(12); // Task Status column
-//                 if (data.taskStatus.includes('Pending')) {
-//                     statusCell.font = { color: { argb: 'FF9C27B0' } }; // Purple
-//                     statusCell.font = { bold: true };
-//                 } else if (data.taskStatus.includes('Rescheduled')) {
-//                     statusCell.font = { color: { argb: 'FFFF9800' } }; // Orange
-//                     statusCell.font = { bold: true };
-//                 } else if (data.taskStatus.includes('Completed')) {
-//                     statusCell.font = { color: { argb: 'FF4CAF50' } }; // Green
-//                     statusCell.font = { bold: true };
-//                 } else if (data.taskStatus.includes('Not Assigned')) {
-//                     statusCell.font = { color: { argb: 'FF9E9E9E' } }; // Grey
-//                     statusCell.font = { italic: true };
-//                 }
-//             }
-
-//             // Add empty row after each company
-//             worksheet.addRow({});
-//         }
-
-//         // =============================
-//         // AUTO-FIT COLUMNS
-//         // =============================
-//         worksheet.columns.forEach((column) => {
-//             if (column.header) {
-//                 column.width = Math.max(
-//                     column.width || 10,
-//                     column.header.length + 2
-//                 );
-//             }
-//         });
-
-//         // =============================
-//         // SEND RESPONSE
-//         // =============================
-//         res.setHeader(
-//             "Content-Type",
-//             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-//         );
-
-//         res.setHeader(
-//             "Content-Disposition",
-//             `attachment; filename="Pending_Payment_Report_${moment().format(
-//                 "DDMMYYYY"
-//             )}.xlsx"`
-//         );
-
-//         await workbook.xlsx.write(res);
-//         res.end();
-//     } catch (err) {
-//         console.error("Export error:", err);
-//         res.status(500).json({
-//             success: false,
-//             message: "Export failed",
-//             error: err.message,
-//         });
-//     }
-// };
-
-
 exports.exportPaymentFolderToExcel = async (req, res) => {
     try {
         const {
@@ -4407,7 +3248,7 @@ exports.exportPaymentFolderToExcel = async (req, res) => {
 
                 // Calculate pending amount WITHOUT subtracting difference amount
                 const pendingAmount = (folder.paymentAmount || 0) - totalReceived - (folder.differenceAmount || 0);
-                
+
                 // Get difference amount
                 const differenceAmount = folder.differenceAmount || 0;
 
@@ -4455,7 +3296,7 @@ exports.exportPaymentFolderToExcel = async (req, res) => {
                         JAN: 1, FEB: 2, MAR: 3, APR: 4, MAY: 5, JUN: 6,
                         JUL: 7, AUG: 8, SEP: 9, OCT: 10, NOV: 11, DEC: 12
                     };
-                    
+
                     // Handle both uppercase and proper case month names
                     const monthUpper = folder.month.toUpperCase();
                     paymentMonth = monthNames[monthUpper];
@@ -4500,7 +3341,7 @@ exports.exportPaymentFolderToExcel = async (req, res) => {
                 if (folder.assignedDate) {
                     row.assignDate = moment(folder.assignedDate).format("DD-MM-YYYY");
                 }
-                
+
                 // Get task status from populated assignTask
                 if (folder.assignTask) {
                     const task = folder.assignTask;
@@ -4520,7 +3361,7 @@ exports.exportPaymentFolderToExcel = async (req, res) => {
                         statusText = task.status || "Pending";
                         statusText = statusText.charAt(0).toUpperCase() + statusText.slice(1).toLowerCase();
                     }
-                    
+
                     // Add follow-up info if available
                     if (task.followUpDate) {
                         const followUpDate = moment(task.followUpDate).format("DD-MM-YYYY");
@@ -4530,12 +3371,12 @@ exports.exportPaymentFolderToExcel = async (req, res) => {
                         }
                         statusText += `)`;
                     }
-                    
+
                     row.taskStatus = statusText;
                 } else {
                     row.taskStatus = "Not Assigned";
                 }
-                
+
                 if (folder.remarks) {
                     row.remarks = folder.remarks;
                 }
@@ -4680,7 +3521,7 @@ exports.exportPaymentFolderDifferenceToExcel = async (req, res) => {
                 label: d.toLocaleString("en-US", { month: "short" }).toUpperCase(),
             });
         }
-        
+
         // Current month ko include karo (difference ke liye)
         const curr = new Date(currentYear, currentMonth, 1);
         last4Months.push({
@@ -5083,7 +3924,7 @@ exports.exportPaymentFolderDifferenceToExcel = async (req, res) => {
                         JAN: 1, FEB: 2, MAR: 3, APR: 4, MAY: 5, JUN: 6,
                         JUL: 7, AUG: 8, SEP: 9, OCT: 10, NOV: 11, DEC: 12
                     };
-                    
+
                     // Handle both uppercase and proper case month names
                     const monthUpper = folder.month.toUpperCase();
                     paymentMonth = monthNames[monthUpper];
@@ -5127,7 +3968,7 @@ exports.exportPaymentFolderDifferenceToExcel = async (req, res) => {
                 if (folder.assignedDate) {
                     row.assignDate = moment(folder.assignedDate).format("DD-MM-YYYY");
                 }
-                
+
                 // Get task status from populated assignTask
                 if (folder.assignTask) {
                     const task = folder.assignTask;
@@ -5147,7 +3988,7 @@ exports.exportPaymentFolderDifferenceToExcel = async (req, res) => {
                         statusText = task.status || "Pending";
                         statusText = statusText.charAt(0).toUpperCase() + statusText.slice(1).toLowerCase();
                     }
-                    
+
                     // Add follow-up info if available
                     if (task.followUpDate) {
                         const followUpDate = moment(task.followUpDate).format("DD-MM-YYYY");
@@ -5157,12 +3998,12 @@ exports.exportPaymentFolderDifferenceToExcel = async (req, res) => {
                         }
                         statusText += `)`;
                     }
-                    
+
                     row.taskStatus = statusText;
                 } else {
                     row.taskStatus = "Not Assigned";
                 }
-                
+
                 if (folder.remarks) {
                     row.remarks = folder.remarks;
                 }
@@ -5193,7 +4034,7 @@ exports.exportPaymentFolderDifferenceToExcel = async (req, res) => {
                     totalColIndex,
                     differenceColIndex
                 ];
-                
+
                 // SIRF NUMBER FORMAT LAGAO, KOI COLOR NAHI
                 currencyColumns.forEach(col => {
                     newRow.getCell(col).numFmt = '#,##0';
