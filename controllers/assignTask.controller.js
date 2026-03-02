@@ -1151,8 +1151,12 @@ exports.getAllAssignTasks = async (req, res) => {
     if (assignToFilter && assignToFilter.trim() !== '') {
       const assignToNames = assignToFilter
         .split(',')
-        .map(name => name.trim())
-        .filter(name => name !== '');
+        .map(name => {
+          // 🔥 FIX 1: Trailing " -" ya "-" hatao jo tab aata hai jab staff ka lastName empty ho
+          // Example: "SUSHIL -" → "SUSHIL"  |  "ANIL  -" → "ANIL"
+          return name.trim().replace(/\s*-\s*$/, '').trim();
+        })
+        .filter(name => name !== '');  // Empty names skip karo
 
       let filterStaffIds = [];
 
@@ -1160,20 +1164,27 @@ exports.getAllAssignTasks = async (req, res) => {
         if (mongoose.Types.ObjectId.isValid(name)) {
           filterStaffIds.push(new mongoose.Types.ObjectId(name));
         } else {
-          const parts = name.split(' ').filter(Boolean);
+          // 🔥 FIX 2: "-" jaise invalid parts filter karo
+          const parts = name.split(' ').filter(p => p && p !== '-');
+
+          if (parts.length === 0) continue; // Kuch valid nahi mila toh skip
 
           let staffQuery = { $or: [] };
 
           if (parts.length >= 2) {
-            // Full name match (AND first + last)
+            // Full name - firstName + lastName dono match karo
             staffQuery.$or.push({
               $and: [
                 { firstName: { $regex: `^${parts[0]}$`, $options: 'i' } },
-                { lastName: { $regex: `^${parts.slice(1).join(' ')}$`, $options: 'i' } }
+                { lastName: { $regex: `^${parts[1]}$`, $options: 'i' } }
               ]
             });
+            // Fallback: sirf firstName se bhi match karo (agar lastName DB mein different ho)
+            staffQuery.$or.push({
+              firstName: { $regex: `^${parts[0]}$`, $options: 'i' }
+            });
           } else {
-            // Single word → match firstName only
+            // Sirf firstName
             staffQuery.$or.push({ firstName: { $regex: `^${parts[0]}$`, $options: 'i' } });
           }
 
@@ -1182,37 +1193,12 @@ exports.getAllAssignTasks = async (req, res) => {
         }
       }
 
-      // Remove duplicates
-      filterStaffIds = [...new Set(filterStaffIds.map(id => id.toString()))].map(id => new mongoose.Types.ObjectId(id));
-
-      if (filterStaffIds.length === 0) {
-        return res.status(200).json({
-          success: true,
-          data: [],
-          count: 0,
-          pagination: { total: 0, page: parseInt(page), limit: parseInt(limit), totalPages: 0 }
-        });
+      // Merge comma-separated results into finalAssignToIds and de-duplicate
+      if (filterStaffIds.length > 0) {
+        const merged = [...finalAssignToIds, ...filterStaffIds].map(id => id.toString());
+        const unique = Array.from(new Set(merged)).map(id => new mongoose.Types.ObjectId(id));
+        finalAssignToIds = unique;
       }
-
-      // Intersect with previously filtered assignToIds if any
-      if (finalAssignToIds.length > 0) {
-        const intersection = finalAssignToIds.filter(id =>
-          filterStaffIds.some(fid => fid.toString() === id.toString())
-        );
-        if (intersection.length === 0) {
-          return res.status(200).json({
-            success: true,
-            data: [],
-            count: 0,
-            pagination: { total: 0, page: parseInt(page), limit: parseInt(limit), totalPages: 0 }
-          });
-        }
-        finalAssignToIds = intersection;
-      } else {
-        finalAssignToIds = filterStaffIds;
-      }
-
-      postMatchConditions["assignToData._id"] = { $in: finalAssignToIds };
     }
 
 

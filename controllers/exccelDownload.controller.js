@@ -3306,12 +3306,45 @@ exports.exportPaymentFolderToExcel = async (req, res) => {
                         const assignMonth = assignDate.getMonth() + 1;
                         let assignYear = assignDate.getFullYear();
 
-                        // 🔥 FIX: Dec showing as OLD issue
+                        // 🔥 FIX: Correct year calculation
+                        // Bug: sirf `paymentMonth > assignMonth` se year-1 karte the
+                        // Issue: NOV(11) assigned Jan(1) 2025 → 11>1 TRUE → 2024 set hota tha
+                        // Lekin NOV 2024 last4Months mein nahi tha toh OLD column mein jaata tha ❌
+                        //
+                        // Correct logic:
+                        // - Month difference > 6: clearly pichle saal ka
+                        //   (e.g., DEC assigned JAN → 12-1=11 > 6 → pichle saal ka DEC ✅)
+                        // - Month difference <= 6: createdAt se year confirm karo
                         if (paymentMonth > assignMonth) {
-                            assignYear = assignYear - 1;
+                            const monthDiff = paymentMonth - assignMonth;
+                            if (monthDiff > 6) {
+                                // Clearly pichle saal ka (e.g., DEC in JAN, NOV in Mar)
+                                assignYear = assignYear - 1;
+                            } else {
+                                // Ambiguous - createdAt se confirm karo
+                                const folderCreatedYear = folder.createdAt
+                                    ? new Date(folder.createdAt).getFullYear()
+                                    : assignYear;
+                                if (folderCreatedYear < assignYear) {
+                                    assignYear = folderCreatedYear;
+                                }
+                                // Else: same year, kuch change nahi
+                            }
                         }
 
                         paymentYear = assignYear;
+                    } else if (folder.createdAt) {
+                        // assignedDate nahi hai toh createdAt se year lo
+                        const createdDate = new Date(folder.createdAt);
+                        const createdMonth = createdDate.getMonth() + 1;
+                        let createdYear = createdDate.getFullYear();
+
+                        // Agar paymentMonth createdAt month se > 6 aage hai toh pichle saal
+                        if (paymentMonth > createdMonth && (paymentMonth - createdMonth) > 6) {
+                            createdYear = createdYear - 1;
+                        }
+
+                        paymentYear = createdYear;
                     } else {
                         paymentYear = currentYear;
                     }
@@ -3934,12 +3967,45 @@ exports.exportPaymentFolderDifferenceToExcel = async (req, res) => {
                         const assignMonth = assignDate.getMonth() + 1;
                         let assignYear = assignDate.getFullYear();
 
-                        // 🔥 FIX: Dec showing as OLD issue
+                        // 🔥 FIX: Correct year calculation
+                        // Bug: sirf `paymentMonth > assignMonth` se year-1 karte the
+                        // Issue: NOV(11) assigned Jan(1) 2025 → 11>1 TRUE → 2024 set hota tha
+                        // Lekin NOV 2024 last4Months mein nahi tha toh OLD column mein jaata tha ❌
+                        //
+                        // Correct logic:
+                        // - Month difference > 6: clearly pichle saal ka
+                        //   (e.g., DEC assigned JAN → 12-1=11 > 6 → pichle saal ka DEC ✅)
+                        // - Month difference <= 6: createdAt se year confirm karo
                         if (paymentMonth > assignMonth) {
-                            assignYear = assignYear - 1;
+                            const monthDiff = paymentMonth - assignMonth;
+                            if (monthDiff > 6) {
+                                // Clearly pichle saal ka (e.g., DEC in JAN, NOV in Mar)
+                                assignYear = assignYear - 1;
+                            } else {
+                                // Ambiguous - createdAt se confirm karo
+                                const folderCreatedYear = folder.createdAt
+                                    ? new Date(folder.createdAt).getFullYear()
+                                    : assignYear;
+                                if (folderCreatedYear < assignYear) {
+                                    assignYear = folderCreatedYear;
+                                }
+                                // Else: same year, kuch change nahi
+                            }
                         }
 
                         paymentYear = assignYear;
+                    } else if (folder.createdAt) {
+                        // assignedDate nahi hai toh createdAt se year lo
+                        const createdDate = new Date(folder.createdAt);
+                        const createdMonth = createdDate.getMonth() + 1;
+                        let createdYear = createdDate.getFullYear();
+
+                        // Agar paymentMonth createdAt month se > 6 aage hai toh pichle saal
+                        if (paymentMonth > createdMonth && (paymentMonth - createdMonth) > 6) {
+                            createdYear = createdYear - 1;
+                        }
+
+                        paymentYear = createdYear;
                     } else {
                         paymentYear = currentYear;
                     }
