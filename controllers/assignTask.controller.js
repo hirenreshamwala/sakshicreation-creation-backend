@@ -32,20 +32,21 @@ exports.createAssignTask = async (req, res) => {
       });
     }
 
-    const existingTask = await AssignTask.findOne({
-      partyName: partyName,
-      date: {
-        $gte: new Date(new Date(date).setHours(0, 0, 0, 0)), // Start of day
-        $lt: new Date(new Date(date).setHours(23, 59, 59, 999)) // End of day
-      }
-    });
+    // COMMENTED OUT: Allow multiple tasks for same party on same date
+    // const existingTask = await AssignTask.findOne({
+    //   partyName: partyName,
+    //   date: {
+    //     $gte: new Date(new Date(date).setHours(0, 0, 0, 0)), // Start of day
+    //     $lt: new Date(new Date(date).setHours(23, 59, 59, 999)) // End of day
+    //   }
+    // });
 
-    if (existingTask) {
-      return res.status(400).json({
-        success: false,
-        message: "Task already exists for this party on the same date",
-      });
-    }
+    // if (existingTask) {
+    //   return res.status(400).json({
+    //     success: false,
+    //     message: "Task already exists for this party on the same date",
+    //   });
+    // }
 
     const newAssignTask = new AssignTask({
       companyName,
@@ -83,7 +84,7 @@ exports.createAssignTask = async (req, res) => {
           path: "role",
           select: "roleName" // yaha jitne fields chahiye wo add kar sakte ho
         }
-      })
+      });
 
     const taskWithCreatedBy = {
       ...populatedTask.toObject(),
@@ -223,27 +224,27 @@ exports.bulkCreateTasks = async (req, res) => {
           }
         }
 
-        // NEW: Check if task already exists for same party and same date
-        const existingTask = await AssignTask.findOne({
-          partyName: partyName,
-          date: {
-            $gte: new Date(new Date(normalizedDate).setHours(0, 0, 0, 0)), // Start of day
-            $lt: new Date(new Date(normalizedDate).setHours(23, 59, 59, 999)) // End of day
-          }
-        });
+        // COMMENTED OUT: Allow multiple tasks for same party on same date
+        // const existingTask = await AssignTask.findOne({
+        //   partyName: partyName,
+        //   date: {
+        //     $gte: new Date(new Date(normalizedDate).setHours(0, 0, 0, 0)), // Start of day
+        //     $lt: new Date(new Date(normalizedDate).setHours(23, 59, 59, 999)) // End of day
+        //   }
+        // });
 
-        if (existingTask) {
-          errors.push({
-            partyName,
-            message: `Task already exists for this party on date: ${date}`,
-            partyDetails: {
-              partyId: partyName,
-              partyName: party.partyName || "N/A",
-              existingTaskId: existingTask._id
-            }
-          });
-          continue; // Skip this party, continue with next
-        }
+        // if (existingTask) {
+        //   errors.push({
+        //     partyName,
+        //     message: `Task already exists for this party on date: ${date}`,
+        //     partyDetails: {
+        //       partyId: partyName,
+        //       partyName: party.partyName || "N/A",
+        //       existingTaskId: existingTask._id
+        //     }
+        //   });
+        //   continue; // Skip this party, continue with next
+        // }
 
         // Create task
         const task = new AssignTask({
@@ -485,8 +486,6 @@ exports.updateAssignTask = async (req, res) => {
       updateData.visitDate = visitDate;
     }
 
-
-
     // NEW: Check for duplicate task (only if partyName or date is being updated)
     if (updateData.partyName || updateData.date) {
       // Determine which party and date to check
@@ -602,7 +601,7 @@ exports.updateAssignTask = async (req, res) => {
         }
         originalCreatedAt = rootTask.createdAt; // Get the root task's createdAt
 
-        // Create a new task with the rescheduled date
+        // Create a new task with the rescheduled date - INCLUDING orderId
         const newTaskData = {
           companyName: existingTask.companyName,
           partyName: existingTask.partyName,
@@ -612,6 +611,7 @@ exports.updateAssignTask = async (req, res) => {
           remarks: existingTask.remarks,
           assignTo: existingTask.assignTo,
           status: "Pending",
+          orderId: existingTask.orderId || null, // ✅ Include orderId from original task
           isRescheduledTask: true,
           originalTaskId: existingTask._id,
           rescheduleDate: null,
@@ -1510,6 +1510,7 @@ exports.updateAssignTaskStatus = async (req, res) => {
           remarks: existingTask.remarks,
           assignTo: existingTask.assignTo,
           status: "Pending",
+          orderId: existingTask.orderId || null,
           isRescheduledTask: true,
           originalTaskId: existingTask._id,
           rescheduleDate: null,

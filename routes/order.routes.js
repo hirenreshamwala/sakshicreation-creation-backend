@@ -17,6 +17,8 @@ const {
   getAllOrdersPagination,
   getNotificationSummary,
   markNotificationRead,
+  assignFollowUp,
+  updateFollowUpStatus,
 } = require("../controllers/order.controller");
 const { authenticateToken } = require("../middleware/auth");
 const ExcelDownloadController = require("../controllers/exccelDownload.controller");
@@ -54,5 +56,9 @@ router.delete("/delete/:id", deleteOrder);
 router.get("/company/:companyId/party/:partyId", getOrdersByCompanyAndParty);
 
 router.post("/export-pending-client-approval-orders", ExcelDownloadController.exportPendingClientApprovalOrdersToExcel);
+
+// Follow-up routes
+router.post("/:orderId/follow-up", authenticateToken, assignFollowUp);
+router.put("/:orderId/follow-up/status", authenticateToken, updateFollowUpStatus);
 
 module.exports = router;

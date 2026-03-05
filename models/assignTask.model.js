@@ -39,9 +39,15 @@ const assignTaskSchema = new mongoose.Schema({
     type: Boolean,
     default: false
   },
+  orderId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Order"
+  },
   originalTaskId: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: "AssignTask"
+    ref: "AssignTask",
+    default: null,
+    required: false
   },
   
 }, { timestamps: true });

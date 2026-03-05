@@ -23,7 +23,7 @@ const orderProformaHistorySchema = new mongoose.Schema({
   applyGST: Boolean,
   gstPercentage: String,
   finalAmount: String,
-  salecredit: { 
+  salecredit: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "Staff"
   },
@@ -587,7 +587,7 @@ const orderSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
-    punchingType:{
+    punchingType: {
       type: String,
     },
     validproof: [
@@ -760,7 +760,7 @@ const orderSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
-     salecredit: {
+    salecredit: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Staff",
     },
@@ -769,7 +769,7 @@ const orderSchema = new mongoose.Schema(
       min: 0,
       default: undefined,
     },
-    description: {type: String},
+    description: { type: String },
     quotation: [quotationHistory],
     proformaHistory: [orderProformaHistorySchema],
 
@@ -796,6 +796,33 @@ const orderSchema = new mongoose.Schema(
         },
       },
     ],
+
+    // Follow Up field for order follow-up assignment
+    followUp: {
+      staff: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Staff",
+        default: null
+      },
+      taskId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "AssignTask",
+        default: null
+      },
+      status: {
+        type: String,
+        enum: ["Pending", "In Progress", "Completed", "Cancelled"],
+        default: "Pending"
+      },
+      assignedAt: {
+        type: Date,
+        default: null
+      },
+      remarks: {
+        type: String,
+        default: ""
+      }
+    },
   },
   {
     timestamps: true,
@@ -811,6 +838,8 @@ orderSchema.index({ binder: 1 });
 orderSchema.index({ bookletBinder: 1 });
 orderSchema.index({ createdAt: -1 });
 orderSchema.index({ lastStatusChangeDate: -1 });
+orderSchema.index({ "followUp.staff": 1 });
+orderSchema.index({ "followUp.status": 1 });
 
 // ✅ COMPREHENSIVE STATUS CHANGE DETECTION MIDDLEWARE
 orderSchema.pre("save", function (next) {

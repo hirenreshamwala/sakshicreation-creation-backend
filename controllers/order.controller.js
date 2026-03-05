@@ -535,6 +535,307 @@ exports.getAllOrders = async (req, res) => {
 };
 
 // In your order controller, update getAllOrders method:
+// exports.getAllOrdersPagination = async (req, res) => {
+//   try {
+//     const {
+//       filters = {},
+//       search = "",
+//       startDate,
+//       endDate,
+//       isPagination = true,
+//       page = 1,
+//       pageSize = 10,
+//       includeCounts = true
+//     } = req.body;
+
+//     // Build query object
+//     const query = {};
+
+//     // Search functionality
+//     if (search) {
+//       const directOr = [
+//         { "orderNumber": { $regex: search, $options: "i" } },
+//         { "remarks": { $regex: search, $options: "i" } },
+//         { "size": { $regex: search, $options: "i" } },
+//         { "status": { $regex: search, $options: "i" } },
+//       ];
+
+//       // For populated fields: Fetch matching IDs first, then add $in conditions
+//       // Company
+//       const matchingCompanies = await Company.find({
+//         companyName: { $regex: search, $options: "i" }
+//       }).select('_id').lean();
+//       const companyIds = matchingCompanies.map(c => c._id);
+//       if (companyIds.length > 0) {
+//         directOr.push({ companyName: { $in: companyIds } });
+//       }
+
+//       // Party
+//       const matchingParties = await Party.find({
+//         partyName: { $regex: search, $options: "i" }
+//       }).select('_id').lean();
+//       const partyIds = matchingParties.map(p => p._id);
+//       if (partyIds.length > 0) {
+//         directOr.push({ party: { $in: partyIds } });
+//       }
+
+//       // Item (productItem)
+//       const matchingItems = await ProductItem.find({
+//         itemName: { $regex: search, $options: "i" }
+//       }).select('_id').lean();
+//       const itemIds = matchingItems.map(i => i._id);
+//       if (itemIds.length > 0) {
+//         directOr.push({ productItem: { $in: itemIds } });
+//       }
+
+//       // Ordered By (createdBy name)
+//       const nameRegex = new RegExp(search, "i");
+//       const matchingStaff = await Staff.find({
+//         $or: [
+//           { firstName: nameRegex },
+//           { lastName: nameRegex },
+//           // Add if you have a full 'name' field: { name: nameRegex }
+//         ],
+//       })
+//         .select("_id")
+//         .lean();
+//       const creatorIds = matchingStaff.map((s) => s._id);
+//       if (creatorIds.length > 0) {
+//         directOr.push({ createdBy: { $in: creatorIds } });
+//       }
+
+//       // Apply $or if multiple conditions
+//       if (directOr.length > 0) {
+//         query.$or = directOr;
+//       }
+//     }
+//     if (startDate || endDate) {
+//       query.createdAt = {};
+//       if (startDate) {
+//         const start = new Date(startDate);
+//         start.setHours(0, 0, 0, 0);
+//         query.createdAt.$gte = start;
+//       }
+//       if (endDate) {
+//         const end = new Date(endDate);
+//         end.setHours(23, 59, 59, 999);
+//         query.createdAt.$lte = end;
+//       }
+//     }
+
+//     // FIXED: Apply additional filters for all fields
+//     // Company filter
+//     if (filters.company && filters.company.length > 0) {
+//       const companies = await Company.find({
+//         companyName: { $in: filters.company },
+//       })
+//         .select("_id")
+//         .lean();
+
+//       if (companies.length > 0) {
+//         if (query.companyName) {
+//           // Combine with existing if any
+//           query.companyName.$in = [
+//             ...(query.companyName.$in || []),
+//             ...companies.map((c) => c._id),
+//           ];
+//         } else {
+//           query.companyName = { $in: companies.map((c) => c._id) };
+//         }
+//       }
+//     }
+//     // Party filter
+//     if (filters.party && filters.party.length > 0) {
+//       const parties = await Party.find({
+//         partyName: { $in: filters.party },
+//       })
+//         .select("_id")
+//         .lean();
+
+//       if (parties.length > 0) {
+//         if (query.party) {
+//           query.party.$in = [
+//             ...(query.party.$in || []),
+//             ...parties.map((p) => p._id),
+//           ];
+//         } else {
+//           query.party = { $in: parties.map((p) => p._id) };
+//         }
+//       }
+//     }
+//     // Order Status filter
+//     if (filters.orderStatus && filters.orderStatus.length > 0) {
+//       if (query.status) {
+//         query.status.$in = [
+//           ...(query.status.$in || []),
+//           ...filters.orderStatus,
+//         ];
+//       } else {
+//         query.status = { $in: filters.orderStatus };
+//       }
+//     }
+//     // Item filter
+//     if (filters.item && filters.item.length > 0) {
+//       const itemDocs = await ProductItem.find({
+//         itemName: { $in: filters.item },
+//       })
+//         .select("_id")
+//         .lean();
+
+//       if (itemDocs.length > 0) {
+//         if (query.productItem) {
+//           query.productItem.$in = [
+//             ...(query.productItem.$in || []),
+//             ...itemDocs.map((i) => i._id),
+//           ];
+//         } else {
+//           query.productItem = { $in: itemDocs.map((i) => i._id) };
+//         }
+//       }
+//     }
+//     // Size filter
+//     if (filters.size && filters.size.length > 0) {
+//       if (query.size) {
+//         query.size.$in = [...(query.size.$in || []), ...filters.size];
+//       } else {
+//         query.size = { $in: filters.size };
+//       }
+//     }
+//     // Order Number filter
+//     if (filters.orderNumber && filters.orderNumber.length > 0) {
+//       if (query.orderNumber) {
+//         query.orderNumber.$in = [
+//           ...(query.orderNumber.$in || []),
+//           ...filters.orderNumber,
+//         ];
+//       } else {
+//         query.orderNumber = { $in: filters.orderNumber };
+//       }
+//     }
+//     // Remarks filter
+//     if (filters.remarks && filters.remarks.length > 0) {
+//       if (query.remarks) {
+//         query.remarks.$in = [...(query.remarks.$in || []), ...filters.remarks];
+//       } else {
+//         query.remarks = { $in: filters.remarks };
+//       }
+//     }
+//     // Ordered By filter (unchanged, but now combines with search)
+//     if (filters.orderedBy && filters.orderedBy.length > 0) {
+//       const staffQuery = {
+//         $or: filters.orderedBy.map((name) => ({
+//           $or: [
+//             {
+//               firstName: {
+//                 $regex: `^${name.split(" ")[0] || ""}`,
+//                 $options: "i",
+//               },
+//             },
+//             { lastName: { $regex: name.split(" ")[1] || "", $options: "i" } },
+//           ],
+//         })),
+//       };
+//       const staffDocs = await Staff.find(staffQuery).select("_id").lean();
+
+//       if (staffDocs.length > 0) {
+//         if (query.createdBy) {
+//           query.createdBy.$in = [
+//             ...(query.createdBy.$in || []),
+//             ...staffDocs.map((s) => s._id),
+//           ];
+//         } else {
+//           query.createdBy = { $in: staffDocs.map((s) => s._id) };
+//         }
+//       }
+//     }
+
+//     // Get total count
+//     const totalCount = await Order.countDocuments(query);
+
+//     // Apply pagination
+//     let orders = [];
+//     if (isPagination) {
+//       const skip = (page - 1) * pageSize;
+//       orders = await Order.find(query)
+//         .skip(skip)
+//         .limit(pageSize)
+//         .populate("companyName", "companyName avatar")
+//         .populate({
+//           path: "party",
+//           select: "-__v",
+//           populate: [
+//             {
+//               path: "address.marketName",
+//               model: "Market",
+//               select: "marketName",
+//             },
+//             { path: "address.landMark", model: "Market", select: "landmark" },
+//             { path: "address.area", model: "Market", select: "area" },
+//             { path: "address.pincode", model: "Market", select: "pincode" },
+//           ],
+//         })
+//         .populate("productItem", "itemName")
+//         .populate("createdBy", "firstName lastName")
+//         .populate("designer", "firstName lastName")
+//         .populate("printer", "firstName lastName")
+//         .populate("binder", "firstName lastName")
+//         .populate("bookletBinder", "firstName lastName")
+//         .populate("followUp.staff", "firstName lastName avatar")
+//         .sort({ createdAt: -1 });
+//     } else {
+//       orders = await Order.find(query)
+//         .populate("companyName", "companyName avatar")
+//         .populate({
+//           path: "party",
+//           select: "-__v",
+//           populate: [
+//             {
+//               path: "address.marketName",
+//               model: "Market",
+//               select: "marketName",
+//             },
+//             { path: "address.landMark", model: "Market", select: "landmark" },
+//             { path: "address.area", model: "Market", select: "area" },
+//             { path: "address.pincode", model: "Market", select: "pincode" },
+//           ],
+//         })
+//         .populate("productItem", "itemName")
+//         .populate("createdBy", "firstName lastName")
+//         .populate("designer", "firstName lastName")
+//         .populate("printer", "firstName lastName")
+//         .populate("binder", "firstName lastName")
+//         .populate("bookletBinder", "firstName lastName")
+//         .populate("followUp.staff", "firstName lastName avatar")
+//         .sort({ createdAt: -1 });
+//     }
+
+//     // Prepare pagination information
+//     const pagination = isPagination
+//       ? {
+//         currentPage: parseInt(page),
+//         pageSize: parseInt(pageSize),
+//         totalCount: totalCount,
+//         totalPages: Math.ceil(totalCount / pageSize),
+//         hasNext: page < Math.ceil(totalCount / pageSize),
+//         hasPrev: page > 1,
+//       }
+//       : null;
+
+//     res.status(200).json({
+//       success: true,
+//       data: orders,
+//       pagination: pagination,
+//       totalCount: totalCount,
+//     });
+//   } catch (error) {
+//     console.error("Error getting orders:", error);
+//     res.status(500).json({
+//       success: false,
+//       message: "Failed to fetch orders",
+//       error: error.message,
+//     });
+//   }
+// };
 exports.getAllOrdersPagination = async (req, res) => {
   try {
     const {
@@ -780,6 +1081,15 @@ exports.getAllOrdersPagination = async (req, res) => {
         .populate("printer", "firstName lastName")
         .populate("binder", "firstName lastName")
         .populate("bookletBinder", "firstName lastName")
+        .populate({
+          path: "followUp.staff",
+          select: "firstName lastName avatar"
+        })
+        .populate({
+          path: "followUp.taskId",
+          model: "AssignTask", // या जो भी आपका Task model का नाम है
+          select: "status rescheduleDate" // अपनी जरूरत के fields select करें
+        })
         .sort({ createdAt: -1 });
     } else {
       orders = await Order.find(query)
@@ -804,19 +1114,28 @@ exports.getAllOrdersPagination = async (req, res) => {
         .populate("printer", "firstName lastName")
         .populate("binder", "firstName lastName")
         .populate("bookletBinder", "firstName lastName")
+        .populate({
+          path: "followUp.staff",
+          select: "firstName lastName avatar"
+        })
+        .populate({
+          path: "followUp.taskId",
+          model: "AssignTask",
+          select: "status rescheduleDate"
+        })
         .sort({ createdAt: -1 });
     }
 
     // Prepare pagination information
     const pagination = isPagination
       ? {
-          currentPage: parseInt(page),
-          pageSize: parseInt(pageSize),
-          totalCount: totalCount,
-          totalPages: Math.ceil(totalCount / pageSize),
-          hasNext: page < Math.ceil(totalCount / pageSize),
-          hasPrev: page > 1,
-        }
+        currentPage: parseInt(page),
+        pageSize: parseInt(pageSize),
+        totalCount: totalCount,
+        totalPages: Math.ceil(totalCount / pageSize),
+        hasNext: page < Math.ceil(totalCount / pageSize),
+        hasPrev: page > 1,
+      }
       : null;
 
     res.status(200).json({
@@ -834,7 +1153,6 @@ exports.getAllOrdersPagination = async (req, res) => {
     });
   }
 };
-
 exports.getOrderById = async (req, res) => {
   try {
     const { id } = req.params;
@@ -1292,10 +1610,10 @@ exports.updateOrder = async (req, res) => {
           const parsed = JSON.parse(updateData.filePaths);
           updateData.filePaths = Array.isArray(parsed)
             ? parsed.map((item) => ({
-                path: typeof item === "string" ? item : item.path,
-                remark: typeof item === "object" ? item.remark || "" : "",
-                uploadedAt: new Date(),
-              }))
+              path: typeof item === "string" ? item : item.path,
+              remark: typeof item === "object" ? item.remark || "" : "",
+              uploadedAt: new Date(),
+            }))
             : [];
         } else if (Array.isArray(updateData.filePaths)) {
           updateData.filePaths = updateData.filePaths.map((item) => ({
@@ -1316,10 +1634,10 @@ exports.updateOrder = async (req, res) => {
           const parsed = JSON.parse(updateData.designFiles);
           updateData.designFiles = Array.isArray(parsed)
             ? parsed.map((item) => ({
-                path: typeof item === "string" ? item : item.path,
-                remark: typeof item === "object" ? item.remark || "" : "",
-                uploadedAt: new Date(),
-              }))
+              path: typeof item === "string" ? item : item.path,
+              remark: typeof item === "object" ? item.remark || "" : "",
+              uploadedAt: new Date(),
+            }))
             : [];
         } else if (Array.isArray(updateData.designFiles)) {
           updateData.designFiles = updateData.designFiles.map((item) => ({
@@ -1529,10 +1847,10 @@ exports.markNotificationRead = async (req, res) => {
       roleType === "designer"
         ? "designerNotificationUnread"
         : roleType === "printer"
-        ? "printerNotificationUnread"
-        : roleType === "binder"
-        ? "binderNotificationUnread"
-        : "bookletBinderNotificationUnread";
+          ? "printerNotificationUnread"
+          : roleType === "binder"
+            ? "binderNotificationUnread"
+            : "bookletBinderNotificationUnread";
 
     const updatedOrder = await Order.findByIdAndUpdate(
       orderId,
@@ -2191,71 +2509,71 @@ exports.getOrdersByStaffId = async (req, res) => {
       orders = await Order.find(query)
         .skip(skip)
         .limit(pageSize)
-      .populate({
-        path: "companyName",
-        select: "companyName",
-      })
-      .populate({
-        path: "party",
-        select: "-__v",
-        populate: [
-          {
-            path: "address.marketName",
-            model: "Market",
-            select: "marketName", // only marketName
-          },
-          // {
-          //   path: "address.streetAddress",
-          //   model: "Market",
-          //   select: "streetAddress", // only streetAddress
-          // },
-          {
-            path: "address.landMark",
-            model: "Market",
-            select: "landmark", // only landMark
-          },
-          {
-            path: "address.area",
-            model: "Market",
-            select: "area", // only area
-          },
-          {
-            path: "address.pincode",
-            model: "Market",
-            select: "pincode", // only pincode
-          },
-        ],
-      })
-      .populate({
-        path: "productItem",
-        select: "itemName",
-      })
-      .populate({
-        path: "createdBy",
-        select: "firstName lastName",
-      })
-      .populate({
-        path: "designer",
-        select: "name",
-      })
-      .populate({
-        path: "printer",
-        select: "name",
-      })
-      .populate({
-        path: "binder",
-        select: "name",
-      })
-      .populate({
-        path: "bookletBinder",
-        select: "name",
-      })
-      .populate({
-        path: "reworkHistory.createdBy",
-        select: "name",
-      })
-      .populate("bindingType", "name")
-      .sort({ createdAt: -1 });
+        .populate({
+          path: "companyName",
+          select: "companyName",
+        })
+        .populate({
+          path: "party",
+          select: "-__v",
+          populate: [
+            {
+              path: "address.marketName",
+              model: "Market",
+              select: "marketName", // only marketName
+            },
+            // {
+            //   path: "address.streetAddress",
+            //   model: "Market",
+            //   select: "streetAddress", // only streetAddress
+            // },
+            {
+              path: "address.landMark",
+              model: "Market",
+              select: "landmark", // only landMark
+            },
+            {
+              path: "address.area",
+              model: "Market",
+              select: "area", // only area
+            },
+            {
+              path: "address.pincode",
+              model: "Market",
+              select: "pincode", // only pincode
+            },
+          ],
+        })
+        .populate({
+          path: "productItem",
+          select: "itemName",
+        })
+        .populate({
+          path: "createdBy",
+          select: "firstName lastName",
+        })
+        .populate({
+          path: "designer",
+          select: "name",
+        })
+        .populate({
+          path: "printer",
+          select: "name",
+        })
+        .populate({
+          path: "binder",
+          select: "name",
+        })
+        .populate({
+          path: "bookletBinder",
+          select: "name",
+        })
+        .populate({
+          path: "reworkHistory.createdBy",
+          select: "name",
+        })
+        .populate("bindingType", "name")
+        .sort({ createdAt: -1 });
     } else {
       orders = await Order.find(query)
         .populate("companyName", "companyName avatar")
@@ -2287,13 +2605,13 @@ exports.getOrdersByStaffId = async (req, res) => {
     // Prepare pagination information
     const pagination = isPagination
       ? {
-          currentPage: parseInt(page),
-          pageSize: parseInt(pageSize),
-          totalCount: totalCount,
-          totalPages: Math.ceil(totalCount / pageSize),
-          hasNext: page < Math.ceil(totalCount / pageSize),
-          hasPrev: page > 1,
-        }
+        currentPage: parseInt(page),
+        pageSize: parseInt(pageSize),
+        totalCount: totalCount,
+        totalPages: Math.ceil(totalCount / pageSize),
+        hasNext: page < Math.ceil(totalCount / pageSize),
+        hasPrev: page > 1,
+      }
       : null;
 
     // 4. If no orders found, return an empty array with a message
@@ -2420,7 +2738,7 @@ exports.updateStaffStatus = async (req, res) => {
       }
     }
 
-  
+
     const staffRole = await Staff.findById(req.user.id);
     if (!staffRole) {
       console.log("❌ Staff not found:", req.user.id);
@@ -2486,8 +2804,8 @@ exports.updateStaffStatus = async (req, res) => {
       statusType === "printer"
         ? "printerNotificationUnread"
         : statusType === "binder"
-        ? "binderNotificationUnread"
-        : "bookletBinderNotificationUnread";
+          ? "binderNotificationUnread"
+          : "bookletBinderNotificationUnread";
 
     console.log("📝 Updating order status:", updateField, "=>", status);
 
@@ -2562,6 +2880,393 @@ exports.updateStaffStatus = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: "Failed to update status",
+      error: error.message,
+    });
+  }
+};
+
+// Assign or update follow-up for an order
+// exports.assignFollowUp = async (req, res) => {
+//   try {
+//     const { orderId } = req.params;
+//     const { staffId, remarks } = req.body;
+
+//     if (!mongoose.Types.ObjectId.isValid(orderId)) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Invalid Order ID",
+//       });
+//     }
+
+//     if (!mongoose.Types.ObjectId.isValid(staffId)) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Invalid Staff ID",
+//       });
+//     }
+
+//     // Find the order
+//     const order = await Order.findById(orderId)
+//       .populate("companyName", "companyName")
+//       .populate("party", "partyName address")
+//       .populate("productItem", "itemName");
+
+//     if (!order) {
+//       return res.status(404).json({
+//         success: false,
+//         message: "Order not found",
+//       });
+//     }
+
+//     // Verify staff exists
+//     const staff = await Staff.findById(staffId);
+//     if (!staff) {
+//       return res.status(404).json({
+//         success: false,
+//         message: "Staff not found",
+//       });
+//     }
+
+//     // Create a task for the follow-up
+//     const assignTaskData = {
+//       companyName: order.companyName._id,
+//       partyName: order.party._id,
+//       date: new Date(),
+//       orderId: order._id,
+//       time: moment().format("HH:mm"),
+//       reasonForVisit: `Follow up for Order: ${order.orderNumber} - ${order.productItem?.itemName || "N/A"}`,
+//       remarks: remarks || `Follow up assigned for order ${order.orderNumber}`,
+//       assignTo: staffId,
+//       status: "Pending",
+//     };
+
+//     const newTask = new AssignTask(assignTaskData);
+//     await newTask.save();
+
+//     // Update order with follow-up info
+//     const updatedOrder = await Order.findByIdAndUpdate(
+//       orderId,
+//       {
+//         followUp: {
+//           staff: staffId,
+//           taskId: newTask._id,
+//           status: "Pending",
+//           assignedAt: new Date(),
+//           remarks: remarks || "",
+//         },
+//       },
+//       { new: true }
+//     )
+//       .populate("companyName", "companyName avatar")
+//       .populate({
+//         path: "party",
+//         select: "-__v",
+//         populate: [
+//           {
+//             path: "address.marketName",
+//             model: "Market",
+//             select: "marketName",
+//           },
+//           { path: "address.landMark", model: "Market", select: "landmark" },
+//           { path: "address.area", model: "Market", select: "area" },
+//           { path: "address.pincode", model: "Market", select: "pincode" },
+//         ],
+//       })
+//       .populate("productItem", "itemName")
+//       .populate("createdBy", "firstName lastName")
+//       .populate("followUp.staff", "firstName lastName")
+//       .populate("followUp.taskId", "status");
+
+//     res.status(200).json({
+//       success: true,
+//       message: "Follow-up assigned successfully",
+//       data: updatedOrder,
+//     });
+//   } catch (error) {
+//     console.error("❌ Assign follow-up error:", error);
+//     res.status(500).json({
+//       success: false,
+//       message: "Failed to assign follow-up",
+//       error: error.message,
+//     });
+//   }
+// };
+
+// // Update follow-up status
+// exports.updateFollowUpStatus = async (req, res) => {
+//   try {
+//     const { orderId } = req.params;
+//     const { status } = req.body;
+
+//     if (!mongoose.Types.ObjectId.isValid(orderId)) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Invalid Order ID",
+//       });
+//     }
+
+//     if (!["Pending", "In Progress", "Completed", "Cancelled"].includes(status)) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Invalid status value",
+//       });
+//     }
+
+//     const order = await Order.findById(orderId);
+//     if (!order) {
+//       return res.status(404).json({
+//         success: false,
+//         message: "Order not found",
+//       });
+//     }
+
+//     if (!order.followUp || !order.followUp.staff) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "No follow-up assigned to this order",
+//       });
+//     }
+
+//     // Update order follow-up status
+//     const updatedOrder = await Order.findByIdAndUpdate(
+//       orderId,
+//       {
+//         "followUp.status": status,
+//       },
+//       { new: true }
+//     )
+//       .populate("companyName", "companyName avatar")
+//       .populate({
+//         path: "party",
+//         select: "-__v",
+//         populate: [
+//           {
+//             path: "address.marketName",
+//             model: "Market",
+//             select: "marketName",
+//           },
+//           { path: "address.landMark", model: "Market", select: "landmark" },
+//           { path: "address.area", model: "Market", select: "area" },
+//           { path: "address.pincode", model: "Market", select: "pincode" },
+//         ],
+//       })
+//       .populate("productItem", "itemName")
+//       .populate("createdBy", "firstName lastName")
+//       .populate("followUp.staff", "firstName lastName")
+//       .populate("followUp.taskId", "status");
+
+//     // Also update the associated task status
+//     if (order.followUp.taskId) {
+//       await AssignTask.findByIdAndUpdate(order.followUp.taskId, {
+//         status: status,
+//       });
+//     }
+
+//     res.status(200).json({
+//       success: true,
+//       message: "Follow-up status updated successfully",
+//       data: updatedOrder,
+//     });
+//   } catch (error) {
+//     console.error("❌ Update follow-up status error:", error);
+//     res.status(500).json({
+//       success: false,
+//       message: "Failed to update follow-up status",
+//       error: error.message,
+//     });
+//   }
+// };
+
+
+
+exports.assignFollowUp = async (req, res) => {
+  try {
+    const { orderId } = req.params;
+    const { staffId, remarks } = req.body;
+
+    if (!mongoose.Types.ObjectId.isValid(orderId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid Order ID",
+      });
+    }
+
+    if (!mongoose.Types.ObjectId.isValid(staffId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid Staff ID",
+      });
+    }
+
+    // Find the order
+    const order = await Order.findById(orderId)
+      .populate("companyName", "companyName")
+      .populate("party", "partyName address")
+      .populate("productItem", "itemName");
+
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: "Order not found",
+      });
+    }
+
+    // Verify staff exists
+    const staff = await Staff.findById(staffId);
+    if (!staff) {
+      return res.status(404).json({
+        success: false,
+        message: "Staff not found",
+      });
+    }
+
+    // Delete ALL existing tasks for this order when reassigning
+    await AssignTask.deleteMany({ orderId: order._id });
+
+    // Create a task for the follow-up with orderId in the task data
+    const assignTaskData = {
+      companyName: order.companyName._id,
+      partyName: order.party._id,
+      date: new Date(),
+      orderId: order._id, // Pass orderId to the task
+      time: moment().format("HH:mm"),
+      reasonForVisit: `Follow up for Order: ${order.orderNumber} - ${order.productItem?.itemName || "N/A"}`,
+      remarks: remarks || `Follow up assigned for order ${order.orderNumber}`,
+      assignTo: staffId,
+      status: "Pending",
+    };
+
+    const newTask = new AssignTask(assignTaskData);
+    await newTask.save();
+
+    // Update order with follow-up info
+    const updatedOrder = await Order.findByIdAndUpdate(
+      orderId,
+      {
+        followUp: {
+          staff: staffId,
+          taskId: newTask._id,
+          status: "Pending",
+          assignedAt: new Date(),
+          remarks: remarks || "",
+        },
+      },
+      { new: true }
+    )
+      .populate("companyName", "companyName avatar")
+      .populate({
+        path: "party",
+        select: "-__v",
+        populate: [
+          {
+            path: "address.marketName",
+            model: "Market",
+            select: "marketName",
+          },
+          { path: "address.landMark", model: "Market", select: "landmark" },
+          { path: "address.area", model: "Market", select: "area" },
+          { path: "address.pincode", model: "Market", select: "pincode" },
+        ],
+      })
+      .populate("productItem", "itemName")
+      .populate("createdBy", "firstName lastName")
+      .populate("followUp.staff", "firstName lastName")
+      .populate("followUp.taskId", "status");
+
+    res.status(200).json({
+      success: true,
+      message: "Follow-up assigned successfully",
+      data: updatedOrder,
+    });
+  } catch (error) {
+    console.error("❌ Assign follow-up error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to assign follow-up",
+      error: error.message,
+    });
+  }
+};
+
+// Update follow-up status
+exports.updateFollowUpStatus = async (req, res) => {
+  try {
+    const { orderId } = req.params;
+    const { status } = req.body;
+
+    if (!mongoose.Types.ObjectId.isValid(orderId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid Order ID",
+      });
+    }
+
+    if (!["Pending", "In Progress", "Completed", "Cancelled"].includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid status value",
+      });
+    }
+
+    const order = await Order.findById(orderId);
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: "Order not found",
+      });
+    }
+
+    if (!order.followUp || !order.followUp.staff) {
+      return res.status(400).json({
+        success: false,
+        message: "No follow-up assigned to this order",
+      });
+    }
+
+    // Update order follow-up status
+    const updatedOrder = await Order.findByIdAndUpdate(
+      orderId,
+      {
+        "followUp.status": status,
+      },
+      { new: true }
+    )
+      .populate("companyName", "companyName avatar")
+      .populate({
+        path: "party",
+        select: "-__v",
+        populate: [
+          {
+            path: "address.marketName",
+            model: "Market",
+            select: "marketName",
+          },
+          { path: "address.landMark", model: "Market", select: "landmark" },
+          { path: "address.area", model: "Market", select: "area" },
+          { path: "address.pincode", model: "Market", select: "pincode" },
+        ],
+      })
+      .populate("productItem", "itemName")
+      .populate("createdBy", "firstName lastName")
+      .populate("followUp.staff", "firstName lastName")
+      .populate("followUp.taskId", "status");
+
+    // Also update ALL associated tasks status for this order
+    await AssignTask.updateMany(
+      { orderId: order._id },
+      { status: status }
+    );
+
+    res.status(200).json({
+      success: true,
+      message: "Follow-up status updated successfully",
+      data: updatedOrder,
+    });
+  } catch (error) {
+    console.error("❌ Update follow-up status error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to update follow-up status",
       error: error.message,
     });
   }
