@@ -383,7 +383,7 @@ const getSCReport = async (req, res) => {
     let totalBookletOrders = 0;
     let totalStationarySales = 0;
     let totalBookletSales = 0;
-    
+
     // New totals for itemwise data
     let totalStationaryItemwise = {};
     let totalBookletItemwise = {};
@@ -398,24 +398,24 @@ const getSCReport = async (req, res) => {
         }).populate("partyName", "partyTag").lean();
 
         // 1. Total Visits - Count all completed tasks
-        const visitCount = allTasks.filter(task => 
+        const visitCount = allTasks.filter(task =>
           /^completed$/i.test(task.status)
         ).length;
 
         // Task counts (using allTasks for efficiency)
-        const completedTasks = allTasks.filter(task => 
+        const completedTasks = allTasks.filter(task =>
           /^completed$/i.test(task.status)
         ).length;
-        
-        const cancelledTasks = allTasks.filter(task => 
+
+        const cancelledTasks = allTasks.filter(task =>
           /^cancelled$/i.test(task.status)
         ).length;
-        
-        const rescheduledTasks = allTasks.filter(task => 
+
+        const rescheduledTasks = allTasks.filter(task =>
           /^rescheduled$/i.test(task.status)
         ).length;
-        
-        const pendingTasks = allTasks.filter(task => 
+
+        const pendingTasks = allTasks.filter(task =>
           /^pending$/i.test(task.status)
         ).length;
 
@@ -427,14 +427,14 @@ const getSCReport = async (req, res) => {
 
         taskReasons.forEach(
           (r) =>
-            (tasksByReason[r.toLowerCase().replace(/\s+/g, "")] = {
-              reason: r,
-              total: 0,
-              completed: 0,
-              cancelled: 0,
-              rescheduled: 0,
-              pending: 0,
-            })
+          (tasksByReason[r.toLowerCase().replace(/\s+/g, "")] = {
+            reason: r,
+            total: 0,
+            completed: 0,
+            cancelled: 0,
+            rescheduled: 0,
+            pending: 0,
+          })
         );
         tasksByReason["other"] = {
           reason: "Other",
@@ -471,13 +471,13 @@ const getSCReport = async (req, res) => {
 
         leadReasons.forEach(
           (r) =>
-            (leadsByReason[r.toLowerCase().replace(/\s+/g, "")] = {
-              reason: r,
-              total: 0,
-              completed: 0,
-              cancelled: 0,
-              rescheduled: 0,
-            })
+          (leadsByReason[r.toLowerCase().replace(/\s+/g, "")] = {
+            reason: r,
+            total: 0,
+            completed: 0,
+            cancelled: 0,
+            rescheduled: 0,
+          })
         );
         leadsByReason["other"] = {
           reason: "Other",
@@ -519,8 +519,8 @@ const getSCReport = async (req, res) => {
         });
 
         // 2. New party visits - Get parties where partyTag is NEW
-        const newPartyVisits = allTasks.filter(task => 
-          task.partyName?.partyTag === "NEW" && 
+        const newPartyVisits = allTasks.filter(task =>
+          task.partyName?.partyTag === "NEW" &&
           /^completed$/i.test(task.status)
         ).length;
 
@@ -588,18 +588,18 @@ const getSCReport = async (req, res) => {
         const newPartyToCustomer = newToCustomer.length > 0 ? newToCustomer[0].count : 0;
 
         // Lead counts
-        const completedLeads = leads.filter(lead => 
+        const completedLeads = leads.filter(lead =>
           /^completed$/i.test(lead.status)
         ).length;
-        
-        const cancelledLeads = leads.filter(lead => 
+
+        const cancelledLeads = leads.filter(lead =>
           /^cancelled$/i.test(lead.status)
         ).length;
-        
-        const rescheduledLeads = leads.filter(lead => 
+
+        const rescheduledLeads = leads.filter(lead =>
           /^rescheduled$/i.test(lead.status)
         ).length;
-        
+
         const totalLeads = leads.length;
 
         // QP Orders
@@ -617,10 +617,10 @@ const getSCReport = async (req, res) => {
         }).lean();
 
         // Separate Stationary and Booklet orders
-        const stationaryOrders = sakshiOrders.filter(order => 
+        const stationaryOrders = sakshiOrders.filter(order =>
           order.category === "STATIONARY" || !order.category // Assuming some default
         );
-        const bookletOrders = sakshiOrders.filter(order => 
+        const bookletOrders = sakshiOrders.filter(order =>
           order.category === "BOOKLET"
         );
 
@@ -643,11 +643,11 @@ const getSCReport = async (req, res) => {
             const qty = parseFloat(item.qty) || 0;
             const price = parseFloat(item.unitPrice) || 0;
             const gst = parseFloat(item.gst) || 0;
-            const total = qty * price * (1 + gst/100);
-            
+            const total = qty * price * (1 + gst / 100);
+
             stationaryItemwise[itemName].quantity += qty;
             stationaryItemwise[itemName].totalAmount += total;
-            
+
             // Also add to the total itemwise for all staff
             if (!totalStationaryItemwise[itemName]) {
               totalStationaryItemwise[itemName] = {
@@ -676,11 +676,11 @@ const getSCReport = async (req, res) => {
             const qty = parseFloat(item.qty) || 0;
             const price = parseFloat(item.unitPrice) || 0;
             const gst = parseFloat(item.gst) || 0;
-            const total = qty * price * (1 + gst/100);
-            
+            const total = qty * price * (1 + gst / 100);
+
             bookletItemwise[itemName].quantity += qty;
             bookletItemwise[itemName].totalAmount += total;
-            
+
             // Also add to the total itemwise for all staff
             if (!totalBookletItemwise[itemName]) {
               totalBookletItemwise[itemName] = {
@@ -744,13 +744,13 @@ const getSCReport = async (req, res) => {
         let totalSale = 0;
         let totalStationarySale = 0;
         let totalBookletSale = 0;
-        
+
         totalSaleData.forEach(cat => {
           const category = cat._id || "STATIONARY"; // Default to STATIONARY if no category
           const sale = cat.totalSale || 0;
-          
+
           totalSale += sale;
-          
+
           if (category === "STATIONARY") {
             totalStationarySale = sale;
           } else if (category === "BOOKLET") {
@@ -764,7 +764,7 @@ const getSCReport = async (req, res) => {
           companyName: company._id,
           ...otherModelsDateFilter,
         }).distinct("party");
-        
+
         const sakshiOrderParties = await Order.find({
           createdBy: staff._id,
           companyName: company._id,
@@ -813,7 +813,7 @@ const getSCReport = async (req, res) => {
           visit: visitCount,                    // Total completed visits
           newPartyVisit: newPartyVisits,       // New party visits
           newPartyToCustomer: newPartyToCustomer, // New parties converted to customer
-          
+
           completedTasks,
           cancelledTasks,
           doneTask: completedTasks + cancelledTasks,
@@ -1845,8 +1845,8 @@ const getscPrinter = async (req, res) => {
       const avg = (arr) =>
         arr.length
           ? (
-              arr.reduce((s, o) => s + o, 0) / arr.length
-            ).toFixed(2)
+            arr.reduce((s, o) => s + o, 0) / arr.length
+          ).toFixed(2)
           : "0.00";
 
       const avgCompletionDays = avg(
@@ -1896,9 +1896,9 @@ const getscPrinter = async (req, res) => {
         completionRate:
           printerOrders.length > 0
             ? (
-                (completedOrders.length / printerOrders.length) *
-                100
-              ).toFixed(2) + "%"
+              (completedOrders.length / printerOrders.length) *
+              100
+            ).toFixed(2) + "%"
             : "0%",
         avgCompletionDays: `${avgCompletionDays} days`,
         avgPendingDays: `${avgPendingDays} days`,
@@ -1909,9 +1909,9 @@ const getscPrinter = async (req, res) => {
           wastagePercentage:
             totalSheetsUsed > 0
               ? (
-                  (totalWastedSheets / totalSheetsUsed) *
-                  100
-                ).toFixed(2) + "%"
+                (totalWastedSheets / totalSheetsUsed) *
+                100
+              ).toFixed(2) + "%"
               : "0%",
         },
         pendingOrdersDetails: pendingOrdersWithDays,
@@ -2106,8 +2106,8 @@ const getscBinder = async (req, res) => {
       const avg = (arr) =>
         arr.length
           ? (
-              arr.reduce((s, v) => s + v, 0) / arr.length
-            ).toFixed(2)
+            arr.reduce((s, v) => s + v, 0) / arr.length
+          ).toFixed(2)
           : "0.00";
 
       const avgCompletionDays = avg(
@@ -2158,9 +2158,9 @@ const getscBinder = async (req, res) => {
         completionRate:
           binderOrders.length > 0
             ? (
-                (completedOrders.length / binderOrders.length) *
-                100
-              ).toFixed(2) + "%"
+              (completedOrders.length / binderOrders.length) *
+              100
+            ).toFixed(2) + "%"
             : "0%",
         avgCompletionDays: `${avgCompletionDays} days`,
         avgPendingDays: `${avgPendingDays} days`,
@@ -2171,9 +2171,9 @@ const getscBinder = async (req, res) => {
           wastagePercentage:
             totalSheetsUsed > 0
               ? (
-                  (totalWastedSheets / totalSheetsUsed) *
-                  100
-                ).toFixed(2) + "%"
+                (totalWastedSheets / totalSheetsUsed) *
+                100
+              ).toFixed(2) + "%"
               : "0%",
         },
         pendingOrdersDetails: pendingOrdersWithDays,
@@ -2985,6 +2985,196 @@ const getQpsalescredit = async (req, res) => {
 
 
 
+// Get pending orders for printers, binders, and booklet binders
+const getPendingOrdersReport = async (req, res) => {
+  try {
+    const { type } = req.body; // 'printer', 'binder', 'booklet-binder'
+
+    let query = {};
+    let assignField = '';
+    let statusField = '';
+    let remarksField = '';
+
+    if (type === 'printer') {
+      assignField = 'printerAssignedAt';
+      statusField = 'printerStatus';
+      remarksField = 'printerRemarks';
+      query = {
+        printer: { $exists: true, $ne: null },
+        printerStatus: { $in: ['Pending', 'In Progress'] }
+      };
+    } else if (type === 'binder') {
+      assignField = 'binderAssignedAt';
+      statusField = 'binderStatus';
+      remarksField = 'binderRemarks';
+      query = {
+        binder: { $exists: true, $ne: null },
+        binderStatus: { $in: ['Pending', 'In Progress'] }
+      };
+    } else if (type === 'booklet-binder') {
+      assignField = 'bookletBinderAssignedAt';
+      statusField = 'bookletBinderStatus';
+      remarksField = 'bookletBinderRemarks';
+      query = {
+        bookletBinder: { $exists: true, $ne: null },
+        bookletBinderStatus: { $in: ['Pending', 'In Progress'] }
+      };
+    } else {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid type. Use 'printer', 'binder', or 'booklet-binder'"
+      });
+    }
+
+    const orders = await Order.find(query)
+      .populate('printer', 'firstName lastName')
+      .populate('binder', 'firstName lastName')
+      .populate('bookletBinder', 'firstName lastName')
+      .populate('party', 'partyName')
+      .populate('productItem', 'itemName')
+      .populate('companyName', 'companyName')
+      .sort({ [assignField]: 1 })
+      .lean();
+
+    const now = new Date();
+    const threeDaysAgo = new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000);
+
+    const formattedOrders = orders.map(order => {
+      const assignDate = order[assignField] ? new Date(order[assignField]) : null;
+      const isPendingMoreThan3Days = assignDate && assignDate < threeDaysAgo;
+
+      return {
+        id: order._id ? order._id.toString() : order.orderNumber || Math.random().toString(),
+        printer: order.printer?.firstName + ' ' + order.printer?.lastName || '',
+        binder: order.binder?.firstName + ' ' + order.binder?.lastName || '',
+        bookletBinder: order.bookletBinder?.firstName + ' ' + order.bookletBinder?.lastName || '',
+        orderNumber: order.orderNumber || '',
+        assignDate: assignDate ? assignDate.toISOString().split('T')[0] : '',
+        partyName: order.party?.partyName || '',
+        size: order.size || '',
+        itemName: order.productItem?.itemName || '',
+        remark: order[remarksField] || order.remarks || '',
+        qty: order.qty || 0,
+        num: order.number || '',
+        isPendingMoreThan3Days: isPendingMoreThan3Days,
+        status: order[statusField] || 'Pending'
+      };
+    });
+
+    return res.status(200).json({
+      success: true,
+      data: formattedOrders,
+      message: `Pending ${type} orders retrieved successfully`
+    });
+
+  } catch (error) {
+    console.error("Error in getPendingOrdersReport:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      error: error.message
+    });
+  }
+};
+
+// Get completed orders for printers, binders, and booklet binders
+const getCompletedOrdersReport = async (req, res) => {
+  try {
+    const { type, startDate, endDate } = req.body; // 'printer', 'binder', 'booklet-binder'
+
+    let query = {};
+    let statusField = '';
+    let completedField = '';
+    let remarksField = '';
+
+    if (type === 'printer') {
+      statusField = 'printerStatus';
+      completedField = 'printingCompletedAt';
+      remarksField = 'printerRemarks';
+      query = {
+        printer: { $exists: true, $ne: null },
+        printerStatus: 'Done'
+      };
+    } else if (type === 'binder') {
+      statusField = 'binderStatus';
+      completedField = 'bindingCompletedAt';
+      remarksField = 'binderRemarks';
+      query = {
+        binder: { $exists: true, $ne: null },
+        binderStatus: 'Done'
+      };
+    } else if (type === 'booklet-binder') {
+      statusField = 'bookletBinderStatus';
+      completedField = 'bookletBindingCompletedAt';
+      remarksField = 'bookletBinderRemarks';
+      query = {
+        bookletBinder: { $exists: true, $ne: null },
+        bookletBinderStatus: 'Done'
+      };
+    } else {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid type. Use 'printer', 'binder', or 'booklet-binder'"
+      });
+    }
+
+    // Add date range filter if provided
+    if (startDate && endDate) {
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+      end.setHours(23, 59, 59, 999);
+      query[completedField] = { $gte: start, $lte: end };
+    }
+
+    const orders = await Order.find(query)
+      .populate('printer', 'firstName lastName')
+      .populate('binder', 'firstName lastName')
+      .populate('bookletBinder', 'firstName lastName')
+      .populate('party', 'partyName')
+      .populate('productItem', 'itemName')
+      .populate('companyName', 'companyName')
+      .sort({ [completedField]: -1 })
+      .lean();
+
+    const formattedOrders = orders.map(order => {
+      const completedDate = order[completedField] ? new Date(order[completedField]) : null;
+
+      return {
+        id: order._id ? order._id.toString() : order.orderNumber || Math.random().toString(),
+        printer: order.printer?.firstName + ' ' + order.printer?.lastName || '',
+        binder: order.binder?.firstName + ' ' + order.binder?.lastName || '',
+        bookletBinder: order.bookletBinder?.firstName + ' ' + order.bookletBinder?.lastName || '',
+        orderNumber: order.orderNumber || '',
+        assignDate: order.printerAssignedAt || order.binderAssignedAt || order.bookletBinderAssignedAt
+          ? new Date(order.printerAssignedAt || order.binderAssignedAt || order.bookletBinderAssignedAt).toISOString().split('T')[0]
+          : '',
+        completedDate: completedDate ? completedDate.toISOString().split('T')[0] : '',
+        partyName: order.party?.partyName || '',
+        size: order.size || '',
+        itemName: order.productItem?.itemName || '',
+        remark: order[remarksField] || order.remarks || '',
+        qty: order.qty || 0,
+        num: order.number || '',
+        status: order[statusField] || 'Done'
+      };
+    });
+
+    return res.status(200).json({
+      success: true,
+      data: formattedOrders,
+      message: `Completed ${type} orders retrieved successfully`
+    });
+
+  } catch (error) {
+    console.error("Error in getCompletedOrdersReport:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      error: error.message
+    });
+  }
+};
+
 module.exports = {
   getStaffReport,
   getSCReport,
@@ -2997,5 +3187,7 @@ module.exports = {
   getscBookletBinder,
   getscProductItem,
   getscsalescredit,
-  getQpsalescredit
+  getQpsalescredit,
+  getPendingOrdersReport,
+  getCompletedOrdersReport
 };

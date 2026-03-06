@@ -16,9 +16,18 @@ router.post("/getscproductitem", ReportController.getscProductItem);
 router.post("/getscsalescredit", ReportController.getscsalescredit);
 router.post("/getqpsalescredit", ReportController.getQpsalescredit);
 
+// Order Reports APIs
+router.post("/get-pending-orders", ReportController.getPendingOrdersReport);
+router.post("/get-completed-orders", ReportController.getCompletedOrdersReport);
+
 //exelAPI
-router.post("/export-designer-excel",ExcelDownloadController.exportDesignerPerformanceToExcel );
+router.post("/export-designer-excel", ExcelDownloadController.exportDesignerPerformanceToExcel);
 router.post("/export-printer-excel", ExcelDownloadController.exportPrinterPerformanceToExcel);
 router.post("/export-binder-excel", ExcelDownloadController.exportBinderPerformanceToExcel);
 router.post("/export-bookletbinder-excel", ExcelDownloadController.exportBookletBinderPerformanceToExcel);
+
+// Order Reports Excel Export
+router.post("/export-pending-orders-excel", ExcelDownloadController.exportPendingOrdersToExcel);
+router.post("/export-completed-orders-excel", ExcelDownloadController.exportCompletedOrdersToExcel);
+
 module.exports = router;

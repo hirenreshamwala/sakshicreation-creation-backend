@@ -153,7 +153,7 @@ exports.getStaffPaperInventory = async (req, res) => {
       const materialName = record.material?.materialName || 'Unknown Material';
       const materialSize = record.material?.materialSize || '-';
       const materialGSM = record.material?.materialGSM || '-';
-
+  
       if (!materialMap.has(materialId)) {
         materialMap.set(materialId, {
           materialId,

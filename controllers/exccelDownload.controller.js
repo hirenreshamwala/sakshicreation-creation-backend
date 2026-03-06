@@ -4435,3 +4435,629 @@ exports.exportPendingClientApprovalOrdersToExcel = async (req, res) => {
         res.status(500).json({ success: false, message: "Export failed", error: error.message });
     }
 };
+
+// Export Pending Orders to Excel with yellow highlight for orders pending > 3 days
+// exports.exportPendingOrdersToExcel = async (req, res) => {
+//     try {
+//         const { type } = req.body; // 'printer', 'binder', 'booklet-binder'
+
+//         let query = {};
+//         let assignField = '';
+//         let statusField = '';
+//         let remarksField = '';
+//         let typeLabel = '';
+
+//         if (type === 'printer') {
+//             assignField = 'printerAssignedAt';
+//             statusField = 'printerStatus';
+//             remarksField = 'printerRemarks';
+//             typeLabel = 'Printer';
+//             query = {
+//                 printer: { $exists: true, $ne: null },
+//                 printerStatus: { $in: ['Pending', 'In Progress'] }
+//             };
+//         } else if (type === 'binder') {
+//             assignField = 'binderAssignedAt';
+//             statusField = 'binderStatus';
+//             remarksField = 'binderRemarks';
+//             typeLabel = 'Binder';
+//             query = {
+//                 binder: { $exists: true, $ne: null },
+//                 binderStatus: { $in: ['Pending', 'In Progress'] }
+//             };
+//         } else if (type === 'booklet-binder') {
+//             assignField = 'bookletBinderAssignedAt';
+//             statusField = 'bookletBinderStatus';
+//             remarksField = 'bookletBinderRemarks';
+//             typeLabel = 'Booklet Binder';
+//             query = {
+//                 bookletBinder: { $exists: true, $ne: null },
+//                 bookletBinderStatus: { $in: ['Pending', 'In Progress'] }
+//             };
+//         } else {
+//             return res.status(400).json({
+//                 success: false,
+//                 message: "Invalid type. Use 'printer', 'binder', or 'booklet-binder'"
+//             });
+//         }
+
+//         const orders = await Order.find(query)
+//             .populate('printer', 'firstName lastName')
+//             .populate('binder', 'firstName lastName')
+//             .populate('bookletBinder', 'firstName lastName')
+//             .populate('party', 'partyName')
+//             .populate('productItem', 'itemName')
+//             .populate('companyName', 'companyName')
+//             .sort({ [assignField]: 1 })
+//             .lean();
+
+//         if (orders.length === 0) {
+//             return res.status(200).json({
+//                 success: true,
+//                 message: `No pending ${typeLabel.toLowerCase()} orders found`,
+//                 count: 0,
+//                 empty: true
+//             });
+//         }
+
+//         const workbook = new ExcelJS.Workbook();
+//         const worksheet = workbook.addWorksheet(`Pending ${typeLabel} Orders`);
+
+//         // Columns
+//         worksheet.columns = [
+//             { header: 'Order No', key: 'orderNumber', width: 18 },
+//             { header: 'Assign Date', key: 'assignDate', width: 15 },
+//             { header: 'Party Name', key: 'partyName', width: 30 },
+//             { header: 'Size', key: 'size', width: 15 },
+//             { header: 'Item Name', key: 'itemName', width: 25 },
+//             { header: 'Remark', key: 'remark', width: 30 },
+//             { header: 'Qty', key: 'qty', width: 10 },
+//             { header: 'Num', key: 'num', width: 12 },
+//             { header: 'Status', key: 'status', width: 15 },
+//             { header: type === 'printer' ? 'Printer' : type === 'binder' ? 'Binder' : 'Booklet Binder', key: 'assignee', width: 25 },
+//         ];
+
+//         // Header Styling
+//         const headerRow = worksheet.getRow(1);
+//         headerRow.font = { bold: true };
+//         headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD3D3D3' } };
+//         headerRow.alignment = { horizontal: 'center', vertical: 'middle' };
+
+//         const now = new Date();
+//         const threeDaysAgo = new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000);
+
+//         let srNo = 1;
+//         orders.forEach(order => {
+//             const assignDate = order[assignField] ? new Date(order[assignField]) : null;
+//             const isPendingMoreThan3Days = assignDate && assignDate < threeDaysAgo;
+
+//             const row = worksheet.addRow({
+//                 orderNumber: order.orderNumber || '-',
+//                 assignDate: assignDate ? moment(assignDate).format('DD-MM-YYYY') : '-',
+//                 partyName: order.party?.partyName || '-',
+//                 size: order.size || '-',
+//                 itemName: order.productItem?.itemName || '-',
+//                 remark: order[remarksField] || order.remarks || '-',
+//                 qty: order.qty || 0,
+//                 num: order.number || '-',
+//                 status: order[statusField] || 'Pending',
+//                 assignee: type === 'printer' ? order.printer?.firstName + ' ' + order.printer?.lastName : type === 'binder' ? order.binder?.firstName + ' ' + order.binder?.lastName : order.bookletBinder?.firstName + ' ' + order.bookletBinder?.lastName
+//             });
+
+//             // Apply yellow highlight for orders pending more than 3 days
+//             if (isPendingMoreThan3Days) {
+//                 row.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFF00' } };
+//             }
+//         });
+
+//         // File download
+//         res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+//         const fileName = `Pending_${typeLabel}_Orders_${moment().format('DDMMYYYY_HHmm')}.xlsx`;
+//         res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+
+//         await workbook.xlsx.write(res);
+//         res.end();
+//     } catch (error) {
+//         console.error("Export pending orders error:", error);
+//         res.status(500).json({ success: false, message: "Export failed", error: error.message });
+//     }
+// };
+
+// // Export Completed Orders to Excel
+// exports.exportCompletedOrdersToExcel = async (req, res) => {
+//     try {
+//         const { type, startDate, endDate } = req.body; // 'printer', 'binder', 'booklet-binder'
+
+//         let query = {};
+//         let statusField = '';
+//         let completedField = '';
+//         let assignField = '';
+//         let remarksField = '';
+//         let typeLabel = '';
+
+//         if (type === 'printer') {
+//             statusField = 'printerStatus';
+//             completedField = 'printingCompletedAt';
+//             assignField = 'printerAssignedAt';
+//             remarksField = 'printerRemarks';
+//             typeLabel = 'Printer';
+//             query = {
+//                 printer: { $exists: true, $ne: null },
+//                 printerStatus: 'Done'
+//             };
+//         } else if (type === 'binder') {
+//             statusField = 'binderStatus';
+//             completedField = 'bindingCompletedAt';
+//             assignField = 'binderAssignedAt';
+//             remarksField = 'binderRemarks';
+//             typeLabel = 'Binder';
+//             query = {
+//                 binder: { $exists: true, $ne: null },
+//                 binderStatus: 'Done'
+//             };
+//         } else if (type === 'booklet-binder') {
+//             statusField = 'bookletBinderStatus';
+//             completedField = 'bookletBindingCompletedAt';
+//             assignField = 'bookletBinderAssignedAt';
+//             remarksField = 'bookletBinderRemarks';
+//             typeLabel = 'Booklet Binder';
+//             query = {
+//                 bookletBinder: { $exists: true, $ne: null },
+//                 bookletBinderStatus: 'Done'
+//             };
+//         } else {
+//             return res.status(400).json({
+//                 success: false,
+//                 message: "Invalid type. Use 'printer', 'binder', or 'booklet-binder'"
+//             });
+//         }
+
+//         // Add date range filter if provided
+//         if (startDate && endDate) {
+//             const start = new Date(startDate);
+//             const end = new Date(endDate);
+//             end.setHours(23, 59, 59, 999);
+//             query[completedField] = { $gte: start, $lte: end };
+//         }
+
+//         const orders = await Order.find(query)
+//             .populate('printer', 'firstName lastName')
+//             .populate('binder', 'firstName lastName')
+//             .populate('bookletBinder', 'firstName lastName')
+//             .populate('party', 'partyName')
+//             .populate('productItem', 'itemName')
+//             .populate('companyName', 'companyName')
+//             .sort({ [completedField]: -1 })
+//             .lean();
+
+//         if (orders.length === 0) {
+//             return res.status(200).json({
+//                 success: true,
+//                 message: `No completed ${typeLabel.toLowerCase()} orders found`,
+//                 count: 0,
+//                 empty: true
+//             });
+//         }
+
+//         const workbook = new ExcelJS.Workbook();
+//         const worksheet = workbook.addWorksheet(`Completed ${typeLabel} Orders`);
+
+//         // Columns
+//         worksheet.columns = [
+//             { header: 'Order No', key: 'orderNumber', width: 18 },
+//             { header: 'Assign Date', key: 'assignDate', width: 15 },
+//             { header: 'Completed Date', key: 'completedDate', width: 15 },
+//             { header: 'Party Name', key: 'partyName', width: 30 },
+//             { header: 'Size', key: 'size', width: 15 },
+//             { header: 'Item Name', key: 'itemName', width: 25 },
+//             { header: 'Remark', key: 'remark', width: 30 },
+//             { header: 'Qty', key: 'qty', width: 10 },
+//             { header: 'Num', key: 'num', width: 12 },
+//             { header: 'Status', key: 'status', width: 15 },
+//             { header: type === 'printer' ? 'Printer' : type === 'binder' ? 'Binder' : 'Booklet Binder', key: 'assignee', width: 25 },
+//         ];
+
+//         // Header Styling
+//         const headerRow = worksheet.getRow(1);
+//         headerRow.font = { bold: true };
+//         headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD3D3D3' } };
+//         headerRow.alignment = { horizontal: 'center', vertical: 'middle' };
+
+//         orders.forEach(order => {
+//             const completedDate = order[completedField] ? new Date(order[completedField]) : null;
+//             const assignDate = order[assignField] ? new Date(order[assignField]) : null;
+
+//             worksheet.addRow({
+//                 orderNumber: order.orderNumber || '-',
+//                 assignDate: assignDate ? moment(assignDate).format('DD-MM-YYYY') : '-',
+//                 completedDate: completedDate ? moment(completedDate).format('DD-MM-YYYY') : '-',
+//                 partyName: order.party?.partyName || '-',
+//                 size: order.size || '-',
+//                 itemName: order.productItem?.itemName || '-',
+//                 remark: order[remarksField] || order.remarks || '-',
+//                 qty: order.qty || 0,
+//                 num: order.number || '-',
+//                 status: order[statusField] || 'Done',
+//                 assignee: type === 'printer' ? order.printer?.firstName + ' ' + order.printer?.lastName : type === 'binder' ? order.binder?.firstName + ' ' + order.binder?.lastName : order.bookletBinder?.firstName + ' ' + order.bookletBinder?.lastName
+//             });
+//         });
+
+//         // File download
+//         res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+//         const fileName = `Completed_${typeLabel}_Orders_${moment().format('DDMMYYYY_HHmm')}.xlsx`;
+//         res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+
+//         await workbook.xlsx.write(res);
+//         res.end();
+//     } catch (error) {
+//         console.error("Export completed orders error:", error);
+//         res.status(500).json({ success: false, message: "Export failed", error: error.message });
+//     }
+// };
+
+exports.exportPendingOrdersToExcel = async (req, res) => {
+    try {
+        const { type } = req.body; // 'printer', 'binder', 'booklet-binder'
+
+        let query = {};
+        let assignField = '';
+        let statusField = '';
+        let remarksField = '';
+        let typeLabel = '';
+        let populateField = '';
+
+        if (type === 'printer') {
+            assignField = 'printerAssignedAt';
+            statusField = 'printerStatus';
+            remarksField = 'printerRemarks';
+            typeLabel = 'Printer';
+            populateField = 'printer';
+            query = {
+                printer: { $exists: true, $ne: null },
+                printerStatus: { $in: ['Pending', 'In Progress'] }
+            };
+        } else if (type === 'binder') {
+            assignField = 'binderAssignedAt';
+            statusField = 'binderStatus';
+            remarksField = 'binderRemarks';
+            typeLabel = 'Binder';
+            populateField = 'binder';
+            query = {
+                binder: { $exists: true, $ne: null },
+                binderStatus: { $in: ['Pending', 'In Progress'] }
+            };
+        } else if (type === 'booklet-binder') {
+            assignField = 'bookletBinderAssignedAt';
+            statusField = 'bookletBinderStatus';
+            remarksField = 'bookletBinderRemarks';
+            typeLabel = 'Booklet Binder';
+            populateField = 'bookletBinder';
+            query = {
+                bookletBinder: { $exists: true, $ne: null },
+                bookletBinderStatus: { $in: ['Pending', 'In Progress'] }
+            };
+        } else {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid type. Use 'printer', 'binder', or 'booklet-binder'"
+            });
+        }
+
+        const orders = await Order.find(query)
+            .populate('printer', 'firstName lastName')
+            .populate('binder', 'firstName lastName')
+            .populate('bookletBinder', 'firstName lastName')
+            .populate('party', 'partyName')
+            .populate('productItem', 'itemName')
+            .populate('companyName', 'companyName')
+            .sort({ [populateField + '.firstName']: 1, [assignField]: 1 })
+            .lean();
+
+        if (orders.length === 0) {
+            return res.status(200).json({
+                success: true,
+                message: `No pending ${typeLabel.toLowerCase()} orders found`,
+                count: 0,
+                empty: true
+            });
+        }
+
+        const workbook = new ExcelJS.Workbook();
+        const worksheet = workbook.addWorksheet(`Pending ${typeLabel} Orders`);
+
+        // Columns
+        worksheet.columns = [
+            { header: 'Order No', key: 'orderNumber', width: 18 },
+            { header: 'Assign Date', key: 'assignDate', width: 15 },
+            { header: 'Party Name', key: 'partyName', width: 30 },
+            { header: 'Size', key: 'size', width: 15 },
+            { header: 'Item Name', key: 'itemName', width: 25 },
+            { header: 'Remark', key: 'remark', width: 30 },
+            { header: 'Qty', key: 'qty', width: 10 },
+            { header: 'Num', key: 'num', width: 12 },
+            { header: 'Status', key: 'status', width: 15 },
+        ];
+
+        // Header Styling
+        const headerRow = worksheet.getRow(1);
+        headerRow.font = { bold: true };
+        headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD3D3D3' } };
+        headerRow.alignment = { horizontal: 'center', vertical: 'middle' };
+
+        const now = new Date();
+        const threeDaysAgo = new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000);
+
+        // Group orders by assignee
+        const groupedOrders = {};
+        orders.forEach(order => {
+            let assignee = null;
+            let assigneeName = '';
+            
+            if (type === 'printer') {
+                assignee = order.printer;
+                assigneeName = assignee ? `${assignee.firstName || ''} ${assignee.lastName || ''}`.trim() : 'Unassigned';
+            } else if (type === 'binder') {
+                assignee = order.binder;
+                assigneeName = assignee ? `${assignee.firstName || ''} ${assignee.lastName || ''}`.trim() : 'Unassigned';
+            } else {
+                assignee = order.bookletBinder;
+                assigneeName = assignee ? `${assignee.firstName || ''} ${assignee.lastName || ''}`.trim() : 'Unassigned';
+            }
+
+            if (!groupedOrders[assigneeName]) {
+                groupedOrders[assigneeName] = [];
+            }
+            groupedOrders[assigneeName].push(order);
+        });
+
+        // Add data to worksheet with grouping
+        const assigneeNames = Object.keys(groupedOrders).sort();
+
+        assigneeNames.forEach((assigneeName, index) => {
+            // Add empty row before each new assignee group (except first)
+            if (index > 0) {
+                worksheet.addRow({});
+            }
+
+            // Add assignee header row
+            const assigneeHeaderRow = worksheet.addRow({
+                orderNumber: `${typeLabel}: ${assigneeName}`,
+            });
+            
+            // Style assignee header
+            assigneeHeaderRow.font = { bold: true, size: 12 };
+            assigneeHeaderRow.fill = { 
+                type: 'pattern', 
+                pattern: 'solid', 
+                fgColor: { argb: 'FFE0E0E0' } 
+            };
+            assigneeHeaderRow.getCell(1).alignment = { horizontal: 'left' };
+            
+            // Merge cells for assignee header
+            for (let i = 2; i <= 9; i++) {
+                assigneeHeaderRow.getCell(i).value = '';
+            }
+
+            // Add orders for this assignee
+            groupedOrders[assigneeName].forEach(order => {
+                const assignDate = order[assignField] ? new Date(order[assignField]) : null;
+                const isPendingMoreThan3Days = assignDate && assignDate < threeDaysAgo;
+
+                const row = worksheet.addRow({
+                    orderNumber: order.orderNumber || '-',
+                    assignDate: assignDate ? moment(assignDate).format('DD-MM-YYYY') : '-',
+                    partyName: order.party?.partyName || '-',
+                    size: order.size || '-',
+                    itemName: order.productItem?.itemName || '-',
+                    remark: order[remarksField] || order.remarks || '-',
+                    qty: order.qty || 0,
+                    num: order.number || '-',
+                    status: order[statusField] || 'Pending',
+                });
+
+                // Apply yellow highlight for orders pending more than 3 days
+                if (isPendingMoreThan3Days) {
+                    row.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFF00' } };
+                }
+            });
+        });
+
+        // File download
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        const fileName = `Pending_${typeLabel}_Orders_${moment().format('DDMMYYYY_HHmm')}.xlsx`;
+        res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+
+        await workbook.xlsx.write(res);
+        res.end();
+    } catch (error) {
+        console.error("Export pending orders error:", error);
+        res.status(500).json({ success: false, message: "Export failed", error: error.message });
+    }
+};
+
+// Export Completed Orders to Excel
+exports.exportCompletedOrdersToExcel = async (req, res) => {
+    try {
+        const { type, startDate, endDate } = req.body; // 'printer', 'binder', 'booklet-binder'
+
+        let query = {};
+        let statusField = '';
+        let completedField = '';
+        let assignField = '';
+        let remarksField = '';
+        let typeLabel = '';
+        let populateField = '';
+
+        if (type === 'printer') {
+            statusField = 'printerStatus';
+            completedField = 'printingCompletedAt';
+            assignField = 'printerAssignedAt';
+            remarksField = 'printerRemarks';
+            typeLabel = 'Printer';
+            populateField = 'printer';
+            query = {
+                printer: { $exists: true, $ne: null },
+                printerStatus: 'Done'
+            };
+        } else if (type === 'binder') {
+            statusField = 'binderStatus';
+            completedField = 'bindingCompletedAt';
+            assignField = 'binderAssignedAt';
+            remarksField = 'binderRemarks';
+            typeLabel = 'Binder';
+            populateField = 'binder';
+            query = {
+                binder: { $exists: true, $ne: null },
+                binderStatus: 'Done'
+            };
+        } else if (type === 'booklet-binder') {
+            statusField = 'bookletBinderStatus';
+            completedField = 'bookletBindingCompletedAt';
+            assignField = 'bookletBinderAssignedAt';
+            remarksField = 'bookletBinderRemarks';
+            typeLabel = 'Booklet Binder';
+            populateField = 'bookletBinder';
+            query = {
+                bookletBinder: { $exists: true, $ne: null },
+                bookletBinderStatus: 'Done'
+            };
+        } else {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid type. Use 'printer', 'binder', or 'booklet-binder'"
+            });
+        }
+
+        // Add date range filter if provided
+        if (startDate && endDate) {
+            const start = new Date(startDate);
+            const end = new Date(endDate);
+            end.setHours(23, 59, 59, 999);
+            query[completedField] = { $gte: start, $lte: end };
+        }
+
+        const orders = await Order.find(query)
+            .populate('printer', 'firstName lastName')
+            .populate('binder', 'firstName lastName')
+            .populate('bookletBinder', 'firstName lastName')
+            .populate('party', 'partyName')
+            .populate('productItem', 'itemName')
+            .populate('companyName', 'companyName')
+            .sort({ [populateField + '.firstName']: 1, [completedField]: -1 })
+            .lean();
+
+        if (orders.length === 0) {
+            return res.status(200).json({
+                success: true,
+                message: `No completed ${typeLabel.toLowerCase()} orders found`,
+                count: 0,
+                empty: true
+            });
+        }
+
+        const workbook = new ExcelJS.Workbook();
+        const worksheet = workbook.addWorksheet(`Completed ${typeLabel} Orders`);
+
+        // Columns
+        worksheet.columns = [
+            { header: 'Order No', key: 'orderNumber', width: 18 },
+            { header: 'Assign Date', key: 'assignDate', width: 15 },
+            { header: 'Completed Date', key: 'completedDate', width: 15 },
+            { header: 'Party Name', key: 'partyName', width: 30 },
+            { header: 'Size', key: 'size', width: 15 },
+            { header: 'Item Name', key: 'itemName', width: 25 },
+            { header: 'Remark', key: 'remark', width: 30 },
+            { header: 'Qty', key: 'qty', width: 10 },
+            { header: 'Num', key: 'num', width: 12 },
+            { header: 'Status', key: 'status', width: 15 },
+        ];
+
+        // Header Styling
+        const headerRow = worksheet.getRow(1);
+        headerRow.font = { bold: true };
+        headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD3D3D3' } };
+        headerRow.alignment = { horizontal: 'center', vertical: 'middle' };
+
+        // Group orders by assignee
+        const groupedOrders = {};
+        orders.forEach(order => {
+            let assignee = null;
+            let assigneeName = '';
+            
+            if (type === 'printer') {
+                assignee = order.printer;
+                assigneeName = assignee ? `${assignee.firstName || ''} ${assignee.lastName || ''}`.trim() : 'Unassigned';
+            } else if (type === 'binder') {
+                assignee = order.binder;
+                assigneeName = assignee ? `${assignee.firstName || ''} ${assignee.lastName || ''}`.trim() : 'Unassigned';
+            } else {
+                assignee = order.bookletBinder;
+                assigneeName = assignee ? `${assignee.firstName || ''} ${assignee.lastName || ''}`.trim() : 'Unassigned';
+            }
+
+            if (!groupedOrders[assigneeName]) {
+                groupedOrders[assigneeName] = [];
+            }
+            groupedOrders[assigneeName].push(order);
+        });
+
+        // Add data to worksheet with grouping
+        const assigneeNames = Object.keys(groupedOrders).sort();
+
+        assigneeNames.forEach((assigneeName, index) => {
+            // Add empty row before each new assignee group (except first)
+            if (index > 0) {
+                worksheet.addRow({});
+            }
+
+            // Add assignee header row
+            const assigneeHeaderRow = worksheet.addRow({
+                orderNumber: `${typeLabel}: ${assigneeName}`,
+            });
+            
+            // Style assignee header
+            assigneeHeaderRow.font = { bold: true, size: 12 };
+            assigneeHeaderRow.fill = { 
+                type: 'pattern', 
+                pattern: 'solid', 
+                fgColor: { argb: 'FFE0E0E0' } 
+            };
+            assigneeHeaderRow.getCell(1).alignment = { horizontal: 'left' };
+            
+            // Merge cells for assignee header
+            for (let i = 2; i <= 10; i++) {
+                assigneeHeaderRow.getCell(i).value = '';
+            }
+
+            // Add orders for this assignee
+            groupedOrders[assigneeName].forEach(order => {
+                const completedDate = order[completedField] ? new Date(order[completedField]) : null;
+                const assignDate = order[assignField] ? new Date(order[assignField]) : null;
+
+                worksheet.addRow({
+                    orderNumber: order.orderNumber || '-',
+                    assignDate: assignDate ? moment(assignDate).format('DD-MM-YYYY') : '-',
+                    completedDate: completedDate ? moment(completedDate).format('DD-MM-YYYY') : '-',
+                    partyName: order.party?.partyName || '-',
+                    size: order.size || '-',
+                    itemName: order.productItem?.itemName || '-',
+                    remark: order[remarksField] || order.remarks || '-',
+                    qty: order.qty || 0,
+                    num: order.number || '-',
+                    status: order[statusField] || 'Done',
+                });
+            });
+        });
+
+        // File download
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        const fileName = `Completed_${typeLabel}_Orders_${moment().format('DDMMYYYY_HHmm')}.xlsx`;
+        res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+
+        await workbook.xlsx.write(res);
+        res.end();
+    } catch (error) {
+        console.error("Export completed orders error:", error);
+        res.status(500).json({ success: false, message: "Export failed", error: error.message });
+    }
+};
