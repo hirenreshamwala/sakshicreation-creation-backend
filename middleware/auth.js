@@ -81,7 +81,7 @@ exports.authenticateToken = async (req, res, next) => {
     const decoded = jwt.verify(token, process.env.JWT_SECRET || "your_jwt_secret_key");
 
     // Check staff existence
-    const staff = await Staff.findById(decoded.id).select("_id").lean();
+    const staff = await Staff.findById(decoded.id).select("_id companyName").lean();
 
     if (!staff) {
       return res.status(403).json({

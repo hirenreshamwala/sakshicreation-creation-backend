@@ -117,6 +117,128 @@ exports.getInventorySummary = async (req, res) => {
   }
 };
 
+// Get paper inventory summary by material for staff (printer, binder, booklet)
+exports.getStaffPaperInventory = async (req, res) => {
+  try {
+    const { category } = req.params;
+    const user = req.user;
+    const {
+      page = 1,
+      pageSize = 10,
+      isPagination = true
+    } = req.body;
+
+    // if (!["printer", "binder", "booklet"].includes(category)) {
+    //   return res.status(400).json({
+    //     success: false,
+    //     message: "Invalid category. Must be printer, binder, or booklet",
+    //   });
+    // }
+
+    console.log(req.user, 'bgsdghdgdgdgdgd')
+
+    // Get all inventory records for this category
+    const inventoryRecords = await Inventory.find({ forCompany: user.id, for: category })
+      .populate("material", "materialName materialSize materialGSM")
+      .populate("vendor", "name")
+      .populate("purchase", "billNumber ratePerSheet")
+      .sort({ date: -1 })
+      .lean();
+
+    // Group by material and calculate totals
+    const materialMap = new Map();
+
+    for (const record of inventoryRecords) {
+      const materialId = record.material?._id?.toString() || 'unknown';
+      const materialName = record.material?.materialName || 'Unknown Material';
+      const materialSize = record.material?.materialSize || '-';
+      const materialGSM = record.material?.materialGSM || '-';
+
+      if (!materialMap.has(materialId)) {
+        materialMap.set(materialId, {
+          materialId,
+          materialName,
+          materialSize,
+          materialGSM,
+          totalPurchased: 0,
+          totalUsed: 0,
+          balance: 0,
+          inwardRecords: [],
+          outwardRecords: []
+        });
+      }
+
+      const materialData = materialMap.get(materialId);
+
+      if (record.type === 'inward') {
+        materialData.totalPurchased += record.quantity || 0;
+        materialData.inwardRecords.push({
+          date: record.date,
+          quantity: record.quantity,
+          vendor: record.vendor?.name,
+          billNumber: record.purchase?.billNumber,
+          ratePerSheet: record.purchase?.ratePerSheet
+        });
+      } else if (record.type === 'outward') {
+        materialData.totalUsed += record.quantity || 0;
+        materialData.outwardRecords.push({
+          date: record.date,
+          quantity: record.quantity,
+          orderId: record.orderId
+        });
+      }
+    }
+
+    // Calculate balance for each material
+    for (const [id, data] of materialMap) {
+      data.balance = data.totalPurchased - data.totalUsed;
+    }
+
+    let result = Array.from(materialMap.values());
+
+    // Sort by material name
+    result.sort((a, b) => a.materialName.localeCompare(b.materialName));
+
+    // Pagination
+    let pagination = null;
+    if (isPagination) {
+      const skip = (page - 1) * pageSize;
+      const totalCount = result.length;
+      result = result.slice(skip, skip + pageSize);
+
+      pagination = {
+        currentPage: parseInt(page),
+        pageSize: parseInt(pageSize),
+        totalCount,
+        totalPages: Math.ceil(totalCount / pageSize),
+        hasNext: page < Math.ceil(totalCount / pageSize),
+        hasPrev: page > 1,
+      };
+    }
+
+    // Get overall summary
+    const overallSummary = {
+      totalPurchased: result.reduce((sum, item) => sum + item.totalPurchased, 0),
+      totalUsed: result.reduce((sum, item) => sum + item.totalUsed, 0),
+      totalBalance: result.reduce((sum, item) => sum + item.balance, 0)
+    };
+
+    res.status(200).json({
+      success: true,
+      data: result,
+      summary: overallSummary,
+      pagination,
+      message: "Staff paper inventory fetched successfully"
+    });
+  } catch (error) {
+    console.error("Error fetching staff paper inventory:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error fetching staff paper inventory: " + error.message,
+    });
+  }
+};
+
 exports.getAllInventory = async (req, res) => {
   try {
     const inventory = await Inventory.find({}, { __v: 0 })
