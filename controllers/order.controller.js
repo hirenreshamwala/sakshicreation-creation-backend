@@ -20,6 +20,92 @@ const computeNotificationSummary = async () => {
   return { designer, printer, binder, bookletBinder };
 };
 
+exports.cancelOrder = async (req, res) => {
+  try {
+    const { orderId, cancelRemarks } = req.body;
+
+    if (!orderId || !mongoose.Types.ObjectId.isValid(orderId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid order ID",
+      });
+    }
+
+    const order = await Order.findById(orderId);
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: "Order not found",
+      });
+    }
+
+    if (order.status === "Cancelled") {
+      return res.status(400).json({
+        success: false,
+        message: "Order is already cancelled",
+      });
+    }
+
+    const updatedOrder = await Order.findByIdAndUpdate(
+      orderId,
+      {
+        status: "Cancelled",
+        cancelRemarks: cancelRemarks || "",
+        cancelledAt: new Date(),
+      },
+      { new: true }
+    )
+      .populate("companyName", "companyName avatar")
+      .populate("bindingType", "name")
+      .populate({
+        path: "party",
+        select: "-__v",
+        populate: [
+          {
+            path: "address.marketName",
+            model: "Market",
+            select: "marketName",
+          },
+          {
+            path: "address.landMark",
+            model: "Market",
+            select: "landmark",
+          },
+          {
+            path: "address.area",
+            model: "Market",
+            select: "area",
+          },
+          {
+            path: "address.pincode",
+            model: "Market",
+            select: "pincode",
+          },
+        ],
+      })
+      .populate("productItem", "itemName")
+      .populate("createdBy")
+      .populate("designer", "name")
+      .populate({
+        path: "followUp.staff",
+        select: "firstName lastName avatar"
+      });
+
+    res.status(200).json({
+      success: true,
+      message: "Order cancelled successfully",
+      data: updatedOrder,
+    });
+  } catch (error) {
+    console.error("Error cancelling order:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to cancel order",
+      error: error.message,
+    });
+  }
+};
+
 // const Size = require('../models/size.model');
 exports.createOrder = async (req, res) => {
   try {
@@ -517,6 +603,10 @@ exports.getAllOrders = async (req, res) => {
       .populate("binder", "firstName lastName")
       .populate("bookletBinder", "firstName lastName")
       .populate("deliveryStaff", "firstName lastName")
+      .populate({
+          path: "followUp.staff",
+          select: "firstName lastName avatar"
+        })
       .sort({ createdAt: -1 });
 
     res.status(200).json({

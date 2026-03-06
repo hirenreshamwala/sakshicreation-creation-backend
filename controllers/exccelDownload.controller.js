@@ -18,6 +18,182 @@ const Party = require("../models/Party.model");
 const QpData = require("../models/qpOrder.model");
 const PaymentFolder = require('../models/paymentFolder.model');
 
+exports.exportCancelledOrdersToExcel = async (req, res) => {
+    try {
+        // Fetch cancelled orders
+        const { startDate, endDate } = req.body;
+
+        const filter = {
+            status: "Cancelled"
+        };
+
+        if (startDate && endDate) {
+            const start = new Date(startDate);
+            start.setHours(0, 0, 0, 0);
+            const end = new Date(endDate);
+            end.setHours(23, 59, 59, 999);
+            filter.cancelledAt = { $gte: start, $lte: end };
+        }
+
+        const orders = await Order.find(filter)
+            .populate("companyName", "companyName")
+            .populate("party", "partyName")
+            .populate("followUp.staff", "firstName lastName");
+
+        // Create Excel workbook
+        const workbook = new ExcelJS.Workbook();
+        const worksheet = workbook.addWorksheet('Cancelled Orders');
+
+        // Define columns
+        worksheet.columns = [
+            { header: 'Sr No', key: 'srNo', width: 10 },
+            { header: 'Order No.', key: 'orderNumber', width: 20 },
+            { header: 'Party Name', key: 'partyName', width: 30 },
+            { header: 'Followup Staff Name', key: 'followupStaff', width: 25 },
+            { header: 'Cancel Reason', key: 'cancelReason', width: 40 },
+            { header: 'Cancelled At', key: 'cancelledAt', width: 20 }
+        ];
+
+        // Add data to worksheet
+        orders.forEach((order, index) => {
+            worksheet.addRow({
+                srNo: index + 1,
+                orderNumber: order.orderNumber || '',
+                partyName: order.party?.partyName || '',
+                followupStaff: order.followUp?.staff ? `${order.followUp.staff.firstName} ${order.followUp.staff.lastName}` : '',
+                cancelReason: order.cancelRemarks || '',
+                cancelledAt: order.cancelledAt ? moment(order.cancelledAt).format('DD-MM-YYYY') : ''
+            });
+        });
+
+        // Style header row
+        worksheet.getRow(1).eachCell((cell) => {
+            cell.font = { bold: true };
+            cell.fill = {
+                type: 'pattern',
+                pattern: 'solid',
+                fgColor: { argb: 'FFCCCCCC' }
+            };
+            cell.border = {
+                top: { style: 'thin' },
+                left: { style: 'thin' },
+                bottom: { style: 'thin' },
+                right: { style: 'thin' }
+            };
+        });
+
+        // Auto fit columns
+        worksheet.columns.forEach(column => {
+            column.width = column.width || 15;
+        });
+
+        // Set response headers
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.setHeader('Content-Disposition', 'attachment; filename="Cancelled_Orders.xlsx"');
+
+        // Write workbook to response
+        await workbook.xlsx.write(res);
+        res.end();
+
+    } catch (error) {
+        console.error('Error exporting cancelled orders to Excel:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to export cancelled orders to Excel',
+            error: error.message
+        });
+    }
+};
+
+exports.exportPendingApprovalOrdersToExcel = async (req, res) => {
+    try {
+        // Fetch pending approval orders: orders where designer has done work but design not approved
+        const { startDate, endDate } = req.body;
+
+        const filter = {
+            designerStatus: "Done",
+            status: { $nin: ["Cancelled"] }
+        };
+
+        if (startDate && endDate) {
+            const start = new Date(startDate);
+            start.setHours(0, 0, 0, 0);
+            const end = new Date(endDate);
+            end.setHours(23, 59, 59, 999);
+            filter.createdAt = { $gte: start, $lte: end };
+        }
+
+        const orders = await Order.find(filter)
+            .populate("companyName", "companyName")
+            .populate("party", "partyName")
+            .populate("productItem", "itemName")
+            .populate("createdBy", "firstName lastName");
+
+        // Create Excel workbook
+        const workbook = new ExcelJS.Workbook();
+        const worksheet = workbook.addWorksheet('Pending Approval Orders');
+
+        // Define columns
+        worksheet.columns = [
+            { header: 'Sr No', key: 'srNo', width: 10 },
+            { header: 'Order No.', key: 'orderNumber', width: 20 },
+            { header: 'Party Name', key: 'partyName', width: 30 },
+            { header: 'Item Name', key: 'itemName', width: 25 },
+            { header: 'Ordered By', key: 'orderedBy', width: 20 },
+            { header: 'Order Date', key: 'orderDate', width: 20 }
+        ];
+
+        // Add data to worksheet
+        orders.forEach((order, index) => {
+            worksheet.addRow({
+                srNo: index + 1,
+                orderNumber: order.orderNumber || '',
+                partyName: order.party?.partyName || '',
+                itemName: order.productItem?.itemName || '',
+                orderedBy: order.createdBy ? `${order.createdBy.firstName} ${order.createdBy.lastName}` : '',
+                orderDate: moment(order.createdAt).format('DD-MM-YYYY')
+            });
+        });
+
+        // Style header row
+        worksheet.getRow(1).eachCell((cell) => {
+            cell.font = { bold: true };
+            cell.fill = {
+                type: 'pattern',
+                pattern: 'solid',
+                fgColor: { argb: 'FFCCCCCC' }
+            };
+            cell.border = {
+                top: { style: 'thin' },
+                left: { style: 'thin' },
+                bottom: { style: 'thin' },
+                right: { style: 'thin' }
+            };
+        });
+
+        // Auto fit columns
+        worksheet.columns.forEach(column => {
+            column.width = column.width || 15;
+        });
+
+        // Set response headers
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.setHeader('Content-Disposition', 'attachment; filename="Pending_Approval_Orders.xlsx"');
+
+        // Write workbook to response
+        await workbook.xlsx.write(res);
+        res.end();
+
+    } catch (error) {
+        console.error('Error exporting pending approval orders to Excel:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to export pending approval orders to Excel',
+            error: error.message
+        });
+    }
+};
+
 exports.exportAccountMastersToExcel = async (req, res) => {
     try {
         // Create a mock request object with pagination disabled
@@ -3212,7 +3388,7 @@ exports.exportPaymentFolderToExcel = async (req, res) => {
                 })
                 .sort({ createdAt: -1 });
 
-                
+
             // =============================
             // SEARCH FILTER
             // =============================
@@ -4072,8 +4248,8 @@ exports.exportPaymentFolderDifferenceToExcel = async (req, res) => {
 
                 if (!folder?.payments?.length) {
                     row.remarks = folder.remarks;
-                }else {
-                    row.remarks =folder?.payments[folder?.payments?.length - 1]?.note || folder.remarks;
+                } else {
+                    row.remarks = folder?.payments[folder?.payments?.length - 1]?.note || folder.remarks;
                 }
             }
 

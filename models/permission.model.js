@@ -30,31 +30,31 @@ const permissionSchema = new mongoose.Schema(
       create: { type: Boolean },
       edit: { type: Boolean },
       delete: { type: Boolean },
-      status: { type: Boolean ,default: false}
+      status: { type: Boolean, default: false }
     },
     sell_orders: {
-      view_global: { type: Boolean ,default: false},
-      view_own: { type: Boolean ,default: false},
-      create: { type: Boolean ,default: false},
-      edit: { type: Boolean ,default: false},
-      delete: { type: Boolean ,default: false},
+      view_global: { type: Boolean, default: false },
+      view_own: { type: Boolean, default: false },
+      create: { type: Boolean, default: false },
+      edit: { type: Boolean, default: false },
+      delete: { type: Boolean, default: false },
     },
     payment_folders: {
-      view_global: { type: Boolean ,default: false},
-      view_own: { type: Boolean ,default: false},
-      create: { type: Boolean ,default: false},
-      edit: { type: Boolean ,default: false},
-      delete: { type: Boolean ,default: false},
+      view_global: { type: Boolean, default: false },
+      view_own: { type: Boolean, default: false },
+      create: { type: Boolean, default: false },
+      edit: { type: Boolean, default: false },
+      delete: { type: Boolean, default: false },
     },
     driver: {
       view_global: { type: Boolean, default: false },
     },
     all_complains: {
-      view_global: { type: Boolean ,default: false},
-      view_own: { type: Boolean ,default: false},
-      create: { type: Boolean ,default: false},
-      edit: { type: Boolean ,default: false},
-      delete: { type: Boolean ,default: false},
+      view_global: { type: Boolean, default: false },
+      view_own: { type: Boolean, default: false },
+      create: { type: Boolean, default: false },
+      edit: { type: Boolean, default: false },
+      delete: { type: Boolean, default: false },
     },
     // for quality packaging company
     order_factory: {
@@ -126,6 +126,9 @@ const permissionSchema = new mongoose.Schema(
       create: { type: Boolean },
       edit: { type: Boolean },
       delete: { type: Boolean },
+    },
+    cancel_order: {
+      view_global: { type: Boolean, default: false },
     },
     printer_task: {
       view_global: { type: Boolean },

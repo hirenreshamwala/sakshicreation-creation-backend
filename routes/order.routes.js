@@ -19,6 +19,7 @@ const {
   markNotificationRead,
   assignFollowUp,
   updateFollowUpStatus,
+  cancelOrder,
 } = require("../controllers/order.controller");
 const { authenticateToken } = require("../middleware/auth");
 const ExcelDownloadController = require("../controllers/exccelDownload.controller");
@@ -28,6 +29,9 @@ router.post("/create", authenticateToken, createOrder);
 router.post("/all", getAllOrders);
 router.post("/all-pagination", getAllOrdersPagination);
 router.post("/download-excel", authenticateToken, ExcelDownloadController.exportOrdersToExcel);
+router.post("/cancel", authenticateToken, cancelOrder);
+router.post("/download-cancelled-excel", authenticateToken, ExcelDownloadController.exportCancelledOrdersToExcel);
+router.post("/download-pending-approval-excel", authenticateToken, ExcelDownloadController.exportPendingApprovalOrdersToExcel);
 
 router.post("/getbystaffid/:id", getOrdersByStaffId);
 

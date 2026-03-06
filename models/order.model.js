@@ -119,8 +119,18 @@ const orderSchema = new mongoose.Schema(
         "Booklet & Folder Binder",
         "Delivery",
         "Hold",
+        "Cancelled"
       ],
       default: "Received",
+    },
+    cancelRemarks: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+    cancelledAt: {
+      type: Date,
+      default: null,
     },
     orderNumber: {
       type: String,
