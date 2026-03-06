@@ -4792,7 +4792,7 @@ exports.exportPendingOrdersToExcel = async (req, res) => {
         orders.forEach(order => {
             let assignee = null;
             let assigneeName = '';
-            
+
             if (type === 'printer') {
                 assignee = order.printer;
                 assigneeName = assignee ? `${assignee.firstName || ''} ${assignee.lastName || ''}`.trim() : 'Unassigned';
@@ -4823,16 +4823,16 @@ exports.exportPendingOrdersToExcel = async (req, res) => {
             const assigneeHeaderRow = worksheet.addRow({
                 orderNumber: `${typeLabel}: ${assigneeName}`,
             });
-            
+
             // Style assignee header
             assigneeHeaderRow.font = { bold: true, size: 12 };
-            assigneeHeaderRow.fill = { 
-                type: 'pattern', 
-                pattern: 'solid', 
-                fgColor: { argb: 'FFE0E0E0' } 
+            assigneeHeaderRow.fill = {
+                type: 'pattern',
+                pattern: 'solid',
+                fgColor: { argb: 'FFE0E0E0' }
             };
             assigneeHeaderRow.getCell(1).alignment = { horizontal: 'left' };
-            
+
             // Merge cells for assignee header
             for (let i = 2; i <= 9; i++) {
                 assigneeHeaderRow.getCell(i).value = '';
@@ -4983,7 +4983,7 @@ exports.exportCompletedOrdersToExcel = async (req, res) => {
         orders.forEach(order => {
             let assignee = null;
             let assigneeName = '';
-            
+
             if (type === 'printer') {
                 assignee = order.printer;
                 assigneeName = assignee ? `${assignee.firstName || ''} ${assignee.lastName || ''}`.trim() : 'Unassigned';
@@ -5014,16 +5014,16 @@ exports.exportCompletedOrdersToExcel = async (req, res) => {
             const assigneeHeaderRow = worksheet.addRow({
                 orderNumber: `${typeLabel}: ${assigneeName}`,
             });
-            
+
             // Style assignee header
             assigneeHeaderRow.font = { bold: true, size: 12 };
-            assigneeHeaderRow.fill = { 
-                type: 'pattern', 
-                pattern: 'solid', 
-                fgColor: { argb: 'FFE0E0E0' } 
+            assigneeHeaderRow.fill = {
+                type: 'pattern',
+                pattern: 'solid',
+                fgColor: { argb: 'FFE0E0E0' }
             };
             assigneeHeaderRow.getCell(1).alignment = { horizontal: 'left' };
-            
+
             // Merge cells for assignee header
             for (let i = 2; i <= 10; i++) {
                 assigneeHeaderRow.getCell(i).value = '';
@@ -5058,6 +5058,222 @@ exports.exportCompletedOrdersToExcel = async (req, res) => {
         res.end();
     } catch (error) {
         console.error("Export completed orders error:", error);
+        res.status(500).json({ success: false, message: "Export failed", error: error.message });
+    }
+};
+
+// Staff Billing Excel Export
+exports.exportStaffBillingToExcel = async (req, res) => {
+    try {
+        const { staffId, staffType, startDate, endDate, isFullBill } = req.body;
+
+        if (!staffId || !staffType) {
+            return res.status(400).json({
+                success: false,
+                message: "Staff ID and Staff Type are required",
+            });
+        }
+
+        // Get staff details
+        const staff = await Staff.findById(staffId).select("firstName lastName");
+        if (!staff) {
+            return res.status(404).json({
+                success: false,
+                message: "Staff not found",
+            });
+        }
+
+        const staffName = `${staff.firstName} ${staff.lastName}`.trim();
+
+        // Build query based on staff type
+        let query = {};
+        let assignField = '';
+        let amountFields = {};
+
+        switch (staffType.toLowerCase()) {
+            case 'binder':
+                query = { binder: staffId };
+                assignField = 'binderAssignedAt';
+                amountFields = {
+                    amount: '$numberingAmount',
+                    rate: '$rateBook',
+                    totalAmount: '$totalAmount'
+                };
+                break;
+            case 'printer':
+                query = { printer: staffId };
+                assignField = 'printerAssignedAt';
+                amountFields = {
+                    amount: { $multiply: ['$qty', { $toDouble: '$printingrate' }] },
+                    rate: '$printingrate',
+                    totalAmount: { $multiply: ['$qty', { $toDouble: '$printingrate' }] }
+                };
+                break;
+            case 'booklet-binder':
+            case 'bookletbinder':
+                query = { bookletBinder: staffId };
+                assignField = 'bookletBinderAssignedAt';
+                amountFields = {
+                    amount: { $multiply: ['$qty', { $toDouble: '$ratePerUnit' }] },
+                    rate: '$ratePerUnit',
+                    totalAmount: { $multiply: ['$qty', { $toDouble: '$ratePerUnit' }] }
+                };
+                break;
+            default:
+                return res.status(400).json({
+                    success: false,
+                    message: "Invalid staff type. Use: binder, printer, or booklet-binder",
+                });
+        }
+
+        // Add date range filter if provided
+        if (startDate && endDate) {
+            const start = new Date(startDate);
+            start.setHours(0, 0, 0, 0);
+            const end = new Date(endDate);
+            end.setHours(23, 59, 59, 999);
+            query[assignField] = { $gte: start, $lte: end };
+        }
+
+        // Fetch orders with amount fields
+        const orders = await Order.find(query)
+            .populate("party", "partyName")
+            .populate("productItem", "itemName")
+            .populate("companyName", "companyName")
+            .select("orderNumber party size qty productItem companyName createdAt binderAssignedAt printerAssignedAt bookletBinderAssignedAt totalAmount numberingAmount rateBook printingrate ratePerUnit")
+            .sort({ createdAt: -1 });
+
+        if (orders.length === 0) {
+            return res.status(200).json({
+                success: true,
+                data: [],
+                message: "No orders found for this staff in the given period",
+            });
+        }
+
+        // Calculate amounts for each order
+        const ordersWithAmounts = orders.map(order => {
+            let amount = 0;
+            let rate = 0;
+            let total = 0;
+
+            switch (staffType.toLowerCase()) {
+                case 'binder':
+                    rate = parseFloat(order.rateBook) || 0;
+                    total = parseFloat(order.numberingAmount) || (parseFloat(order.totalAmount) || 0);
+                    amount = total;
+                    break;
+                case 'printer':
+                    rate = parseFloat(order.printingrate) || 0;
+                    total = (parseFloat(order.qty) || 0) * rate;
+                    amount = total;
+                    break;
+                case 'booklet-binder':
+                case 'bookletbinder':
+                    rate = parseFloat(order.ratePerUnit) || 0;
+                    total = (parseFloat(order.qty) || 0) * rate;
+                    amount = total;
+                    break;
+            }
+
+            return {
+                orderNumber: order.orderNumber,
+                partyName: order.party?.partyName || '-',
+                size: order.size || '-',
+                itemName: order.productItem?.itemName || '-',
+                qty: order.qty || 0,
+                rate: rate,
+                amount: amount,
+                date: order[assignField] ? moment(order[assignField]).format('DD-MM-YYYY') : '-',
+            };
+        });
+
+        // Calculate total
+        const totalAmount = ordersWithAmounts.reduce((sum, order) => sum + order.amount, 0);
+
+        // Create Excel workbook
+        const workbook = new ExcelJS.Workbook();
+        const worksheet = workbook.addWorksheet('Staff Billing');
+
+        // Staff name header
+        worksheet.mergeCells('A1:G1');
+        const headerCell = worksheet.getCell('A1');
+        headerCell.value = `${staffName} - ${staffType.toUpperCase()} BILL`;
+        headerCell.font = { bold: true, size: 14 };
+        headerCell.alignment = { horizontal: 'center', vertical: 'middle' };
+        headerCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8E8E8' } };
+
+        // Date range header
+        worksheet.mergeCells('A2:G2');
+        const dateRangeCell = worksheet.getCell('A2');
+        if (isFullBill) {
+            dateRangeCell.value = "Full Bill - All Time";
+        } else if (startDate && endDate) {
+            dateRangeCell.value = `Period: ${moment(startDate).format('DD-MM-YYYY')} to ${moment(endDate).format('DD-MM-YYYY')}`;
+        } else {
+            dateRangeCell.value = "All Orders";
+        }
+        dateRangeCell.font = { bold: true, size: 11 };
+        dateRangeCell.alignment = { horizontal: 'center', vertical: 'middle' };
+
+        // Define columns
+        worksheet.columns = [
+            { header: 'Sr No', key: 'srNo', width: 10 },
+            { header: 'Order No', key: 'orderNumber', width: 18 },
+            { header: 'Party Name', key: 'partyName', width: 30 },
+            { header: 'Size', key: 'size', width: 15 },
+            { header: 'Qty', key: 'qty', width: 10 },
+            { header: 'Rate', key: 'rate', width: 12 },
+            { header: 'Amount', key: 'amount', width: 15 },
+        ];
+
+        // Style header row
+        const headerRow = worksheet.getRow(3);
+        headerRow.font = { bold: true };
+        headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD3D3D3' } };
+        headerRow.alignment = { vertical: 'middle', horizontal: 'center' };
+
+        // Add data rows
+        let srNo = 1;
+        ordersWithAmounts.forEach(order => {
+            worksheet.addRow({
+                srNo: srNo++,
+                orderNumber: order.orderNumber || '-',
+                partyName: order.partyName,
+                size: order.size,
+                qty: order.qty,
+                rate: order.rate,
+                amount: order.amount,
+            });
+        });
+
+        // Add total row
+        const totalRowNum = worksheet.lastRow.number + 1;
+        worksheet.mergeCells(`A${totalRowNum}:E${totalRowNum}`);
+        const totalLabelCell = worksheet.getCell(`A${totalRowNum}`);
+        totalLabelCell.value = 'TOTAL';
+        totalLabelCell.font = { bold: true };
+        totalLabelCell.alignment = { horizontal: 'right' };
+
+        const totalAmountCell = worksheet.getCell(`G${totalRowNum}`);
+        totalAmountCell.value = totalAmount;
+        totalAmountCell.font = { bold: true };
+        totalAmountCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8E8E8' } };
+
+        // Format amount column as currency
+        worksheet.getColumn('G').numFmt = '₹#,##0.00';
+        worksheet.getColumn('F').numFmt = '₹#,##0.00';
+
+        // File download
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        const typeLabel = staffType.charAt(0).toUpperCase() + staffType.slice(1);
+        const fileName = `${staffName}_${typeLabel}_Bill_${moment().format('DDMMYYYY_HHmm')}.xlsx`;
+        res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+
+        await workbook.xlsx.write(res);
+        res.end();
+    } catch (error) {
+        console.error("Export staff billing error:", error);
         res.status(500).json({ success: false, message: "Export failed", error: error.message });
     }
 };

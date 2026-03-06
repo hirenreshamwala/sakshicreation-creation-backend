@@ -30,4 +30,7 @@ router.post("/export-bookletbinder-excel", ExcelDownloadController.exportBooklet
 router.post("/export-pending-orders-excel", ExcelDownloadController.exportPendingOrdersToExcel);
 router.post("/export-completed-orders-excel", ExcelDownloadController.exportCompletedOrdersToExcel);
 
+// Staff Billing Excel Export
+router.post("/export-staff-billing", ExcelDownloadController.exportStaffBillingToExcel);
+
 module.exports = router;
