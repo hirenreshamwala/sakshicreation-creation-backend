@@ -85,6 +85,15 @@ const permissionSchema = new mongoose.Schema(
       edit: { type: Boolean },
       delete: { type: Boolean },
     },
+    printer_inventory: {
+      view_global: { type: Boolean, default: false }
+    },
+    binder_inventory: {
+      view_global: { type: Boolean, default: false }
+    },
+    booklet_binder_inventory: {
+      view_global: { type: Boolean, default: false }
+    },
     inventory: {
       view_global: { type: Boolean },
       view_own: { type: Boolean },

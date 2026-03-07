@@ -33,6 +33,7 @@ const staffSchema = new mongoose.Schema(
     resetPasswordExpires: { type: Date },
     app_token: { type: String },
     web_token: { type: String },
+    rates: [{ size: String, price: Number, page: Number }],
     aadharFiles: {
       type: [{ type: String }], // Array of strings
       // required: false, // Made required

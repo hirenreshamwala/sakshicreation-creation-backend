@@ -939,67 +939,56 @@ exports.getAllOrdersPagination = async (req, res) => {
       includeCounts = true
     } = req.body;
 
-    // Build query object
-    const query = {};
+    // Build query object with Cancelled orders excluded
+    const query = {
+      status: { $ne: "Cancelled" } // Exclude Cancelled orders
+    };
 
     // Search functionality
     if (search) {
       const directOr = [
-        { "orderNumber": { $regex: search, $options: "i" } },
-        { "remarks": { $regex: search, $options: "i" } },
-        { "size": { $regex: search, $options: "i" } },
-        { "status": { $regex: search, $options: "i" } },
+        { orderNumber: { $regex: search, $options: "i" } },
+        { remarks: { $regex: search, $options: "i" } },
+        { size: { $regex: search, $options: "i" } },
+        { status: { $regex: search, $options: "i" } },
       ];
 
-      // For populated fields: Fetch matching IDs first, then add $in conditions
       // Company
       const matchingCompanies = await Company.find({
         companyName: { $regex: search, $options: "i" }
       }).select('_id').lean();
       const companyIds = matchingCompanies.map(c => c._id);
-      if (companyIds.length > 0) {
-        directOr.push({ companyName: { $in: companyIds } });
-      }
+      if (companyIds.length > 0) directOr.push({ companyName: { $in: companyIds } });
 
       // Party
       const matchingParties = await Party.find({
         partyName: { $regex: search, $options: "i" }
       }).select('_id').lean();
       const partyIds = matchingParties.map(p => p._id);
-      if (partyIds.length > 0) {
-        directOr.push({ party: { $in: partyIds } });
-      }
+      if (partyIds.length > 0) directOr.push({ party: { $in: partyIds } });
 
-      // Item (productItem)
+      // Item
       const matchingItems = await ProductItem.find({
         itemName: { $regex: search, $options: "i" }
       }).select('_id').lean();
       const itemIds = matchingItems.map(i => i._id);
-      if (itemIds.length > 0) {
-        directOr.push({ productItem: { $in: itemIds } });
-      }
+      if (itemIds.length > 0) directOr.push({ productItem: { $in: itemIds } });
 
-      // Ordered By (createdBy name)
+      // Created By (Staff)
       const nameRegex = new RegExp(search, "i");
       const matchingStaff = await Staff.find({
         $or: [
           { firstName: nameRegex },
           { lastName: nameRegex },
-          // Add if you have a full 'name' field: { name: nameRegex }
-        ],
-      })
-        .select("_id")
-        .lean();
-      const creatorIds = matchingStaff.map((s) => s._id);
-      if (creatorIds.length > 0) {
-        directOr.push({ createdBy: { $in: creatorIds } });
-      }
+        ]
+      }).select("_id").lean();
+      const creatorIds = matchingStaff.map(s => s._id);
+      if (creatorIds.length > 0) directOr.push({ createdBy: { $in: creatorIds } });
 
-      // Apply $or if multiple conditions
-      if (directOr.length > 0) {
-        query.$or = directOr;
-      }
+      if (directOr.length > 0) query.$or = directOr;
     }
+
+    // Date filter
     if (startDate || endDate) {
       query.createdAt = {};
       if (startDate) {
@@ -1014,130 +1003,65 @@ exports.getAllOrdersPagination = async (req, res) => {
       }
     }
 
-    // FIXED: Apply additional filters for all fields
+    // Additional filters
+
     // Company filter
     if (filters.company && filters.company.length > 0) {
       const companies = await Company.find({
         companyName: { $in: filters.company },
-      })
-        .select("_id")
-        .lean();
-
+      }).select("_id").lean();
       if (companies.length > 0) {
-        if (query.companyName) {
-          // Combine with existing if any
-          query.companyName.$in = [
-            ...(query.companyName.$in || []),
-            ...companies.map((c) => c._id),
-          ];
-        } else {
-          query.companyName = { $in: companies.map((c) => c._id) };
-        }
+        query.companyName = { $in: companies.map(c => c._id) };
       }
     }
+
     // Party filter
     if (filters.party && filters.party.length > 0) {
       const parties = await Party.find({
         partyName: { $in: filters.party },
-      })
-        .select("_id")
-        .lean();
+      }).select("_id").lean();
+      if (parties.length > 0) query.party = { $in: parties.map(p => p._id) };
+    }
 
-      if (parties.length > 0) {
-        if (query.party) {
-          query.party.$in = [
-            ...(query.party.$in || []),
-            ...parties.map((p) => p._id),
-          ];
-        } else {
-          query.party = { $in: parties.map((p) => p._id) };
-        }
-      }
-    }
-    // Order Status filter
+    // Order Status filter (exclude Cancelled)
     if (filters.orderStatus && filters.orderStatus.length > 0) {
-      if (query.status) {
-        query.status.$in = [
-          ...(query.status.$in || []),
-          ...filters.orderStatus,
-        ];
-      } else {
-        query.status = { $in: filters.orderStatus };
+      const filteredStatus = filters.orderStatus.filter(s => s !== "Cancelled");
+      if (filteredStatus.length > 0) {
+        query.status = query.status
+          ? { ...query.status, $in: filteredStatus }
+          : { $in: filteredStatus };
       }
     }
+
     // Item filter
     if (filters.item && filters.item.length > 0) {
       const itemDocs = await ProductItem.find({
         itemName: { $in: filters.item },
-      })
-        .select("_id")
-        .lean();
+      }).select("_id").lean();
+      if (itemDocs.length > 0) query.productItem = { $in: itemDocs.map(i => i._id) };
+    }
 
-      if (itemDocs.length > 0) {
-        if (query.productItem) {
-          query.productItem.$in = [
-            ...(query.productItem.$in || []),
-            ...itemDocs.map((i) => i._id),
-          ];
-        } else {
-          query.productItem = { $in: itemDocs.map((i) => i._id) };
-        }
-      }
-    }
     // Size filter
-    if (filters.size && filters.size.length > 0) {
-      if (query.size) {
-        query.size.$in = [...(query.size.$in || []), ...filters.size];
-      } else {
-        query.size = { $in: filters.size };
-      }
-    }
+    if (filters.size && filters.size.length > 0) query.size = { $in: filters.size };
+
     // Order Number filter
-    if (filters.orderNumber && filters.orderNumber.length > 0) {
-      if (query.orderNumber) {
-        query.orderNumber.$in = [
-          ...(query.orderNumber.$in || []),
-          ...filters.orderNumber,
-        ];
-      } else {
-        query.orderNumber = { $in: filters.orderNumber };
-      }
-    }
+    if (filters.orderNumber && filters.orderNumber.length > 0) query.orderNumber = { $in: filters.orderNumber };
+
     // Remarks filter
-    if (filters.remarks && filters.remarks.length > 0) {
-      if (query.remarks) {
-        query.remarks.$in = [...(query.remarks.$in || []), ...filters.remarks];
-      } else {
-        query.remarks = { $in: filters.remarks };
-      }
-    }
-    // Ordered By filter (unchanged, but now combines with search)
+    if (filters.remarks && filters.remarks.length > 0) query.remarks = { $in: filters.remarks };
+
+    // Ordered By filter
     if (filters.orderedBy && filters.orderedBy.length > 0) {
       const staffQuery = {
-        $or: filters.orderedBy.map((name) => ({
+        $or: filters.orderedBy.map(name => ({
           $or: [
-            {
-              firstName: {
-                $regex: `^${name.split(" ")[0] || ""}`,
-                $options: "i",
-              },
-            },
+            { firstName: { $regex: `^${name.split(" ")[0] || ""}`, $options: "i" } },
             { lastName: { $regex: name.split(" ")[1] || "", $options: "i" } },
-          ],
-        })),
+          ]
+        }))
       };
       const staffDocs = await Staff.find(staffQuery).select("_id").lean();
-
-      if (staffDocs.length > 0) {
-        if (query.createdBy) {
-          query.createdBy.$in = [
-            ...(query.createdBy.$in || []),
-            ...staffDocs.map((s) => s._id),
-          ];
-        } else {
-          query.createdBy = { $in: staffDocs.map((s) => s._id) };
-        }
-      }
+      if (staffDocs.length > 0) query.createdBy = { $in: staffDocs.map(s => s._id) };
     }
 
     // Get total count
@@ -1155,15 +1079,11 @@ exports.getAllOrdersPagination = async (req, res) => {
           path: "party",
           select: "-__v",
           populate: [
-            {
-              path: "address.marketName",
-              model: "Market",
-              select: "marketName",
-            },
+            { path: "address.marketName", model: "Market", select: "marketName" },
             { path: "address.landMark", model: "Market", select: "landmark" },
             { path: "address.area", model: "Market", select: "area" },
             { path: "address.pincode", model: "Market", select: "pincode" },
-          ],
+          ]
         })
         .populate("productItem", "itemName")
         .populate("createdBy", "firstName lastName")
@@ -1171,15 +1091,8 @@ exports.getAllOrdersPagination = async (req, res) => {
         .populate("printer", "firstName lastName")
         .populate("binder", "firstName lastName")
         .populate("bookletBinder", "firstName lastName")
-        .populate({
-          path: "followUp.staff",
-          select: "firstName lastName avatar"
-        })
-        .populate({
-          path: "followUp.taskId",
-          model: "AssignTask", // या जो भी आपका Task model का नाम है
-          select: "status rescheduleDate" // अपनी जरूरत के fields select करें
-        })
+        .populate({ path: "followUp.staff", select: "firstName lastName avatar" })
+        .populate({ path: "followUp.taskId", model: "AssignTask", select: "status rescheduleDate" })
         .sort({ createdAt: -1 });
     } else {
       orders = await Order.find(query)
@@ -1188,15 +1101,11 @@ exports.getAllOrdersPagination = async (req, res) => {
           path: "party",
           select: "-__v",
           populate: [
-            {
-              path: "address.marketName",
-              model: "Market",
-              select: "marketName",
-            },
+            { path: "address.marketName", model: "Market", select: "marketName" },
             { path: "address.landMark", model: "Market", select: "landmark" },
             { path: "address.area", model: "Market", select: "area" },
             { path: "address.pincode", model: "Market", select: "pincode" },
-          ],
+          ]
         })
         .populate("productItem", "itemName")
         .populate("createdBy", "firstName lastName")
@@ -1204,15 +1113,8 @@ exports.getAllOrdersPagination = async (req, res) => {
         .populate("printer", "firstName lastName")
         .populate("binder", "firstName lastName")
         .populate("bookletBinder", "firstName lastName")
-        .populate({
-          path: "followUp.staff",
-          select: "firstName lastName avatar"
-        })
-        .populate({
-          path: "followUp.taskId",
-          model: "AssignTask",
-          select: "status rescheduleDate"
-        })
+        .populate({ path: "followUp.staff", select: "firstName lastName avatar" })
+        .populate({ path: "followUp.taskId", model: "AssignTask", select: "status rescheduleDate" })
         .sort({ createdAt: -1 });
     }
 
@@ -1231,8 +1133,8 @@ exports.getAllOrdersPagination = async (req, res) => {
     res.status(200).json({
       success: true,
       data: orders,
-      pagination: pagination,
-      totalCount: totalCount,
+      pagination,
+      totalCount,
     });
   } catch (error) {
     console.error("Error getting orders:", error);
