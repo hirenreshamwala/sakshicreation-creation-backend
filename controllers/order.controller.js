@@ -596,7 +596,7 @@ exports.getAllOrders = async (req, res) => {
           },
         ],
       })
-      .populate("productItem", "itemName")
+      .populate("productItem", "itemName itemSize")
       .populate("createdBy", "firstName lastName")
       .populate("designer", "firstName lastName")
       .populate("printer", "firstName lastName")

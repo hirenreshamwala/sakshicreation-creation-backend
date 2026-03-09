@@ -38,6 +38,7 @@ exports.exportCancelledOrdersToExcel = async (req, res) => {
         const orders = await Order.find(filter)
             .populate("companyName", "companyName")
             .populate("party", "partyName")
+            .populate("productItem", "itemName")               // ✅ Add
             .populate("followUp.staff", "firstName lastName");
 
         // Create Excel workbook
@@ -48,22 +49,34 @@ exports.exportCancelledOrdersToExcel = async (req, res) => {
         worksheet.columns = [
             { header: 'Sr No', key: 'srNo', width: 10 },
             { header: 'Order No.', key: 'orderNumber', width: 20 },
+            { header: 'Order Date', key: 'orderDate', width: 15 }, // ✅ New
             { header: 'Party Name', key: 'partyName', width: 30 },
-            { header: 'Followup Staff Name', key: 'followupStaff', width: 25 },
+            { header: 'Item Name', key: 'itemName', width: 25 }, // ✅ New
+            { header: 'Item Size', key: 'itemSize', width: 15 }, // ✅ New
+            { header: 'Followup Staff', key: 'followupStaff', width: 25 },
             { header: 'Cancel Reason', key: 'cancelReason', width: 40 },
-            { header: 'Cancelled At', key: 'cancelledAt', width: 20 }
+            { header: 'Cancelled At', key: 'cancelledAt', width: 20 },
         ];
+
 
         // Add data to worksheet
         orders.forEach((order, index) => {
             worksheet.addRow({
                 srNo: index + 1,
                 orderNumber: order.orderNumber || '',
+                orderDate: moment(order.createdAt).format('DD-MM-YYYY'),                  // ✅ New
                 partyName: order.party?.partyName || '',
-                followupStaff: order.followUp?.staff ? `${order.followUp.staff.firstName} ${order.followUp.staff.lastName}` : '',
+                itemName: order.productItem?.itemName || '',                              // ✅ New
+                itemSize: order.size || '',                                               // ✅ New
+                followupStaff: order.followUp?.staff
+                    ? `${order.followUp.staff.firstName} ${order.followUp.staff.lastName}`
+                    : '',
                 cancelReason: order.cancelRemarks || '',
-                cancelledAt: order.cancelledAt ? moment(order.cancelledAt).format('DD-MM-YYYY') : ''
+                cancelledAt: order.cancelledAt
+                    ? moment(order.cancelledAt).format('DD-MM-YYYY')
+                    : '',
             });
+
         });
 
         // Style header row
@@ -223,14 +236,15 @@ exports.exportPendingApprovalOrdersToExcel = async (req, res) => {
         worksheet.columns = [
             { header: 'Sr No', key: 'srNo', width: 8 },
             { header: 'Order No.', key: 'orderNumber', width: 15 },
+            { header: 'Order Date', key: 'orderDate', width: 15 },
             { header: 'Party Name', key: 'partyName', width: 30 },
             { header: 'Item Name', key: 'itemName', width: 25 },
+            { header: 'Item Size', key: 'itemSize', width: 15 }, // ✅ New
             { header: 'Ordered By', key: 'orderedBy', width: 20 },
-            { header: 'Order Date', key: 'orderDate', width: 15 },
             { header: 'Order Status', key: 'currentStage', width: 20 },
             { header: 'Follow Up By', key: 'followUpBy', width: 20 },
-            { header: 'Task Assigned Date', key: 'taskAssignedDate', width: 20 }, // ✅ Pehli baar assign hua
-            { header: 'Rescheduled Date', key: 'rescheduleDate', width: 20 }, // ✅ Reschedule hua to yeh
+            { header: 'Task Assigned Date', key: 'taskAssignedDate', width: 20 },
+            { header: 'Rescheduled Date', key: 'rescheduleDate', width: 20 },
             { header: 'Task Status', key: 'taskStatus', width: 20 },
             { header: 'Task Remarks', key: 'followUpRemarks', width: 40 },
         ];
@@ -270,25 +284,21 @@ exports.exportPendingApprovalOrdersToExcel = async (req, res) => {
             worksheet.addRow({
                 srNo: index + 1,
                 orderNumber: order.orderNumber || '',
+                orderDate: moment(order.createdAt).format('DD-MM-YYYY'),
                 partyName: order.party?.partyName || '',
                 itemName: order.productItem?.itemName || '',
+                itemSize: order.size || '',                 // ✅ New
                 orderedBy: order.createdBy
                     ? `${order.createdBy.firstName} ${order.createdBy.lastName}`
                     : '',
-                orderDate: moment(order.createdAt).format('DD-MM-YYYY'),
                 currentStage: getStageStatusText(order),
                 followUpBy: followUpStaff,
-
-                // ✅ Jab pehli baar assign hua
                 taskAssignedDate: order.followUp?.assignedAt
                     ? moment(order.followUp.assignedAt).format('DD-MM-YYYY')
                     : '',
-
-                // ✅ Agar reschedule hua to date aayegi, nahi to blank
                 rescheduleDate: order.followUp?.taskId?.rescheduleDate
                     ? moment(order.followUp.taskId.rescheduleDate).format('DD-MM-YYYY')
                     : '',
-
                 taskStatus,
                 followUpRemarks,
             });
@@ -5275,54 +5285,6 @@ exports.exportStaffBillingToExcel = async (req, res) => {
             .select("orderNumber party size qty productItem companyName createdAt binderAssignedAt printerAssignedAt bookletBinderAssignedAt totalAmount numberingAmount rateBook printingrate ratePerUnit")
             .sort({ createdAt: -1 });
 
-        if (orders.length === 0) {
-            return res.status(200).json({
-                success: true,
-                data: [],
-                message: "No orders found for this staff in the given period",
-            });
-        }
-
-        // Calculate amounts for each order
-        const ordersWithAmounts = orders.map(order => {
-            let amount = 0;
-            let rate = 0;
-            let total = 0;
-
-            switch (staffType.toLowerCase()) {
-                case 'binder':
-                    rate = parseFloat(order.rateBook) || 0;
-                    total = parseFloat(order.numberingAmount) || (parseFloat(order.totalAmount) || 0);
-                    amount = total;
-                    break;
-                case 'printer':
-                    rate = parseFloat(order.printingrate) || 0;
-                    total = (parseFloat(order.qty) || 0) * rate;
-                    amount = total;
-                    break;
-                case 'booklet-binder':
-                case 'bookletbinder':
-                    rate = parseFloat(order.ratePerUnit) || 0;
-                    total = (parseFloat(order.qty) || 0) * rate;
-                    amount = total;
-                    break;
-            }
-
-            return {
-                orderNumber: order.orderNumber,
-                partyName: order.party?.partyName || '-',
-                size: order.size || '-',
-                itemName: order.productItem?.itemName || '-',
-                qty: order.qty || 0,
-                rate: rate,
-                amount: amount,
-                date: order[assignField] ? moment(order[assignField]).format('DD-MM-YYYY') : '-',
-            };
-        });
-
-        // Calculate total
-        const totalAmount = ordersWithAmounts.reduce((sum, order) => sum + order.amount, 0);
-
         // Create Excel workbook
         const workbook = new ExcelJS.Workbook();
         const worksheet = workbook.addWorksheet('Staff Billing');
@@ -5365,36 +5327,83 @@ exports.exportStaffBillingToExcel = async (req, res) => {
         headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD3D3D3' } };
         headerRow.alignment = { vertical: 'middle', horizontal: 'center' };
 
-        // Add data rows
-        let srNo = 1;
-        ordersWithAmounts.forEach(order => {
-            worksheet.addRow({
-                srNo: srNo++,
-                orderNumber: order.orderNumber || '-',
-                partyName: order.partyName,
-                size: order.size,
-                qty: order.qty,
-                rate: order.rate,
-                amount: order.amount,
+        // Check if orders exist
+        if (orders.length === 0) {
+            // Add a message row when no data found
+            worksheet.addRow([]);
+            worksheet.addRow(["No data found for export"]);
+        } else {
+            // Calculate amounts for each order
+            const ordersWithAmounts = orders.map(order => {
+                let amount = 0;
+                let rate = 0;
+                let total = 0;
+
+                switch (staffType.toLowerCase()) {
+                    case 'binder':
+                        rate = parseFloat(order.rateBook) || 0;
+                        total = parseFloat(order.numberingAmount) || (parseFloat(order.totalAmount) || 0);
+                        amount = total;
+                        break;
+                    case 'printer':
+                        rate = parseFloat(order.printingrate) || 0;
+                        total = (parseFloat(order.qty) || 0) * rate;
+                        amount = total;
+                        break;
+                    case 'booklet-binder':
+                    case 'bookletbinder':
+                        rate = parseFloat(order.ratePerUnit) || 0;
+                        total = (parseFloat(order.qty) || 0) * rate;
+                        amount = total;
+                        break;
+                }
+
+                return {
+                    orderNumber: order.orderNumber,
+                    partyName: order.party?.partyName || '-',
+                    size: order.size || '-',
+                    itemName: order.productItem?.itemName || '-',
+                    qty: order.qty || 0,
+                    rate: rate,
+                    amount: amount,
+                    date: order[assignField] ? moment(order[assignField]).format('DD-MM-YYYY') : '-',
+                };
             });
-        });
 
-        // Add total row
-        const totalRowNum = worksheet.lastRow.number + 1;
-        worksheet.mergeCells(`A${totalRowNum}:E${totalRowNum}`);
-        const totalLabelCell = worksheet.getCell(`A${totalRowNum}`);
-        totalLabelCell.value = 'TOTAL';
-        totalLabelCell.font = { bold: true };
-        totalLabelCell.alignment = { horizontal: 'right' };
+            // Calculate total
+            const totalAmount = ordersWithAmounts.reduce((sum, order) => sum + order.amount, 0);
 
-        const totalAmountCell = worksheet.getCell(`G${totalRowNum}`);
-        totalAmountCell.value = totalAmount;
-        totalAmountCell.font = { bold: true };
-        totalAmountCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8E8E8' } };
+            // Add data rows
+            let srNo = 1;
+            ordersWithAmounts.forEach(order => {
+                worksheet.addRow([
+                    srNo++,
+                    order.orderNumber || '-',
+                    order.partyName,
+                    order.size,
+                    order.qty,
+                    order.rate,
+                    order.amount
+                ]);
+            });
 
-        // Format amount column as currency
-        worksheet.getColumn('G').numFmt = '₹#,##0.00';
-        worksheet.getColumn('F').numFmt = '₹#,##0.00';
+            // Add total row
+            const totalRowNum = worksheet.lastRow.number + 1;
+            worksheet.mergeCells(`A${totalRowNum}:E${totalRowNum}`);
+            const totalLabelCell = worksheet.getCell(`A${totalRowNum}`);
+            totalLabelCell.value = 'TOTAL';
+            totalLabelCell.font = { bold: true };
+            totalLabelCell.alignment = { horizontal: 'right' };
+
+            const totalAmountCell = worksheet.getCell(`G${totalRowNum}`);
+            totalAmountCell.value = totalAmount;
+            totalAmountCell.font = { bold: true };
+            totalAmountCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8E8E8' } };
+
+            // Format amount column as currency
+            worksheet.getColumn('G').numFmt = '₹#,##0.00';
+            worksheet.getColumn('F').numFmt = '₹#,##0.00';
+        }
 
         // File download
         res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
