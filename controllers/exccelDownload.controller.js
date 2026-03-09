@@ -105,14 +105,96 @@ exports.exportCancelledOrdersToExcel = async (req, res) => {
     }
 };
 
+// Helper function - order ke upar se stage status nikalta hai
+const getStageStatusText = (order) => {
+    const status = order.status;
+
+    switch (status) {
+        case 'Designer': {
+            const designerName = order.designer
+                ? `${order.designer.firstName} ${order.designer.lastName}`
+                : 'Unassigned';
+            const designerStatus = order.designerStatus || 'Pending';
+
+            if (designerStatus === 'Pending') {
+                return `Designing Pending by ${designerName}`;
+            } else if (designerStatus === 'In Progress') {
+                return `Designing In Progress by ${designerName}`;
+            } else if (designerStatus === 'Done') {
+                return `Designing Done by ${designerName} - Awaiting Approval`;
+            } else if (designerStatus === 'Rework') {
+                return `Designing Rework by ${designerName}`;
+            } else if (designerStatus === 'Approved') {
+                return `Design Approved by ${designerName}`;
+            }
+            return `Designing ${designerStatus} by ${designerName}`;
+        }
+
+        case 'Printer': {
+            const printerName = order.printer
+                ? `${order.printer.firstName} ${order.printer.lastName}`
+                : 'Unassigned';
+            const printerStatus = order.printerStatus || 'Pending';
+
+            if (printerStatus === 'Pending') {
+                return `Printing Pending by ${printerName}`;
+            } else if (printerStatus === 'In Progress') {
+                return `Printing In Progress by ${printerName}`;
+            } else if (printerStatus === 'Done') {
+                return `Printing Done by ${printerName}`;
+            }
+            return `Printing ${printerStatus} by ${printerName}`;
+        }
+
+        case 'Binder': {
+            const binderName = order.binder
+                ? `${order.binder.firstName} ${order.binder.lastName}`
+                : 'Unassigned';
+            const binderStatus = order.binderStatus || 'Pending';
+
+            if (binderStatus === 'Pending') {
+                return `Binding Pending by ${binderName}`;
+            } else if (binderStatus === 'In Progress') {
+                return `Binding In Progress by ${binderName}`;
+            } else if (binderStatus === 'Done') {
+                return `Binding Done by ${binderName}`;
+            }
+            return `Binding ${binderStatus} by ${binderName}`;
+        }
+
+        case 'Booklet & Folder Binder': {
+            const bookletName = order.bookletBinder
+                ? `${order.bookletBinder.firstName} ${order.bookletBinder.lastName}`
+                : 'Unassigned';
+            const bookletStatus = order.bookletBinderStatus || 'Pending';
+
+            if (bookletStatus === 'Pending') {
+                return `Booklet Binding Pending by ${bookletName}`;
+            } else if (bookletStatus === 'In Progress') {
+                return `Booklet Binding In Progress by ${bookletName}`;
+            } else if (bookletStatus === 'Done') {
+                return `Booklet Binding Done by ${bookletName}`;
+            }
+            return `Booklet Binding ${bookletStatus} by ${bookletName}`;
+        }
+
+        case 'Received':
+            return 'Order Received - Not Yet Assigned';
+
+        case 'Hold':
+            return 'Order On Hold';
+
+        default:
+            return status || '';
+    }
+};
+
 exports.exportPendingApprovalOrdersToExcel = async (req, res) => {
     try {
-        // Fetch pending approval orders: orders where designer has done work but design not approved
         const { startDate, endDate } = req.body;
 
         const filter = {
-            designerStatus: "Done",
-            status: { $nin: ["Cancelled"] }
+            status: { $nin: ["Cancelled", "Delivery"] }
         };
 
         if (startDate && endDate) {
@@ -127,35 +209,92 @@ exports.exportPendingApprovalOrdersToExcel = async (req, res) => {
             .populate("companyName", "companyName")
             .populate("party", "partyName")
             .populate("productItem", "itemName")
-            .populate("createdBy", "firstName lastName");
+            .populate("createdBy", "firstName lastName")
+            .populate("designer", "firstName lastName")        // ✅ Add
+            .populate("printer", "firstName lastName")         // ✅ Add
+            .populate("binder", "firstName lastName")          // ✅ Add
+            .populate("bookletBinder", "firstName lastName")   // ✅ Add
+            .populate("followUp.staff", "firstName lastName")
+            .populate("followUp.taskId", "status rescheduleDate remarks"); // taskId populate
 
-        // Create Excel workbook
         const workbook = new ExcelJS.Workbook();
-        const worksheet = workbook.addWorksheet('Pending Approval Orders');
+        const worksheet = workbook.addWorksheet('Pending Orders');
 
-        // Define columns
         worksheet.columns = [
-            { header: 'Sr No', key: 'srNo', width: 10 },
-            { header: 'Order No.', key: 'orderNumber', width: 20 },
+            { header: 'Sr No', key: 'srNo', width: 8 },
+            { header: 'Order No.', key: 'orderNumber', width: 15 },
             { header: 'Party Name', key: 'partyName', width: 30 },
             { header: 'Item Name', key: 'itemName', width: 25 },
             { header: 'Ordered By', key: 'orderedBy', width: 20 },
-            { header: 'Order Date', key: 'orderDate', width: 20 }
+            { header: 'Order Date', key: 'orderDate', width: 15 },
+            { header: 'Order Status', key: 'currentStage', width: 20 },
+            { header: 'Follow Up By', key: 'followUpBy', width: 20 },
+            { header: 'Task Assigned Date', key: 'taskAssignedDate', width: 20 }, // ✅ Pehli baar assign hua
+            { header: 'Rescheduled Date', key: 'rescheduleDate', width: 20 }, // ✅ Reschedule hua to yeh
+            { header: 'Task Status', key: 'taskStatus', width: 20 },
+            { header: 'Task Remarks', key: 'followUpRemarks', width: 40 },
         ];
 
-        // Add data to worksheet
         orders.forEach((order, index) => {
+            // Current stage ka sub-status nikalna
+            let stageStatus = '';
+            switch (order.status) {
+                case 'Designer':
+                    stageStatus = order.designerStatus || '';
+                    break;
+                case 'Printer':
+                    stageStatus = order.printerStatus || '';
+                    break;
+                case 'Binder':
+                    stageStatus = order.binderStatus || '';
+                    break;
+                case 'Booklet & Folder Binder':
+                    stageStatus = order.bookletBinderStatus || '';
+                    break;
+                default:
+                    stageStatus = '';
+            }
+
+            const followUpStaff = order.followUp?.staff
+                ? `${order.followUp.staff.firstName} ${order.followUp.staff.lastName}`
+                : '';
+
+            const taskStatus = order.followUp?.taskId?.status || '';
+
+            const rescheduleDate = order.followUp?.taskId?.rescheduleDate
+                ? moment(order.followUp.taskId.rescheduleDate).format('DD-MM-YYYY')
+                : '';
+
+            const followUpRemarks = order.followUp?.remarks || '';
+
             worksheet.addRow({
                 srNo: index + 1,
                 orderNumber: order.orderNumber || '',
                 partyName: order.party?.partyName || '',
                 itemName: order.productItem?.itemName || '',
-                orderedBy: order.createdBy ? `${order.createdBy.firstName} ${order.createdBy.lastName}` : '',
-                orderDate: moment(order.createdAt).format('DD-MM-YYYY')
+                orderedBy: order.createdBy
+                    ? `${order.createdBy.firstName} ${order.createdBy.lastName}`
+                    : '',
+                orderDate: moment(order.createdAt).format('DD-MM-YYYY'),
+                currentStage: getStageStatusText(order),
+                followUpBy: followUpStaff,
+
+                // ✅ Jab pehli baar assign hua
+                taskAssignedDate: order.followUp?.assignedAt
+                    ? moment(order.followUp.assignedAt).format('DD-MM-YYYY')
+                    : '',
+
+                // ✅ Agar reschedule hua to date aayegi, nahi to blank
+                rescheduleDate: order.followUp?.taskId?.rescheduleDate
+                    ? moment(order.followUp.taskId.rescheduleDate).format('DD-MM-YYYY')
+                    : '',
+
+                taskStatus,
+                followUpRemarks,
             });
         });
 
-        // Style header row
+        // Header styling
         worksheet.getRow(1).eachCell((cell) => {
             cell.font = { bold: true };
             cell.fill = {
@@ -171,24 +310,17 @@ exports.exportPendingApprovalOrdersToExcel = async (req, res) => {
             };
         });
 
-        // Auto fit columns
-        worksheet.columns.forEach(column => {
-            column.width = column.width || 15;
-        });
-
-        // Set response headers
         res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-        res.setHeader('Content-Disposition', 'attachment; filename="Pending_Approval_Orders.xlsx"');
+        res.setHeader('Content-Disposition', 'attachment; filename="Pending_Orders.xlsx"');
 
-        // Write workbook to response
         await workbook.xlsx.write(res);
         res.end();
 
     } catch (error) {
-        console.error('Error exporting pending approval orders to Excel:', error);
+        console.error('Error exporting pending orders to Excel:', error);
         res.status(500).json({
             success: false,
-            message: 'Failed to export pending approval orders to Excel',
+            message: 'Failed to export pending orders to Excel',
             error: error.message
         });
     }
