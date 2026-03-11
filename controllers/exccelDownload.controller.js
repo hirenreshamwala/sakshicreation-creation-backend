@@ -680,24 +680,24 @@ const getTasksDataForExcel = async (req) => {
             },
 
             // 8. PARTY ADDRESS → LANDMARK
-            {
-                $lookup: {
-                    from: "markets",
-                    localField: "partyData.address.landMark",
-                    foreignField: "_id",
-                    as: "landMarkData",
-                },
-            },
+            // {
+            //     $lookup: {
+            //         from: "markets",
+            //         localField: "partyData.address.landMark",
+            //         foreignField: "_id",
+            //         as: "landMarkData",
+            //     },
+            // },
 
-            // 9. PARTY ADDRESS → PINCODE
-            {
-                $lookup: {
-                    from: "markets",
-                    localField: "partyData.address.pincode",
-                    foreignField: "_id",
-                    as: "pincodeData",
-                },
-            },
+            // // 9. PARTY ADDRESS → PINCODE
+            // {
+            //     $lookup: {
+            //         from: "markets",
+            //         localField: "partyData.address.pincode",
+            //         foreignField: "_id",
+            //         as: "pincodeData",
+            //     },
+            // },
 
             // 10. COMPANY → OWNER
             {
@@ -887,37 +887,26 @@ const getTasksDataForExcel = async (req) => {
 
             let filterStaffIds = [];
 
-            for (const name of assignToNames) {
-                if (mongoose.Types.ObjectId.isValid(name)) {
-                    filterStaffIds.push(new mongoose.Types.ObjectId(name));
-                } else {
+            const staffResults = await Promise.all(
+                assignToNames.map(async (name) => {
+                    if (mongoose.Types.ObjectId.isValid(name)) {
+                        return [new mongoose.Types.ObjectId(name)];
+                    }
                     const parts = name.split(" ").filter(Boolean);
-                    let staffQuery = { $or: [] };
-
-                    if (parts.length >= 2) {
-                        staffQuery.$or.push({
+                    const staffQuery = parts.length >= 2
+                        ? {
                             $and: [
                                 { firstName: { $regex: `^${parts[0]}$`, $options: "i" } },
-                                { lastName: { $regex: `^${parts.slice(1).join(" ")}$`, $options: "i" } },
-                            ],
-                        });
-                    } else {
-                        staffQuery.$or.push({
-                            firstName: { $regex: `^${parts[0]}$`, $options: "i" },
-                        });
-                    }
+                                { lastName: { $regex: `^${parts.slice(1).join(" ")}$`, $options: "i" } }
+                            ]
+                        }
+                        : { firstName: { $regex: `^${parts[0]}$`, $options: "i" } };
 
-                    const staffs = await mongoose
-                        .model("Staff")
-                        .find(staffQuery)
-                        .select("_id firstName lastName");
-                    filterStaffIds.push(...staffs.map((s) => s._id));
-                }
-            }
-
-            filterStaffIds = [
-                ...new Set(filterStaffIds.map((id) => id.toString())),
-            ].map((id) => new mongoose.Types.ObjectId(id));
+                    const staffs = await mongoose.model("Staff").find(staffQuery).select("_id").lean();
+                    return staffs.map(s => s._id);
+                })
+            );
+            filterStaffIds = staffResults.flat();
 
             if (filterStaffIds.length === 0) {
                 return { success: true, data: [], count: 0 };
@@ -1065,7 +1054,7 @@ const getTasksDataForExcel = async (req) => {
             },
         });
 
-        const rawTasks = await assignTaskModel.aggregate(pipeline);
+        const rawTasks = await assignTaskModel.aggregate(pipeline).allowDiskUse(true);
 
         /* ================================
            TRANSFORM
@@ -1290,14 +1279,14 @@ exports.exportAssignTasksToExcel = async (req, res) => {
         headerRow.height = 20;
 
         // Auto-fit columns
-        worksheet.columns.forEach((column) => {
-            let maxLen = column.header ? column.header.length : 10;
-            column.eachCell({ includeEmpty: true }, (cell) => {
-                const len = cell.value ? cell.value.toString().length : 0;
-                if (len > maxLen) maxLen = len;
-            });
-            column.width = Math.min(maxLen + 2, 50);
-        });
+        // worksheet.columns.forEach((column) => {
+        //     let maxLen = column.header ? column.header.length : 10;
+        //     column.eachCell({ includeEmpty: true }, (cell) => {
+        //         const len = cell.value ? cell.value.toString().length : 0;
+        //         if (len > maxLen) maxLen = len;
+        //     });
+        //     column.width = Math.min(maxLen + 2, 50);
+        // });
 
         res.setHeader(
             "Content-Type",
