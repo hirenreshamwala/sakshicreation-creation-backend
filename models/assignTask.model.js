@@ -52,5 +52,13 @@ const assignTaskSchema = new mongoose.Schema({
   
 }, { timestamps: true });
 
+assignTaskSchema.index({ date: 1 });
+assignTaskSchema.index({ status: 1 });
+assignTaskSchema.index({ companyName: 1 });
+assignTaskSchema.index({ assignTo: 1 });
+assignTaskSchema.index({ isRescheduledTask: 1 });
+assignTaskSchema.index({ date: 1, status: 1, assignTo: 1 }) // Compound index
+assignTaskSchema.index({ "partyName.address.marketName": 1 })
+assignTaskSchema.index({ "partyName.address.area": 1 })
 
 module.exports = mongoose.model("AssignTask", assignTaskSchema);
