@@ -3254,6 +3254,8 @@ exports.exportPaymentFolderToExcel = async (req, res) => {
             { header: "PARTY NAME", key: "partyName", width: 30 },
             { header: "PHONE NO", key: "phoneNumber", width: 18 },
             { header: "CONTACT PERSON NAME", key: "contactPerson", width: 22 },
+            { header: "UNIT NO", key: "unitNo", width: 15 },
+            { header: "MARKET NAME", key: "marketName", width: 20 },
             { header: "OLD", key: "OLD", width: 14 },
             ...monthColumns,
             { header: "TOTAL", key: "TOTAL", width: 15 },
@@ -3507,10 +3509,14 @@ exports.exportPaymentFolderToExcel = async (req, res) => {
                 ...query,
             })
                 .populate({
-                    path: "party",
-                    select:
-                        "partyName contactMobileNo ownerMobileNo contactPerson ownerName contactWhatsAppNo contactForPayment",
-                })
+    path: "party",
+    select: "partyName address contactMobileNo ownerMobileNo contactPerson ownerName contactWhatsAppNo contactForPayment",
+    populate: {
+        path: "address.marketName",   // Market ObjectId ko populate karo
+        select: "marketName",               // Market model mein jo field hai naam ka
+        model: "Market"
+    }
+})
                 .populate("assignedTo", "firstName lastName")
                 .populate({
                     path: "assignTask",
@@ -3571,6 +3577,8 @@ exports.exportPaymentFolderToExcel = async (req, res) => {
                 if (!partyMap.has(partyId)) {
                     const base = {
                         partyName: party.partyName || "-",
+                        unitNo: party.address?.unitNo || "-",
+                        marketName: party.address?.marketName?.marketName || "-",
                         phoneNumber:
                             party.contactMobileNo || party.ownerMobileNo || party.contactWhatsAppNo || "-",
                         contactPerson:
@@ -3736,12 +3744,12 @@ exports.exportPaymentFolderToExcel = async (req, res) => {
                 });
 
                 // Format currency columns
-                const monthColumnStart = 6;
+                const monthColumnStart = 8;
                 const monthCount = monthColumns.length;
                 const totalColIndex = monthColumnStart + monthCount;
                 const differenceColIndex = totalColIndex + 1;
                 const currencyColumns = [
-                    5, // OLD
+                    7, // OLD
                     ...Array.from({ length: monthCount }, (_, i) => monthColumnStart + i),
                     totalColIndex,
                     differenceColIndex
@@ -3751,7 +3759,7 @@ exports.exportPaymentFolderToExcel = async (req, res) => {
                 });
 
                 // Apply conditional formatting for task status
-                const statusCell = newRow.getCell(12); // Task Status column
+                const statusCell = newRow.getCell(differenceColIndex + 3); // Task Status column
                 if (data.taskStatus.includes('Rescheduled')) {
                     statusCell.font = { color: { argb: 'FFFF9800' } }; // Orange
                     statusCell.font = { bold: true };
@@ -3921,6 +3929,8 @@ exports.exportPaymentFolderDifferenceToExcel = async (req, res) => {
             { header: "PARTY NAME", key: "partyName", width: 30 },
             { header: "PHONE NO", key: "phoneNumber", width: 18 },
             { header: "CONTACT PERSON NAME", key: "contactPerson", width: 22 },
+            { header: "UNIT NO", key: "unitNo", width: 15 },
+            { header: "MARKET NAME", key: "marketName", width: 20 },
             { header: "OLD", key: "OLD", width: 14 },
             ...monthColumns,
             { header: "TOTAL", key: "TOTAL", width: 15 },
@@ -4173,8 +4183,12 @@ exports.exportPaymentFolderDifferenceToExcel = async (req, res) => {
             })
                 .populate({
                     path: "party",
-                    select:
-                        "partyName contactMobileNo ownerMobileNo contactPerson ownerName contactWhatsAppNo contactForPayment",
+                    select: "partyName address contactMobileNo ownerMobileNo contactPerson ownerName contactWhatsAppNo contactForPayment",
+                    populate: {
+                        path: "address.marketName",
+                        select: "marketName",
+                        model: "Market"
+                    }
                 })
                 .populate("assignedTo", "firstName lastName")
                 .populate({
@@ -4232,6 +4246,8 @@ exports.exportPaymentFolderDifferenceToExcel = async (req, res) => {
                 if (!partyMap.has(partyId)) {
                     const base = {
                         partyName: party.partyName || "-",
+                        unitNo: party.address?.unitNo || "-",
+                        marketName: party.address?.marketName?.marketName || "-",
                         phoneNumber:
                             party.contactMobileNo || party.ownerMobileNo || party.contactWhatsAppNo || "-",
                         contactPerson:
@@ -4399,12 +4415,12 @@ exports.exportPaymentFolderDifferenceToExcel = async (req, res) => {
                 });
 
                 // Format currency columns - SIRF NUMBER FORMATTING, KOI COLOR NAHI
-                const monthColumnStart = 6;
+                const monthColumnStart = 8;
                 const monthCount = monthColumns.length;
                 const totalColIndex = monthColumnStart + monthCount;
                 const differenceColIndex = totalColIndex + 1;
                 const currencyColumns = [
-                    5, // OLD
+                    7, // OLD
                     ...Array.from({ length: monthCount }, (_, i) => monthColumnStart + i),
                     totalColIndex,
                     differenceColIndex
@@ -4417,7 +4433,7 @@ exports.exportPaymentFolderDifferenceToExcel = async (req, res) => {
                 });
 
                 // Task status formatting (yeh required hai kyunki user ko status dikhna chahiye)
-                const statusCell = newRow.getCell(12); // Task Status column
+                const statusCell = newRow.getCell(differenceColIndex + 3); // Task Status column
                 // if (data.taskStatus.includes('Rescheduled')) {
                 //     statusCell.font = { color: { argb: 'FFFF9800' }, bold: true };
                 // } else if (data.taskStatus.includes('Pending')) {
