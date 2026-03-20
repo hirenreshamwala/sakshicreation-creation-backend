@@ -509,17 +509,17 @@ exports.updateAssignTask = async (req, res) => {
         }
       });
 
-      if (duplicateTask) {
-        return res.status(400).json({
-          success: false,
-          message: `Task already exists for this party on date: ${checkDate.toISOString().split('T')[0]}`,
-          details: {
-            existingTaskId: duplicateTask._id,
-            partyId: checkPartyId,
-            date: checkDate
-          }
-        });
-      }
+      // if (duplicateTask) {
+      //   return res.status(400).json({
+      //     success: false,
+      //     message: `Task already exists for this party on date: ${checkDate.toISOString().split('T')[0]}`,
+      //     details: {
+      //       existingTaskId: duplicateTask._id,
+      //       partyId: checkPartyId,
+      //       date: checkDate
+      //     }
+      //   });
+      // }
     }
 
     // 6. Status and rescheduleDate validation
