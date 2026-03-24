@@ -161,13 +161,13 @@ exports.getStaff = async (req, res) => {
     const staff = await Staff.find()
       .populate({
         path: "role",
-        select: "-permissions -totalUser -isDelete -__v", // ❌ exclude permissions
+        select: "-permissions -totalUser -isDelete -__v -company", // ❌ exclude permissions
       })
-       .populate({
+      .populate({
         path: "CompanyName",
-        select: "-createdAt -updatedAt -__v ", // ❌ exclude permissions
+        select: "-default -avatar -createdAt -updatedAt -__v ", // ❌ exclude permissions
       })
-      .select("-password -orders -web_token -isDelete -__v")
+      .select("-password -app_token -orders -web_token -email -isDelete -__v -createdAt -updatedAt -aadharNo -birthDay -address -whatsappNo -mobileNo -status")
       .lean();
 
     res.status(200).json({

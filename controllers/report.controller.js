@@ -1378,68 +1378,65 @@ const getqpInactiveParties = async (req, res) => {
       message: "QP Order Inactive Parties with Last Order Info",
       data: populatedParties,
     });
-  } catch (error) {
-    console.error("Error fetching inactive parties:", error);
-    return res.status(500).json({ success: false, message: "Server Error" });
   }
+  catch (error) {
+  console.error("Error fetching inactive parties:", error);
+  return res.status(500).json({ success: false, message: "Server Error" });
+}
 };
 
-const getscOrderInactiveParties = async (req, res) => {
+// NEW: Optimized paginated API for QP Inactive Parties
+const getqpInactivePartiesPaginated = async (req, res) => {
   try {
-    const days = parseInt(req.body.days) || 30;
+    const { days = 30, page = 1, limit = 10, partyType } = req.body;
+    const pageNum = parseInt(page) || 1;
+    const limitNum = parseInt(limit) || 10;
+    const skip = (pageNum - 1) * limitNum;
     const cutoffDate = new Date();
-    cutoffDate.setDate(cutoffDate.getDate() - days);
+    cutoffDate.setDate(cutoffDate.getDate() - parseInt(days));
 
+    // Find company
     const company = await CompanyName.findOne({
-      companyName: { $regex: "sakshi creation", $options: "i" },
-    });
+      companyName: { $regex: "quality packaging", $options: "i" },
+    }).select("_id").lean();
+
     if (!company) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Company not found" });
+      return res.status(404).json({ success: false, message: "Company not found" });
     }
 
-    const inactiveParties = await Party.aggregate([
-      { $match: { companyName: company._id } },
+    // Build match conditions for party type
+    let partyTypeMatch = {};
+    if (partyType === 'Customer') {
+      partyTypeMatch = { partyTag: 'CUSTOMER' };
+    } else if (partyType === 'New Party') {
+      partyTypeMatch = { partyTag: 'NEW' };
+    }
 
-      // Lookup Orders (Order model)
+    // Get total count for pagination
+    const countPipeline = [
+      { $match: { companyName: company._id, ...partyTypeMatch } },
       {
         $lookup: {
-          from: "orders",
+          from: "qporders",
           localField: "_id",
           foreignField: "party",
           as: "orders",
-        },
+          pipeline: [{ $project: { createdAt: 1 } }]
+        }
       },
       {
         $addFields: {
-          lastOrderDate: { $max: "$orders.createdAt" },
-          lastOrderId: {
-            $let: {
-              vars: {
-                sortedOrders: {
-                  $sortArray: {
-                    input: "$orders",
-                    sortBy: { createdAt: -1 },
-                  },
-                },
-              },
-              in: { $arrayElemAt: ["$$sortedOrders._id", 0] },
-            },
-          },
-          // नया field: actualLastOrderDate जो lastOrderDate या createdAt use करे
           actualLastOrderDate: {
             $cond: {
               if: { $eq: [{ $max: "$orders.createdAt" }, null] },
-              then: "$createdAt", // Party का createdAt
+              then: "$createdAt",
               else: { $max: "$orders.createdAt" }
             }
           }
-        },
+        }
       },
       {
         $match: {
-          // Filter: actualLastOrderDate cutoffDate से पहले हो या null हो
           $or: [
             { actualLastOrderDate: { $lt: cutoffDate } },
             {
@@ -1449,51 +1446,271 @@ const getscOrderInactiveParties = async (req, res) => {
               ]
             }
           ]
-        },
+        }
       },
+      { $count: "total" }
+    ];
 
-      // Lookup AccountMaster + Staff
+    const countResult = await Party.aggregate(countPipeline);
+    const total = countResult[0]?.total || 0;
+
+    // Main aggregation with pagination
+    const inactiveParties = await Party.aggregate([
+      { $match: { companyName: company._id, ...partyTypeMatch } },
+      {
+        $lookup: {
+          from: "qporders",
+          localField: "_id",
+          foreignField: "party",
+          as: "orders",
+          pipeline: [
+            { $sort: { createdAt: -1 } },
+            { $limit: 1 },
+            { $project: { _id: 1, orderNo: 1, noOfPieces: 1, amount: 1, createdAt: 1, status: 1, orderdata: 1 } }
+          ]
+        }
+      },
+      {
+        $addFields: {
+          lastOrderDate: { $max: "$orders.createdAt" },
+          lastOrderId: { $arrayElemAt: ["$orders._id", 0] },
+          actualLastOrderDate: {
+            $cond: {
+              if: { $eq: [{ $max: "$orders.createdAt" }, null] },
+              then: "$createdAt",
+              else: { $max: "$orders.createdAt" }
+            }
+          }
+        }
+      },
+      {
+        $match: {
+          $or: [
+            { actualLastOrderDate: { $lt: cutoffDate } },
+            {
+              $and: [
+                { actualLastOrderDate: { $eq: null } },
+                { createdAt: { $lt: cutoffDate } }
+              ]
+            }
+          ]
+        }
+      },
+      { $skip: skip },
+      { $limit: limitNum },
       {
         $lookup: {
           from: "accountmasters",
           localField: "_id",
           foreignField: "party",
           as: "accountDetails",
-        },
+          pipeline: [{ $project: { createdBy: 1 } }]
+        }
       },
-      {
-        $unwind: { path: "$accountDetails", preserveNullAndEmptyArrays: true },
-      },
+      { $unwind: { path: "$accountDetails", preserveNullAndEmptyArrays: true } },
       {
         $lookup: {
           from: "staffs",
           localField: "accountDetails.createdBy",
           foreignField: "_id",
           as: "createdByDetails",
-        },
+          pipeline: [{ $project: { firstName: 1, lastName: 1 } }]
+        }
       },
-      {
-        $unwind: {
-          path: "$createdByDetails",
-          preserveNullAndEmptyArrays: true,
-        },
-      },
-
-      // Lookup Markets for address fields
+      { $unwind: { path: "$createdByDetails", preserveNullAndEmptyArrays: true } },
       {
         $lookup: {
           from: "markets",
           localField: "address.marketName",
           foreignField: "_id",
           as: "marketDetails",
-        },
+          pipeline: [{ $project: { marketName: 1 } }]
+        }
       },
       {
         $lookup: {
           from: "markets",
-          localField: "address.landMark",
+          localField: "address.area",
           foreignField: "_id",
-          as: "landMarkDetails",
+          as: "areaDetails",
+          pipeline: [{ $project: { area: 1 } }]
+        }
+      },
+      {
+        $lookup: {
+          from: "markets",
+          localField: "address.pincode",
+          foreignField: "_id",
+          as: "pincodeDetails",
+          pipeline: [{ $project: { pincode: 1 } }]
+        }
+      },
+      {
+        $project: {
+          _id: 1,
+          partyName: 1,
+          ownerName: 1,
+          ownerMobileNo: 1,
+          partyTag: 1,
+          lastOrderDate: 1,
+          actualLastOrderDate: 1,
+          lastOrderId: 1,
+          createdAt: 1,
+          createdBy: {
+            _id: "$createdByDetails._id",
+            firstName: "$createdByDetails.firstName",
+            lastName: "$createdByDetails.lastName"
+          },
+          address: {
+            unitNo: "$address.unitNo",
+            marketName: { $arrayElemAt: ["$marketDetails.marketName", 0] },
+            area: { $arrayElemAt: ["$areaDetails.area", 0] },
+            pincode: { $arrayElemAt: ["$pincodeDetails.pincode", 0] }
+          }
+        }
+      }
+    ]);
+
+    // Populate order data
+    const populatedParties = await QpData.populate(inactiveParties, {
+      path: "lastOrderId",
+      select: "_id orderNo noOfPieces amount createdAt status orderdata",
+      populate: {
+        path: "orderdata",
+        model: "packagingOption",
+        select: "_id ply length width height deckal paper1GSM paper2GSM paper3GSM noOfPieces ratePerPiece"
+      }
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "QP Order Inactive Parties (Paginated)",
+      data: populatedParties,
+      pagination: {
+        page: pageNum,
+        limit: limitNum,
+        total,
+        totalPages: Math.ceil(total / limitNum)
+      }
+    });
+  } catch (error) {
+    console.error("Error fetching paginated QP inactive parties:", error);
+    return res.status(500).json({ success: false, message: "Server Error", error: error.message });
+  }
+}; 
+
+const getscOrderInactiveParties = async (req, res) => {
+  try {
+    const days = parseInt(req.body.days) || 30;
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - days);
+
+    // FIX 1: findOne → lean() — no Mongoose doc overhead for a simple ID lookup
+    const company = await CompanyName.findOne({
+      companyName: { $regex: "sakshi creation", $options: "i" },
+    })
+      .select("_id")
+      .lean();
+
+    if (!company) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Company not found" });
+    }
+
+    const inactiveParties = await Party.aggregate([
+      // ── STEP 1: Match only this company's parties ─────────────────────────
+      { $match: { companyName: company._id } },
+
+      // ── STEP 2: Lookup Orders — only the fields we actually need ──────────
+      // FIX 2: pipeline inside $lookup so we project BEFORE the join,
+      //        instead of fetching full Order docs and discarding most fields.
+      {
+        $lookup: {
+          from: "orders",
+          localField: "_id",
+          foreignField: "party",
+          as: "orders",
+          pipeline: [
+            {
+              $project: {
+                createdAt: 1,
+                orderNumber: 1,
+                qty: 1,
+                productItem: 1,
+                quotation: 1,
+                finalAmount: 1,
+              },
+            },
+          ],
+        },
+      },
+
+      // ── STEP 3: Compute dates + pick the latest order ────────────────────
+      // FIX 3: $sortArray only on the already-projected slim array;
+      //        also compute actualLastOrderDate in one $addFields pass.
+      {
+        $addFields: {
+          _sortedOrders: {
+            $sortArray: { input: "$orders", sortBy: { createdAt: -1 } },
+          },
+        },
+      },
+      {
+        $addFields: {
+          lastOrderDate: { $max: "$orders.createdAt" },
+          lastOrder: { $arrayElemAt: ["$_sortedOrders", 0] },
+          // If no orders at all, fall back to party createdAt
+          actualLastOrderDate: {
+            $ifNull: [{ $max: "$orders.createdAt" }, "$createdAt"],
+          },
+        },
+      },
+
+      // ── STEP 4: Filter inactive parties ──────────────────────────────────
+      // FIX 4: simplified — actualLastOrderDate is never null now (fallback above),
+      //        so a single $lt check is enough.
+      { $match: { actualLastOrderDate: { $lt: cutoffDate } } },
+
+      // ── STEP 5: Drop the intermediate arrays we no longer need ───────────
+      // This keeps the working documents small before the next lookups.
+      { $project: { orders: 0, _sortedOrders: 0 } },
+
+      // ── STEP 6: AccountMaster join (only createdBy field needed) ─────────
+      {
+        $lookup: {
+          from: "accountmasters",
+          localField: "_id",
+          foreignField: "party",
+          as: "accountDetails",
+          pipeline: [{ $project: { createdBy: 1 } }],
+        },
+      },
+      { $unwind: { path: "$accountDetails", preserveNullAndEmptyArrays: true } },
+
+      // ── STEP 7: Staff join — only name fields, no email / mobile ─────────
+      // FIX 5: removed email + mobileNo from projection as requested
+      {
+        $lookup: {
+          from: "staffs",
+          localField: "accountDetails.createdBy",
+          foreignField: "_id",
+          as: "createdByDetails",
+          pipeline: [{ $project: { firstName: 1, lastName: 1 } }],
+        },
+      },
+      { $unwind: { path: "$createdByDetails", preserveNullAndEmptyArrays: true } },
+
+      // ── STEP 8: Market lookups — only the two fields we actually use ──────
+      // FIX 6: landmark lookup removed entirely (as requested)
+      //        Each pipeline projects only the single field needed.
+      {
+        $lookup: {
+          from: "markets",
+          localField: "address.marketName",
+          foreignField: "_id",
+          as: "marketDetails",
+          pipeline: [{ $project: { marketName: 1 } }],
         },
       },
       {
@@ -1502,6 +1719,7 @@ const getscOrderInactiveParties = async (req, res) => {
           localField: "address.area",
           foreignField: "_id",
           as: "areaDetails",
+          pipeline: [{ $project: { area: 1 } }],
         },
       },
       {
@@ -1510,59 +1728,252 @@ const getscOrderInactiveParties = async (req, res) => {
           localField: "address.pincode",
           foreignField: "_id",
           as: "pincodeDetails",
+          pipeline: [{ $project: { pincode: 1 } }],
         },
       },
 
-      // Final projection - partyTag को include करें
+      // ── STEP 9: Final projection ──────────────────────────────────────────
+      // FIX 7: partyName, ownerName, ownerMobileNo excluded as requested.
+      //        lastOrder carries the full order object (id + detail fields)
+      //        so the separate Order.populate() call below is no longer needed.
       {
         $project: {
           _id: 1,
-          partyName: 1,
-          ownerName: 1,
-          ownerMobileNo: 1,
-          partyTag: 1, // ✅ partyTag include करें
+          partyTag: 1,
           lastOrderDate: 1,
-          actualLastOrderDate: 1, // ✅ नया field
-          lastOrderId: 1,
-          createdAt: 1, // ✅ Party creation date
+          actualLastOrderDate: 1,
+          createdAt: 1,
           createdBy: {
             _id: "$createdByDetails._id",
             firstName: "$createdByDetails.firstName",
             lastName: "$createdByDetails.lastName",
-            email: "$createdByDetails.email",
-            mobileNo: "$createdByDetails.mobileNo",
           },
           address: {
             unitNo: "$address.unitNo",
             marketName: { $arrayElemAt: ["$marketDetails.marketName", 0] },
-            landMark: { $arrayElemAt: ["$landMarkDetails.landmark", 0] },
             area: { $arrayElemAt: ["$areaDetails.area", 0] },
             pincode: { $arrayElemAt: ["$pincodeDetails.pincode", 0] },
+          },
+          // Inline last-order data — no post-aggregate populate needed
+          lastOrder: {
+            _id: "$lastOrder._id",
+            orderNumber: "$lastOrder.orderNumber",
+            qty: "$lastOrder.qty",
+            quotation: "$lastOrder.quotation",
+            finalAmount: "$lastOrder.finalAmount",
+            createdAt: "$lastOrder.createdAt",
+            productItem: "$lastOrder.productItem", // ObjectId — populated below
           },
         },
       },
     ]);
 
-    // 3️⃣ Populate lastOrderId (convert ObjectId → Order doc)
-    const populatedParties = await Order.populate(inactiveParties, {
-      path: "lastOrderId",
-      select: "_id orderNumber qty createdAt productItem quotation finalAmount",
-      populate: {
-        path: "productItem", // packagingOption reference
-        model: "productItem",
-        select: "_id itemName",
-      },
+    // ── STEP 10: Populate productItem only (single targeted populate) ────────
+    // FIX 8: We now populate only productItem inside lastOrder.
+    //        The old code did Order.populate(inactiveParties, { path: "lastOrderId", ... })
+    //        which triggered a separate DB query per party. This is equivalent
+    //        but the path matches our new shape.
+    const populated = await Party.populate(inactiveParties, {
+      path: "lastOrder.productItem",
+      model: "productItem",
+      select: "_id itemName",
     });
 
-    // 4️⃣ Send response
     return res.status(200).json({
       success: true,
       message: "Order Inactive Parties with Last Order Info",
-      data: populatedParties,
+      data: populated,
     });
   } catch (error) {
     console.error("Error fetching Order inactive parties:", error);
-    return res.status(500).json({ success: false, message: "Server Error" });
+    return res
+      .status(500)
+      .json({ success: false, message: "Server Error", error: error.message });
+  }
+};
+
+// NEW: Optimized paginated API for Sakshi Inactive Parties
+const getscInactivePartiesPaginated = async (req, res) => {
+  try {
+    const { days = 30, page = 1, limit = 10, partyType } = req.body;
+    const pageNum = parseInt(page) || 1;
+    const limitNum = parseInt(limit) || 10;
+    const skip = (pageNum - 1) * limitNum;
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - parseInt(days));
+
+    // Find company
+    const company = await CompanyName.findOne({
+      companyName: { $regex: "sakshi creation", $options: "i" },
+    }).select("_id").lean();
+
+    if (!company) {
+      return res.status(404).json({ success: false, message: "Company not found" });
+    }
+
+    // Build match conditions for party type
+    let partyTypeMatch = {};
+    if (partyType === 'Customer') {
+      partyTypeMatch = { partyTag: 'CUSTOMER' };
+    } else if (partyType === 'New Party') {
+      partyTypeMatch = { partyTag: 'NEW' };
+    }
+
+    // Get total count
+    const countPipeline = [
+      { $match: { companyName: company._id, ...partyTypeMatch } },
+      {
+        $lookup: {
+          from: "orders",
+          localField: "_id",
+          foreignField: "party",
+          as: "orders",
+          pipeline: [{ $project: { createdAt: 1 } }]
+        }
+      },
+      {
+        $addFields: {
+          actualLastOrderDate: {
+            $ifNull: [{ $max: "$orders.createdAt" }, "$createdAt"]
+          }
+        }
+      },
+      { $match: { actualLastOrderDate: { $lt: cutoffDate } } },
+      { $count: "total" }
+    ];
+
+    const countResult = await Party.aggregate(countPipeline);
+    const total = countResult[0]?.total || 0;
+
+    // Main aggregation with pagination
+    const inactiveParties = await Party.aggregate([
+      { $match: { companyName: company._id, ...partyTypeMatch } },
+      {
+        $lookup: {
+          from: "orders",
+          localField: "_id",
+          foreignField: "party",
+          as: "orders",
+          pipeline: [
+            { $sort: { createdAt: -1 } },
+            { $limit: 1 },
+            { $project: { createdAt: 1, orderNumber: 1, qty: 1, productItem: 1, quotation: 1, finalAmount: 1 } }
+          ]
+        }
+      },
+      {
+        $addFields: {
+          lastOrderDate: { $max: "$orders.createdAt" },
+          lastOrder: { $arrayElemAt: ["$orders", 0] },
+          actualLastOrderDate: {
+            $ifNull: [{ $max: "$orders.createdAt" }, "$createdAt"]
+          }
+        }
+      },
+      { $match: { actualLastOrderDate: { $lt: cutoffDate } } },
+      { $skip: skip },
+      { $limit: limitNum },
+      { $project: { orders: 0 } },
+      {
+        $lookup: {
+          from: "accountmasters",
+          localField: "_id",
+          foreignField: "party",
+          as: "accountDetails",
+          pipeline: [{ $project: { createdBy: 1 } }]
+        }
+      },
+      { $unwind: { path: "$accountDetails", preserveNullAndEmptyArrays: true } },
+      {
+        $lookup: {
+          from: "staffs",
+          localField: "accountDetails.createdBy",
+          foreignField: "_id",
+          as: "createdByDetails",
+          pipeline: [{ $project: { firstName: 1, lastName: 1 } }]
+        }
+      },
+      { $unwind: { path: "$createdByDetails", preserveNullAndEmptyArrays: true } },
+      {
+        $lookup: {
+          from: "markets",
+          localField: "address.marketName",
+          foreignField: "_id",
+          as: "marketDetails",
+          pipeline: [{ $project: { marketName: 1 } }]
+        }
+      },
+      {
+        $lookup: {
+          from: "markets",
+          localField: "address.area",
+          foreignField: "_id",
+          as: "areaDetails",
+          pipeline: [{ $project: { area: 1 } }]
+        }
+      },
+      {
+        $lookup: {
+          from: "markets",
+          localField: "address.pincode",
+          foreignField: "_id",
+          as: "pincodeDetails",
+          pipeline: [{ $project: { pincode: 1 } }]
+        }
+      },
+      {
+        $project: {
+          _id: 1,
+          partyName: 1,
+          partyTag: 1,
+          lastOrderDate: 1,
+          actualLastOrderDate: 1,
+          createdAt: 1,
+          createdBy: {
+            _id: "$createdByDetails._id",
+            firstName: "$createdByDetails.firstName",
+            lastName: "$createdByDetails.lastName"
+          },
+          address: {
+            unitNo: "$address.unitNo",
+            marketName: { $arrayElemAt: ["$marketDetails.marketName", 0] },
+            area: { $arrayElemAt: ["$areaDetails.area", 0] },
+            pincode: { $arrayElemAt: ["$pincodeDetails.pincode", 0] }
+          },
+          lastOrderId: {
+            _id: "$lastOrder._id",
+            orderNumber: "$lastOrder.orderNumber",
+            qty: "$lastOrder.qty",
+            quotation: "$lastOrder.quotation",
+            finalAmount: "$lastOrder.finalAmount",
+            createdAt: "$lastOrder.createdAt",
+            productItem: "$lastOrder.productItem"
+          }
+        }
+      }
+    ]);
+
+    // Populate productItem
+    const populated = await Party.populate(inactiveParties, {
+      path: "lastOrderId.productItem",
+      model: "productItem",
+      select: "_id itemName"
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Order Inactive Parties (Paginated)",
+      data: populated,
+      pagination: {
+        page: pageNum,
+        limit: limitNum,
+        total,
+        totalPages: Math.ceil(total / limitNum)
+      }
+    });
+  } catch (error) {
+    console.error("Error fetching paginated SC inactive parties:", error);
+    return res.status(500).json({ success: false, message: "Server Error", error: error.message });
   }
 };
 
@@ -3180,7 +3591,9 @@ module.exports = {
   getSCReport,
   getQPReport,
   getqpInactiveParties,
+  getqpInactivePartiesPaginated,
   getscOrderInactiveParties,
+  getscInactivePartiesPaginated,
   getscDesigner,
   getscPrinter,
   getscBinder,
