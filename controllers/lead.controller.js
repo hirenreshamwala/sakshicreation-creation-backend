@@ -177,14 +177,11 @@ exports.getAllLeads = async (req, res) => {
       createdAt,
     } = req.body;
 
-    // Filters to apply BEFORE lookups (direct fields)
     const preMatchConditions = {};
-
-    // Filters to apply AFTER lookups (populated fields)
     const postMatchConditions = {};
 
     /* ================================
-       STATUS FILTER - BEFORE LOOKUPS
+       STATUS FILTER
     ================================ */
     if (status && Array.isArray(status) && status.length > 0) {
       preMatchConditions.status = { $in: status };
@@ -193,81 +190,71 @@ exports.getAllLeads = async (req, res) => {
     }
 
     /* ================================
-       COMPANY FILTER - BEFORE LOOKUPS
+       COMPANY FILTER
     ================================ */
     if (companyName) {
       if (mongoose.Types.ObjectId.isValid(companyName)) {
         preMatchConditions.companyName = new mongoose.Types.ObjectId(companyName);
       } else {
-        // Will be applied after lookup
-        postMatchConditions['companyData.companyName'] = { $regex: companyName, $options: 'i' };
+        postMatchConditions["companyData.companyName"] = { $regex: companyName, $options: "i" };
       }
     }
 
     /* ================================
-       PARTY NAME FILTER - BEFORE LOOKUPS (if ObjectId)
+       PARTY NAME FILTER
     ================================ */
     if (partyName) {
-      if (partyName.includes(',')) {
-        const names = partyName.split(',').map(n => n.trim()).filter(n => n);
-        postMatchConditions['partyData.partyName'] = {
-          $in: names.map(name => new RegExp(name, 'i'))
+      if (partyName.includes(",")) {
+        const names = partyName.split(",").map((n) => n.trim()).filter((n) => n);
+        postMatchConditions["partyData.partyName"] = {
+          $in: names.map((name) => new RegExp(name, "i")),
         };
       } else if (mongoose.Types.ObjectId.isValid(partyName)) {
         preMatchConditions.partyName = new mongoose.Types.ObjectId(partyName);
       } else {
-        postMatchConditions['partyData.partyName'] = { $regex: partyName, $options: 'i' };
+        postMatchConditions["partyData.partyName"] = { $regex: partyName, $options: "i" };
       }
     }
 
     /* ================================
-       STAFF ID FILTER - BEFORE LOOKUPS
+       STAFF ID FILTER
     ================================ */
     if (staffId) {
       if (mongoose.Types.ObjectId.isValid(staffId)) {
         preMatchConditions.assignedTo = new mongoose.Types.ObjectId(staffId);
       } else {
-        return res.status(400).json({
-          success: false,
-          message: "Invalid staffId ID format",
-        });
+        return res.status(400).json({ success: false, message: "Invalid staffId format" });
       }
     }
 
     /* ================================
-       DATE FILTER - BEFORE LOOKUPS
+       DATE FILTER
     ================================ */
     if (date) {
-
-      if (typeof date === 'string' && date.includes(',')) {
-        // Multiple dates
-        const dates = date.split(',').map(d => d.trim()).filter(d => d);
-        const dateConditions = [];
-
-        dates.forEach(dateStr => {
-          const parsedDate = parseDateString(dateStr);
-          const startOfDay = new Date(parsedDate);
-          startOfDay.setHours(0, 0, 0, 0);
-          const endOfDay = new Date(parsedDate);
-          endOfDay.setHours(23, 59, 59, 999);
-
-          dateConditions.push({
-            date: { $gte: startOfDay, $lte: endOfDay }
+      if (typeof date === "string" && date.includes(",")) {
+        const dateConditions = date
+          .split(",")
+          .map((d) => d.trim())
+          .filter((d) => d)
+          .map((dateStr) => {
+            const parsed = parseDateString(dateStr);
+            const start = new Date(parsed);
+            start.setHours(0, 0, 0, 0);
+            const end = new Date(parsed);
+            end.setHours(23, 59, 59, 999);
+            return { date: { $gte: start, $lte: end } };
           });
-        });
 
         if (dateConditions.length > 0) {
-          preMatchConditions.$or = preMatchConditions.$or || [];
-          preMatchConditions.$or.push(...dateConditions);
+          preMatchConditions.$or = [...(preMatchConditions.$or || []), ...dateConditions];
         }
       } else {
-        // Single date
-        const parsedDate = parseDateString(date);
-        const startOfDay = new Date(parsedDate);
-        startOfDay.setHours(0, 0, 0, 0);
-        const endOfDay = new Date(parsedDate);
-        endOfDay.setHours(23, 59, 59, 999);
-        preMatchConditions.date = { $gte: startOfDay, $lte: endOfDay };
+        const parsed = parseDateString(date);
+        const start = new Date(parsed);
+        start.setHours(0, 0, 0, 0);
+        const end = new Date(parsed);
+        end.setHours(23, 59, 59, 999);
+        preMatchConditions.date = { $gte: start, $lte: end };
       }
     } else if (startDate && endDate) {
       const start = new Date(startDate);
@@ -278,157 +265,169 @@ exports.getAllLeads = async (req, res) => {
     }
 
     /* ================================
-       CREATED AT FILTER - BEFORE LOOKUPS
+       CREATED AT FILTER
     ================================ */
     if (createdAt) {
-
-      if (typeof createdAt === 'string' && createdAt.includes(',')) {
-        // Multiple dates
-        const dates = createdAt.split(',').map(d => d.trim()).filter(d => d);
-        const dateConditions = [];
-
-        dates.forEach(dateStr => {
-          const parsedDate = parseDateString(dateStr);
-          const startOfDay = new Date(parsedDate);
-          startOfDay.setHours(0, 0, 0, 0);
-          const endOfDay = new Date(parsedDate);
-          endOfDay.setHours(23, 59, 59, 999);
-
-          dateConditions.push({
-            createdAt: { $gte: startOfDay, $lte: endOfDay }
+      if (typeof createdAt === "string" && createdAt.includes(",")) {
+        const dateConditions = createdAt
+          .split(",")
+          .map((d) => d.trim())
+          .filter((d) => d)
+          .map((dateStr) => {
+            const parsed = parseDateString(dateStr);
+            const start = new Date(parsed);
+            start.setHours(0, 0, 0, 0);
+            const end = new Date(parsed);
+            end.setHours(23, 59, 59, 999);
+            return { createdAt: { $gte: start, $lte: end } };
           });
-        });
 
         if (dateConditions.length > 0) {
-          preMatchConditions.$or = preMatchConditions.$or || [];
-          preMatchConditions.$or.push(...dateConditions);
+          preMatchConditions.$or = [...(preMatchConditions.$or || []), ...dateConditions];
         }
       } else {
-        // Single date
-        const parsedDate = parseDateString(createdAt);
-        const startOfDay = new Date(parsedDate);
-        startOfDay.setHours(0, 0, 0, 0);
-        const endOfDay = new Date(parsedDate);
-        endOfDay.setHours(23, 59, 59, 999);
-
-        preMatchConditions.createdAt = {
-          $gte: startOfDay,
-          $lte: endOfDay,
-        };
+        const parsed = parseDateString(createdAt);
+        const start = new Date(parsed);
+        start.setHours(0, 0, 0, 0);
+        const end = new Date(parsed);
+        end.setHours(23, 59, 59, 999);
+        preMatchConditions.createdAt = { $gte: start, $lte: end };
       }
     }
 
     /* ================================
-       REASON FILTER - BEFORE LOOKUPS
+       REASON FILTER
     ================================ */
     if (reason) {
-      if (reason.includes(',')) {
-        const reasons = reason.split(',').map(r => r.trim()).filter(r => r);
-        preMatchConditions.reason = {
-          $in: reasons.map(r => new RegExp(`^${r}$`, 'i'))
-        };
+      if (reason.includes(",")) {
+        const reasons = reason.split(",").map((r) => r.trim()).filter((r) => r);
+        preMatchConditions.reason = { $in: reasons.map((r) => new RegExp(`^${r}$`, "i")) };
       } else {
-        preMatchConditions.reason = new RegExp(`^${reason}$`, 'i');
+        preMatchConditions.reason = new RegExp(`^${reason}$`, "i");
       }
     }
 
     /* ================================
-       BUILD PIPELINE
+       BASE PIPELINE WITH ALL LOOKUPS
     ================================ */
     const pipeline = [];
 
-    // Apply pre-match conditions FIRST (before lookups)
+    // Pre-match (before lookups for performance)
     if (Object.keys(preMatchConditions).length > 0) {
       pipeline.push({ $match: preMatchConditions });
     }
 
-    // Step 1: Lookup partyName
-    pipeline.push({
-      $lookup: {
-        from: "parties",
-        localField: "partyName",
-        foreignField: "_id",
-        as: "partyData"
-      }
-    });
-    pipeline.push({ $unwind: { path: "$partyData", preserveNullAndEmptyArrays: true } });
+    // 1. LEAD → PARTY
+    pipeline.push(
+      {
+        $lookup: {
+          from: "parties",
+          localField: "partyName",
+          foreignField: "_id",
+          as: "partyData",
+        },
+      },
+      { $unwind: { path: "$partyData", preserveNullAndEmptyArrays: true } }
+    );
 
-    // Step 2: Lookup companyName
-    pipeline.push({
-      $lookup: {
-        from: "companynames",
-        localField: "companyName",
-        foreignField: "_id",
-        as: "companyData"
-      }
-    });
-    pipeline.push({ $unwind: { path: "$companyData", preserveNullAndEmptyArrays: true } });
+    // 2. LEAD → COMPANY
+    pipeline.push(
+      {
+        $lookup: {
+          from: "companynames",
+          localField: "companyName",
+          foreignField: "_id",
+          as: "companyData",
+        },
+      },
+      { $unwind: { path: "$companyData", preserveNullAndEmptyArrays: true } }
+    );
 
-    // Step 3: Lookup assignedTo
-    pipeline.push({
-      $lookup: {
-        from: "staffs",
-        localField: "assignedTo",
-        foreignField: "_id",
-        as: "assignedToData"
-      }
-    });
-    pipeline.push({ $unwind: { path: "$assignedToData", preserveNullAndEmptyArrays: true } });
+    // 3. LEAD → ASSIGNED TO (STAFF)
+    pipeline.push(
+      {
+        $lookup: {
+          from: "staffs",
+          localField: "assignedTo",
+          foreignField: "_id",
+          as: "assignedToData",
+        },
+      },
+      { $unwind: { path: "$assignedToData", preserveNullAndEmptyArrays: true } }
+    );
 
-    // Step 4: Lookup market data for address fields
+    // 4. PARTY ADDRESS → MARKET NAME
     pipeline.push({
       $lookup: {
         from: "markets",
         localField: "partyData.address.marketName",
         foreignField: "_id",
-        as: "marketNameData"
-      }
+        as: "marketNameData",
+      },
     });
+
+    // 5. PARTY ADDRESS → AREA
     pipeline.push({
       $lookup: {
         from: "markets",
         localField: "partyData.address.area",
         foreignField: "_id",
-        as: "areaData"
-      }
+        as: "areaData",
+      },
     });
 
-    // ACCOUNT MASTER LOOKUP (for createdBy)
-    pipeline.push({
-      $lookup: {
-        from: "accountmasters",
-        let: { partyId: "$partyName", companyId: "$companyName" },
-        pipeline: [
-          {
-            $match: {
-              $expr: {
-                $and: [
-                  { $eq: ["$party", "$$partyId"] },
-                  { $eq: ["$companyName", "$$companyId"] }
-                ]
-              }
-            }
-          },
-          {
-            $lookup: {
-              from: "staffs",
-              localField: "createdBy",
-              foreignField: "_id",
-              as: "createdByData"
-            }
-          },
-          { $unwind: "$createdByData" }
-        ],
-        as: "accountData"
-      }
-    });
+    // 6. PARTY ADDRESS → LANDMARK
+    // pipeline.push({
+    //   $lookup: {
+    //     from: "markets",
+    //     localField: "partyData.address.landMark",
+    //     foreignField: "_id",
+    //     as: "landMarkData",
+    //   },
+    // });
 
-    pipeline.push({
-      $unwind: {
-        path: "$accountData",
-        preserveNullAndEmptyArrays: true
-      }
-    });
+    // // 7. PARTY ADDRESS → PINCODE
+    // pipeline.push({
+    //   $lookup: {
+    //     from: "markets",
+    //     localField: "partyData.address.pincode",
+    //     foreignField: "_id",
+    //     as: "pincodeData",
+    //   },
+    // });
+
+    // 8. ACCOUNT MASTER (for createdBy)
+    pipeline.push(
+      {
+        $lookup: {
+          from: "accountmasters",
+          let: { partyId: "$partyName", companyId: "$companyName" },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $and: [
+                    { $eq: ["$party", "$$partyId"] },
+                    { $eq: ["$companyName", "$$companyId"] },
+                  ],
+                },
+              },
+            },
+            {
+              $lookup: {
+                from: "staffs",
+                localField: "createdBy",
+                foreignField: "_id",
+                as: "createdByData",
+              },
+            },
+            { $unwind: "$createdByData" },
+          ],
+          as: "accountData",
+        },
+      },
+      { $unwind: { path: "$accountData", preserveNullAndEmptyArrays: true } }
+    );
 
     /* ================================
        POST-LOOKUP FILTERS
@@ -436,159 +435,117 @@ exports.getAllLeads = async (req, res) => {
 
     // MOBILE FILTER
     if (mobile) {
-      if (mobile.includes(',')) {
-        const mobiles = mobile.split(',').map(m => m.trim()).filter(m => m);
-        postMatchConditions.$or = postMatchConditions.$or || [];
-        postMatchConditions.$or.push(
-          { 'partyData.ownerMobileNo': { $in: mobiles } },
-          { 'partyData.ownerWhatsAppNo': { $in: mobiles } },
-          { 'partyData.personMobileNo': { $in: mobiles } },
-          { 'partyData.personWhatsAppNo': { $in: mobiles } },
-          { 'partyData.contactMobileNo': { $in: mobiles } },
-          { 'partyData.contactWhatsAppNo': { $in: mobiles } }
-        );
-      } else {
-        postMatchConditions.$or = postMatchConditions.$or || [];
-        postMatchConditions.$or.push(
-          { 'partyData.ownerMobileNo': { $regex: mobile, $options: 'i' } },
-          { 'partyData.ownerWhatsAppNo': { $regex: mobile, $options: 'i' } },
-          { 'partyData.personMobileNo': { $regex: mobile, $options: 'i' } },
-          { 'partyData.personWhatsAppNo': { $regex: mobile, $options: 'i' } },
-          { 'partyData.contactMobileNo': { $regex: mobile, $options: 'i' } },
-          { 'partyData.contactWhatsAppNo': { $regex: mobile, $options: 'i' } }
-        );
-      }
+      const mobileList = mobile.includes(",")
+        ? mobile.split(",").map((m) => m.trim()).filter((m) => m)
+        : null;
+
+      const mobileFields = [
+        "partyData.ownerMobileNo",
+        "partyData.ownerWhatsAppNo",
+        "partyData.personMobileNo",
+        "partyData.personWhatsAppNo",
+        "partyData.contactMobileNo",
+        "partyData.contactWhatsAppNo",
+      ];
+
+      postMatchConditions.$or = [
+        ...(postMatchConditions.$or || []),
+        ...mobileFields.map((field) => ({
+          [field]: mobileList ? { $in: mobileList } : { $regex: mobile, $options: "i" },
+        })),
+      ];
     }
 
     // UNIT NO FILTER
     if (unitNo) {
-      if (unitNo.includes(',')) {
-        const unitNos = unitNo.split(',').map(u => u.trim()).filter(u => u);
-        postMatchConditions['partyData.address.unitNo'] = {
-          $in: unitNos.map(unit => new RegExp(`^${unit}$`, 'i'))
-        };
-      } else {
-        postMatchConditions['partyData.address.unitNo'] = new RegExp(`^${unitNo}$`, 'i');
-      }
+      const unitNos = unitNo.split(",").map((u) => u.trim()).filter((u) => u);
+      postMatchConditions["partyData.address.unitNo"] =
+        unitNos.length > 1
+          ? { $in: unitNos.map((u) => new RegExp(`^${u}$`, "i")) }
+          : new RegExp(`^${unitNos[0]}$`, "i");
     }
 
     // MARKET NAME FILTER
     if (marketName) {
-      if (marketName.includes(',')) {
-        const markets = marketName.split(',').map(m => m.trim()).filter(m => m);
-        postMatchConditions['marketNameData.marketName'] = {
-          $in: markets.map(name => new RegExp(name, 'i'))
-        };
-      } else {
-        postMatchConditions['marketNameData.marketName'] = new RegExp(marketName, 'i');
-      }
+      const markets = marketName.split(",").map((m) => m.trim()).filter((m) => m);
+      postMatchConditions["marketNameData.marketName"] =
+        markets.length > 1
+          ? { $in: markets.map((m) => new RegExp(m, "i")) }
+          : new RegExp(markets[0], "i");
     }
 
     // AREA FILTER
     if (area) {
-      if (area.includes(',')) {
-        const areas = area.split(',').map(a => a.trim()).filter(a => a);
-        postMatchConditions['areaData.area'] = {
-          $in: areas.map(a => new RegExp(a, 'i'))
-        };
-      } else {
-        postMatchConditions['areaData.area'] = new RegExp(area, 'i');
-      }
+      const areas = area.split(",").map((a) => a.trim()).filter((a) => a);
+      postMatchConditions["areaData.area"] =
+        areas.length > 1
+          ? { $in: areas.map((a) => new RegExp(a, "i")) }
+          : new RegExp(areas[0], "i");
     }
 
     // PARTY TAG FILTER
     if (partyTag) {
-      if (partyTag.includes(',')) {
-        const tags = partyTag.split(',').map(t => t.trim()).filter(t => t);
-        postMatchConditions['partyData.partyTag'] = {
-          $in: tags.map(tag => new RegExp(`^${tag}$`, 'i'))
-        };
-      } else {
-        postMatchConditions['partyData.partyTag'] = new RegExp(`^${partyTag}$`, 'i');
-      }
+      const tags = partyTag.split(",").map((t) => t.trim()).filter((t) => t);
+      postMatchConditions["partyData.partyTag"] =
+        tags.length > 1
+          ? { $in: tags.map((t) => new RegExp(`^${t}$`, "i")) }
+          : new RegExp(`^${tags[0]}$`, "i");
     }
 
     // CREATED BY FILTER
-    // CREATED BY FILTER (STRICT FULL NAME MATCH)
-    // CREATED BY FILTER (OBJECTID BASED - STRICT FULL NAME)
     if (createdBy) {
-      const names = createdBy.split(',').map(n => n.trim()).filter(Boolean);
+      const names = createdBy.split(",").map((n) => n.trim()).filter(Boolean);
       let createdByIds = [];
 
       for (const name of names) {
-        const parts = name.split(' ').filter(Boolean);
+        const parts = name.split(" ").filter(Boolean);
+        const staffQuery =
+          parts.length >= 2
+            ? {
+                $and: [
+                  { firstName: { $regex: `^${parts[0]}$`, $options: "i" } },
+                  { lastName: { $regex: `^${parts.slice(1).join(" ")}$`, $options: "i" } },
+                ],
+              }
+            : { firstName: { $regex: `^${parts[0]}$`, $options: "i" } };
 
-        let staffQuery = {};
-
-        if (parts.length >= 2) {
-          // ✅ FULL NAME (firstName AND lastName)
-          staffQuery = {
-            $and: [
-              { firstName: { $regex: `^${parts[0]}$`, $options: 'i' } },
-              { lastName: { $regex: `^${parts.slice(1).join(' ')}$`, $options: 'i' } }
-            ]
-          };
-        } else {
-          // ✅ SINGLE WORD → firstName only
-          staffQuery = {
-            firstName: { $regex: `^${parts[0]}$`, $options: 'i' }
-          };
-        }
-
-        const staffs = await mongoose.model("Staff")
-          .find(staffQuery)
-          .select("_id");
-
-        createdByIds.push(...staffs.map(s => s._id));
+        const staffs = await mongoose.model("Staff").find(staffQuery).select("_id");
+        createdByIds.push(...staffs.map((s) => s._id));
       }
 
-      createdByIds = [...new Set(createdByIds.map(id => id.toString()))]
-        .map(id => new mongoose.Types.ObjectId(id));
+      createdByIds = [...new Set(createdByIds.map((id) => id.toString()))].map(
+        (id) => new mongoose.Types.ObjectId(id)
+      );
 
       if (createdByIds.length === 0) {
         return res.status(200).json({
           success: true,
           data: [],
           count: 0,
-          pagination: { total: 0, page: Number(page), limit: Number(limit), totalPages: 0 }
+          pagination: { total: 0, page: Number(page), limit: Number(limit), totalPages: 0 },
         });
       }
 
-      // ✅ APPLY OBJECTID FILTER
       postMatchConditions["accountData.createdBy"] = { $in: createdByIds };
     }
 
-
-
-    // ASSIGNED TO FILTER (FULL NAME STRICT MATCH)
+    // ASSIGNED TO FILTER
     if (assignedToFilter) {
-      const assignToNames = typeof assignedToFilter === 'string'
-        ? assignedToFilter.split(',').map(n => n.trim()).filter(Boolean)
+      const assignToNames = typeof assignedToFilter === "string"
+        ? assignedToFilter.split(",").map((n) => n.trim()).filter(Boolean)
         : [assignedToFilter];
 
-      const assignToConditions = [];
-
-      assignToNames.forEach(name => {
-        const parts = name.split(' ').filter(Boolean);
-
+      const assignToConditions = assignToNames.map((name) => {
+        const parts = name.split(" ").filter(Boolean);
         if (parts.length >= 2) {
-          // ✅ FULL NAME → firstName AND lastName (STRICT)
-          const firstName = parts[0];
-          const lastName = parts.slice(1).join(' ');
-
-          assignToConditions.push({
+          return {
             $and: [
-              { "assignedToData.firstName": { $regex: `^${firstName}$`, $options: "i" } },
-              { "assignedToData.lastName": { $regex: `^${lastName}$`, $options: "i" } }
-            ]
-          });
-
-        } else {
-          // ✅ SINGLE WORD → ONLY firstName
-          assignToConditions.push({
-            "assignedToData.firstName": { $regex: `^${parts[0]}$`, $options: "i" }
-          });
+              { "assignedToData.firstName": { $regex: `^${parts[0]}$`, $options: "i" } },
+              { "assignedToData.lastName": { $regex: `^${parts.slice(1).join(" ")}$`, $options: "i" } },
+            ],
+          };
         }
+        return { "assignedToData.firstName": { $regex: `^${parts[0]}$`, $options: "i" } };
       });
 
       if (assignToConditions.length > 0) {
@@ -596,179 +553,194 @@ exports.getAllLeads = async (req, res) => {
       }
     }
 
-
     // Apply post-match conditions
     if (Object.keys(postMatchConditions).length > 0) {
       pipeline.push({ $match: postMatchConditions });
     }
 
     /* ================================
-       SEARCH FUNCTIONALITY
+       SEARCH
     ================================ */
-    if (search && search.trim() !== '') {
-      const searchConditions = {
-        $or: [
-          { 'partyData.partyName': { $regex: search, $options: 'i' } },
-          { 'partyData.ownerName': { $regex: search, $options: 'i' } },
-          { 'partyData.ownerMobileNo': { $regex: search, $options: 'i' } },
-          { 'partyData.ownerWhatsAppNo': { $regex: search, $options: 'i' } },
-          { 'companyData.companyName': { $regex: search, $options: 'i' } },
-          { 'partyData.address.unitNo': { $regex: search, $options: 'i' } },
-          { 'marketNameData.marketName': { $regex: search, $options: 'i' } },
-          { 'areaData.area': { $regex: search, $options: 'i' } },
-          {
-            $expr: {
-              $regexMatch: {
-                input: { $concat: ["$assignedToData.firstName", " ", "$assignedToData.lastName"] },
-                regex: search,
-                options: "i"
-              }
-            }
-          },
-          {
-            $expr: {
-              $regexMatch: {
-                input: { $concat: ["$accountData.createdByData.firstName", " ", "$accountData.createdByData.lastName"] },
-                regex: search,
-                options: "i"
-              }
-            }
-          },
-          { reason: { $regex: search, $options: 'i' } },
-        ]
-      };
-
-      pipeline.push({ $match: searchConditions });
+    if (search && search.trim() !== "") {
+      const searchRegex = { $regex: search, $options: "i" };
+      pipeline.push({
+        $match: {
+          $or: [
+            { "partyData.partyName": searchRegex },
+            { "partyData.ownerName": searchRegex },
+            { "partyData.ownerMobileNo": searchRegex },
+            { "partyData.ownerWhatsAppNo": searchRegex },
+            { "companyData.companyName": searchRegex },
+            { "partyData.address.unitNo": searchRegex },
+            { "marketNameData.marketName": searchRegex },
+            { "areaData.area": searchRegex },
+            { reason: searchRegex },
+            {
+              $expr: {
+                $regexMatch: {
+                  input: { $concat: ["$assignedToData.firstName", " ", "$assignedToData.lastName"] },
+                  regex: search,
+                  options: "i",
+                },
+              },
+            },
+            {
+              $expr: {
+                $regexMatch: {
+                  input: {
+                    $concat: [
+                      "$accountData.createdByData.firstName",
+                      " ",
+                      "$accountData.createdByData.lastName",
+                    ],
+                  },
+                  regex: search,
+                  options: "i",
+                },
+              },
+            },
+          ],
+        },
+      });
     }
 
     /* ================================
        GET DATES ONLY
     ================================ */
     if (getDatesOnly) {
-      pipeline.push({
-        $group: {
-          _id: {
-            $dateToString: {
-              format: "%d/%m/%Y",
-              date: "$date"
-            }
+      const dateGroups = await Lead.aggregate([
+        ...pipeline,
+        {
+          $group: {
+            _id: { $dateToString: { format: "%d/%m/%Y", date: "$date" } },
+            count: { $sum: 1 },
           },
-          count: { $sum: 1 }
-        }
-      });
-      pipeline.push({ $sort: { _id: -1 } });
+        },
+        { $sort: { _id: -1 } },
+        { $project: { _id: 0, date: "$_id", count: 1 } },
+      ]);
 
-      const dateGroups = await Lead.aggregate(pipeline);
-
-      const formattedDates = dateGroups.map(item => ({
-        date: item._id,
-        count: item.count
-      }));
-
-      return res.status(200).json({
-        success: true,
-        dates: formattedDates
-      });
+      return res.status(200).json({ success: true, dates: dateGroups });
     }
 
     /* ================================
-       PAGINATION AND DATA FETCHING
+       PAGINATION
     ================================ */
     const skip = (page - 1) * limit;
 
-    // Get total count
-    const countPipeline = [...pipeline, { $count: "total" }];
-    const countResult = await Lead.aggregate(countPipeline);
+    // Count
+    const countResult = await Lead.aggregate([...pipeline, { $count: "total" }]);
     const total = countResult.length > 0 ? countResult[0].total : 0;
 
-    // Add pagination
-    pipeline.push({ $sort: { createdAt: -1 } });
-    pipeline.push({ $skip: skip });
-    pipeline.push({ $limit: parseInt(limit) });
+    // Paginated data with $project (no extra DB calls)
+    const leads = await Lead.aggregate([
+      ...pipeline,
+      { $sort: { createdAt: -1 } },
+      { $skip: parseInt(skip) },
+      { $limit: parseInt(limit) },
 
-    // Lookup originalLeadId
-    pipeline.push({
-      $lookup: {
-        from: "leads",
-        localField: "originalLeadId",
-        foreignField: "_id",
-        as: "originalLeadData"
-      }
-    });
+      // Original lead lookup
+      {
+        $lookup: {
+          from: "leads",
+          localField: "originalLeadId",
+          foreignField: "_id",
+          as: "originalLeadData",
+        },
+      },
 
-    // Execute aggregation
-    const leads = await Lead.aggregate(pipeline);
+      // Final projection - only required fields
+      {
+        $project: {
+          _id: 1,
+          reason: 1,
+          customReason: 1,
+          status: 1,
+          date: 1,
+          time: 1,
+          callFeedback: 1,
+          rescheduleDate: 1,
+          isRescheduledCall: 1,
+          callHistory: 1,
+          createdAt: 1,
+          updatedAt: 1,
 
-    // Populate and restructure data
-    const populatedLeads = await Promise.all(
-      leads.map(async (lead) => {
-        // Lookup market data for nested population
-        const marketNameData = lead.marketNameData && lead.marketNameData[0] ? lead.marketNameData[0] : null;
-        const areaData = lead.areaData && lead.areaData[0] ? lead.areaData[0] : null;
+          companyName: {
+            _id: "$companyData._id",
+            companyName: "$companyData.companyName",
+            avatar: "$companyData.avatar",
+          },
 
-        // Lookup other market fields
-        let landMarkData = null;
-        let pincodeData = null;
-        if (lead.partyData?.address?.landMark) {
-          const landMarkDoc = await mongoose.model('Market').findById(lead.partyData.address.landMark).select('landmark').lean();
-          landMarkData = landMarkDoc;
-        }
-        if (lead.partyData?.address?.pincode) {
-          const pincodeDoc = await mongoose.model('Market').findById(lead.partyData.address.pincode).select('pincode').lean();
-          pincodeData = pincodeDoc;
-        }
+          partyName: {
+            _id: "$partyData._id",
+            partyName: "$partyData.partyName",
+            ownerName: "$partyData.ownerName",
+            ownerMobileNo: "$partyData.ownerMobileNo",
+            ownerWhatsAppNo: "$partyData.ownerWhatsAppNo",
+            contactPerson: "$partyData.contactPerson",
+            personMobileNo: "$partyData.personMobileNo",
+            personWhatsAppNo: "$partyData.personWhatsAppNo",
+            contactForPayment: "$partyData.contactForPayment",
+            contactMobileNo: "$partyData.contactMobileNo",
+            contactWhatsAppNo: "$partyData.contactWhatsAppNo",
+            // GSTNo: "$partyData.GSTNo",
+            partyTag: "$partyData.partyTag",
+            createdAt: "$partyData.createdAt",
+            updatedAt: "$partyData.updatedAt",
 
-        // Restructure to match original format
-        return {
-          _id: lead._id,
-          companyName: lead.companyData,
-          partyName: lead.partyData ? {
-            ...lead.partyData,
-            createdBy: lead.accountData?.createdByData || null,
-            address: lead.partyData.address ? {
-              ...lead.partyData.address,
-              marketName: marketNameData,
-              landMark: landMarkData,
-              area: areaData,
-              pincode: pincodeData
-            } : undefined
-          } : null,
-          assignedTo: lead.assignedToData ? {
-            _id: lead.assignedToData._id,
-            firstName: lead.assignedToData.firstName,
-            lastName: lead.assignedToData.lastName,
-            email: lead.assignedToData.email
-          } : null,
-          originalLeadId: lead.originalLeadData && lead.originalLeadData[0] ? {
-            _id: lead.originalLeadData[0]._id,
-            date: lead.originalLeadData[0].date,
-            createdAt: lead.originalLeadData[0].createdAt
-          } : null,
-          reason: lead.reason,
-          customReason: lead.customReason,
-          status: lead.status,
-          date: lead.date,
-          time: lead.time,
-          callFeedback: lead.callFeedback,
-          rescheduleDate: lead.rescheduleDate,
-          isRescheduledCall: lead.isRescheduledCall,
-          callHistory: lead.callHistory,
-          createdAt: lead.createdAt,
-          updatedAt: lead.updatedAt
-        };
-      })
-    );
+            createdBy: {
+              _id: "$accountData.createdByData._id",
+              firstName: "$accountData.createdByData.firstName",
+              lastName: "$accountData.createdByData.lastName",
+            },
+
+            address: {
+              unitNo: "$partyData.address.unitNo",
+              marketName: {
+                _id: { $arrayElemAt: ["$marketNameData._id", 0] },
+                marketName: { $arrayElemAt: ["$marketNameData.marketName", 0] },
+              },
+              // landMark: {
+              //   _id: { $arrayElemAt: ["$landMarkData._id", 0] },
+              //   landmark: { $arrayElemAt: ["$landMarkData.landmark", 0] },
+              // },
+              area: {
+                _id: { $arrayElemAt: ["$areaData._id", 0] },
+                area: { $arrayElemAt: ["$areaData.area", 0] },
+              },
+              // pincode: {
+              //   _id: { $arrayElemAt: ["$pincodeData._id", 0] },
+              //   pincode: { $arrayElemAt: ["$pincodeData.pincode", 0] },
+              // },
+            },
+          },
+
+          assignedTo: {
+            _id: "$assignedToData._id",
+            firstName: "$assignedToData.firstName",
+            lastName: "$assignedToData.lastName",
+            // email: "$assignedToData.email",
+          },
+
+          originalLeadId: {
+            _id: { $arrayElemAt: ["$originalLeadData._id", 0] },
+            date: { $arrayElemAt: ["$originalLeadData.date", 0] },
+            createdAt: { $arrayElemAt: ["$originalLeadData.createdAt", 0] },
+          },
+        },
+      },
+    ]);
 
     return res.status(200).json({
       success: true,
-      data: populatedLeads,
+      data: leads,
       count: total,
       pagination: {
         total,
         page: parseInt(page),
         limit: parseInt(limit),
-        totalPages: Math.ceil(total / limit)
-      }
+        totalPages: Math.ceil(total / limit),
+      },
     });
   } catch (error) {
     console.error("❌ Error fetching leads:", error);

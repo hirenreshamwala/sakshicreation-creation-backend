@@ -16,6 +16,23 @@ app.set('view engine', 'ejs');
 // app.use(logger('dev'));
 app.use("/uploads", express.static(path.join(__dirname, "uploads")))
 
+
+app.use(
+  compression({
+    threshold: 10 * 1024, // ✅ 10KB
+    level: 6, // balanced compression (0–9)
+    filter: (req, res) => {
+      // Skip compression if client explicitly disables it
+      if (req.headers["x-no-compression"]) {
+        return false;
+      }
+
+      // Use default compression filter
+      return compression.filter(req, res);
+    },
+  })
+);
+
 const allowedOrigins = process.env.CORS_ORIGIN
   ? process.env.CORS_ORIGIN.split(",")
   : [

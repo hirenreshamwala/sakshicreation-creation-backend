@@ -916,14 +916,14 @@ exports.getAllAssignTasks = async (req, res) => {
       { $unwind: { path: "$assignToData", preserveNullAndEmptyArrays: true } },
 
       // 4. STAFF → ROLE
-      {
-        $lookup: {
-          from: "roles",
-          localField: "assignToData.role",
-          foreignField: "_id",
-          as: "assignToData.roleData"
-        }
-      },
+      // {
+      //   $lookup: {
+      //     from: "roles",
+      //     localField: "assignToData.role",
+      //     foreignField: "_id",
+      //     as: "assignToData.roleData"
+      //   }
+      // },
       { $unwind: { path: "$assignToData.roleData", preserveNullAndEmptyArrays: true } },
 
       // 5. STAFF → DEPARTMENT
@@ -1330,7 +1330,11 @@ exports.getAllAssignTasks = async (req, res) => {
           createdAt: 1,
           updatedAt: 1,
 
-          companyName: "$companyData",
+          companyName: {
+            _id: "$companyData._id",
+            companyName: "$companyData.companyName",
+            avatar: "$companyData.avatar",
+          },
 
           partyName: {
             _id: "$partyData._id",
@@ -1355,18 +1359,18 @@ exports.getAllAssignTasks = async (req, res) => {
                 _id: { $arrayElemAt: ["$marketNameData._id", 0] },
                 marketName: { $arrayElemAt: ["$marketNameData.marketName", 0] }
               },
-              landMark: {
-                _id: { $arrayElemAt: ["$landMarkData._id", 0] },
-                landmark: { $arrayElemAt: ["$landMarkData.landmark", 0] }
-              },
+              // landMark: {
+              //   _id: { $arrayElemAt: ["$landMarkData._id", 0] },
+              //   landmark: { $arrayElemAt: ["$landMarkData.landmark", 0] }
+              // },
               area: {
                 _id: { $arrayElemAt: ["$areaData._id", 0] },
                 area: { $arrayElemAt: ["$areaData.area", 0] }
               },
-              pincode: {
-                _id: { $arrayElemAt: ["$pincodeData._id", 0] },
-                pincode: { $arrayElemAt: ["$pincodeData.pincode", 0] }
-              }
+              // pincode: {
+              //   _id: { $arrayElemAt: ["$pincodeData._id", 0] },
+              //   pincode: { $arrayElemAt: ["$pincodeData.pincode", 0] }
+              // }
             },
 
             createdBy: {
@@ -1381,27 +1385,27 @@ exports.getAllAssignTasks = async (req, res) => {
             _id: "$assignToData._id",
             firstName: "$assignToData.firstName",
             lastName: "$assignToData.lastName",
-            email: "$assignToData.email",
-            phone: "$assignToData.phone",
-            designation: "$assignToData.designation",
-            employeeId: "$assignToData.employeeId",
-            profileImage: "$assignToData.profileImage",
-            isActive: "$assignToData.isActive",
-            createdAt: "$assignToData.createdAt",
-            updatedAt: "$assignToData.updatedAt",
+            // email: "$assignToData.email",
+            // phone: "$assignToData.phone",
+            // designation: "$assignToData.designation",
+            // employeeId: "$assignToData.employeeId",
+            // profileImage: "$assignToData.profileImage",
+            // isActive: "$assignToData.isActive",
+            // createdAt: "$assignToData.createdAt",
+            // updatedAt: "$assignToData.updatedAt",
 
-            role: {
-              _id: "$assignToData.roleData._id",
-              roleName: "$assignToData.roleData.roleName",
-              description: "$assignToData.roleData.description",
-              permissions: "$assignToData.roleData.permissions"
-            },
+            // role: {
+            //   _id: "$assignToData.roleData._id",
+            //   roleName: "$assignToData.roleData.roleName",
+            //   description: "$assignToData.roleData.description",
+            //   permissions: "$assignToData.roleData.permissions"
+            // },
 
-            department: {
-              _id: "$assignToData.departmentData._id",
-              name: "$assignToData.departmentData.name",
-              description: "$assignToData.departmentData.description"
-            }
+            // department: {
+            //   _id: "$assignToData.departmentData._id",
+            //   name: "$assignToData.departmentData.name",
+            //   description: "$assignToData.departmentData.description"
+            // }
           },
 
           originalTaskId: {
@@ -1580,10 +1584,10 @@ exports.updateAssignTaskStatus = async (req, res) => {
 exports.deleteAssignTask = async (req, res) => {
   try {
     const { id } = req.params;
-    
+
     // Sync with PaymentFolder if exists
-    await PaymentFolder.updateMany({ assignTask: id }, { 
-      $unset: { assignTask: 1, assignedTo: 1, assignedDate: 1 } 
+    await PaymentFolder.updateMany({ assignTask: id }, {
+      $unset: { assignTask: 1, assignedTo: 1, assignedDate: 1 }
     });
 
     const assignTask = await AssignTask.findByIdAndDelete(id);
@@ -1618,8 +1622,8 @@ exports.bulkDeleteAssignTasks = async (req, res) => {
     }
 
     // Sync with PaymentFolder if exists
-    await PaymentFolder.updateMany({ assignTask: { $in: ids } }, { 
-      $unset: { assignTask: 1, assignedTo: 1, assignedDate: 1 } 
+    await PaymentFolder.updateMany({ assignTask: { $in: ids } }, {
+      $unset: { assignTask: 1, assignedTo: 1, assignedDate: 1 }
     });
 
     const result = await AssignTask.deleteMany({ _id: { $in: ids } });
