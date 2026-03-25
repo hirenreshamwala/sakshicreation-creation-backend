@@ -603,11 +603,11 @@ const getSCReport = async (req, res) => {
         const totalLeads = leads.length;
 
         // QP Orders
-        const qpOrders = await QpData.countDocuments({
-          createdBy: staff._id,
-          companyName: company._id,
-          ...otherModelsDateFilter,
-        });
+        // const qpOrders = await QpData.countDocuments({
+        //   createdBy: staff._id,
+        //   companyName: company._id,
+        //   ...otherModelsDateFilter,
+        // });
 
         // Sakshi Orders (Stationary & Booklet)
         const sakshiOrders = await Order.find({
@@ -759,17 +759,17 @@ const getSCReport = async (req, res) => {
         });
 
         // Party counts
-        const qpOrderParties = await QpData.find({
-          createdBy: staff._id,
-          companyName: company._id,
-          ...otherModelsDateFilter,
-        }).distinct("party");
+        // const qpOrderParties = await QpData.find({
+        //   createdBy: staff._id,
+        //   companyName: company._id,
+        //   ...otherModelsDateFilter,
+        // }).distinct("party");
 
-        const sakshiOrderParties = await Order.find({
-          createdBy: staff._id,
-          companyName: company._id,
-          ...otherModelsDateFilter,
-        }).distinct("party");
+        // const sakshiOrderParties = await Order.find({
+        //   createdBy: staff._id,
+        //   companyName: company._id,
+        //   ...otherModelsDateFilter,
+        // }).distinct("party");
 
         const createdParties = await AccountMaster.find({
           createdBy: staff._id,
@@ -1925,12 +1925,12 @@ const getscInactivePartiesPaginated = async (req, res) => {
         $project: {
           _id: 1,
           partyName: 1,
-          partyTag: 1,
+          // partyTag: 1,
           lastOrderDate: 1,
           actualLastOrderDate: 1,
-          createdAt: 1,
+          // createdAt: 1,
           createdBy: {
-            _id: "$createdByDetails._id",
+            // _id: "$createdByDetails._id",
             firstName: "$createdByDetails.firstName",
             lastName: "$createdByDetails.lastName"
           },

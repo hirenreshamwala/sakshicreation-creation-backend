@@ -10,7 +10,7 @@ exports.getVendors = async (req, res) => {
   try {
     const vendors = await Vendor.find()
       .populate('companyName', 'companyName')
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 }).lean().select('-__v -updatedAt -createdAt');
     res.status(200).json({
       success: true,
       count: vendors.length,

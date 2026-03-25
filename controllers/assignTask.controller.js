@@ -1318,7 +1318,7 @@ exports.getAllAssignTasks = async (req, res) => {
         $project: {
           _id: 1,
           date: 1,
-          time: 1,
+          // time: 1,
           reasonForVisit: 1,
           remarks: 1,
           status: 1,
@@ -1328,10 +1328,10 @@ exports.getAllAssignTasks = async (req, res) => {
           rescheduleDate: 1,
           isRescheduledTask: 1,
           createdAt: 1,
-          updatedAt: 1,
+          // updatedAt: 1,
 
           companyName: {
-            _id: "$companyData._id",
+            // _id: "$companyData._id",
             companyName: "$companyData.companyName",
             avatar: "$companyData.avatar",
           },
@@ -1345,18 +1345,18 @@ exports.getAllAssignTasks = async (req, res) => {
             contactPerson: "$partyData.contactPerson",
             personMobileNo: "$partyData.personMobileNo",
             personWhatsAppNo: "$partyData.personWhatsAppNo",
-            contactForPayment: "$partyData.contactForPayment",
-            contactMobileNo: "$partyData.contactMobileNo",
-            contactWhatsAppNo: "$partyData.contactWhatsAppNo",
-            GSTNo: "$partyData.GSTNo",
+            // contactForPayment: "$partyData.contactForPayment",
+            // contactMobileNo: "$partyData.contactMobileNo",
+            // contactWhatsAppNo: "$partyData.contactWhatsAppNo",
+            // GSTNo: "$partyData.GSTNo",
             partyTag: "$partyData.partyTag",
-            createdAt: "$partyData.createdAt",
-            updatedAt: "$partyData.updatedAt",
+            // createdAt: "$partyData.createdAt",
+            // updatedAt: "$partyData.updatedAt",
 
             address: {
               unitNo: "$partyData.address.unitNo",
               marketName: {
-                _id: { $arrayElemAt: ["$marketNameData._id", 0] },
+                // _id: { $arrayElemAt: ["$marketNameData._id", 0] },
                 marketName: { $arrayElemAt: ["$marketNameData.marketName", 0] }
               },
               // landMark: {
@@ -1364,7 +1364,7 @@ exports.getAllAssignTasks = async (req, res) => {
               //   landmark: { $arrayElemAt: ["$landMarkData.landmark", 0] }
               // },
               area: {
-                _id: { $arrayElemAt: ["$areaData._id", 0] },
+                // _id: { $arrayElemAt: ["$areaData._id", 0] },
                 area: { $arrayElemAt: ["$areaData.area", 0] }
               },
               // pincode: {
@@ -1374,15 +1374,15 @@ exports.getAllAssignTasks = async (req, res) => {
             },
 
             createdBy: {
-              _id: "$accountData.createdByData._id",
+              // _id: "$accountData.createdByData._id",
               firstName: "$accountData.createdByData.firstName",
               lastName: "$accountData.createdByData.lastName",
-              email: "$accountData.createdByData.email"
+              // email: "$accountData.createdByData.email"
             }
           },
 
           assignTo: {
-            _id: "$assignToData._id",
+            // _id: "$assignToData._id",
             firstName: "$assignToData.firstName",
             lastName: "$assignToData.lastName",
             // email: "$assignToData.email",
