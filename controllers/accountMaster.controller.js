@@ -3553,12 +3553,14 @@ exports.getFilterOptionsData = async (req, res) => {
 
     // Base AccountMaster query (company + staff + date)
     const amQuery = {};
-    if (otherFilters.companyName) amQuery.companyName = otherFilters.companyName;
-    if (otherFilters.staffId)     amQuery.createdBy   = otherFilters.staffId;
+    if (otherFilters.companyId) amQuery.companyName = otherFilters.companyId;
+    else if (otherFilters.companyName) amQuery.companyName = otherFilters.companyName;
+
+    if (otherFilters.staffId) amQuery.createdBy = otherFilters.staffId;
     if (otherFilters.startDate || otherFilters.endDate) {
       amQuery.createdAt = {};
-      if (otherFilters.startDate) { const s = new Date(otherFilters.startDate); s.setHours(0,0,0,0); amQuery.createdAt.$gte = s; }
-      if (otherFilters.endDate)   { const e = new Date(otherFilters.endDate);   e.setHours(23,59,59,999); amQuery.createdAt.$lte = e; }
+      if (otherFilters.startDate) { const s = new Date(otherFilters.startDate); s.setHours(0, 0, 0, 0); amQuery.createdAt.$gte = s; }
+      if (otherFilters.endDate) { const e = new Date(otherFilters.endDate); e.setHours(23, 59, 59, 999); amQuery.createdAt.$lte = e; }
     }
 
     let uniqueValues = [];
