@@ -2606,11 +2606,11 @@ exports.exportPrinterPerformanceToExcel = async (req, res) => {
                         if (order.pType === 'Offset') pTypeShort = 'O';
                         else if (order.pType === 'Screen Printing') pTypeShort = 'S';
                         else if (order.pType === 'Other') pTypeShort = 'O';
-                        else pTypeShort = order.pType.charAt(0).toUpperCase(); // fallback
+                        else pTypeShort = order?.pType?.charAt(0)?.toUpperCase(); // fallback
                     }
 
                     // Number - First character only (Y/N)
-                    const numberShort = order.number ? order.number.charAt(0).toUpperCase() : '-';
+                    const numberShort = order?.number ? order?.number?.charAt(0)?.toUpperCase() : '-';
 
                     worksheet.addRow({
                         srNo: localSrNo++,
@@ -3707,7 +3707,7 @@ exports.exportPaymentFolderToExcel = async (req, res) => {
                         statusText = `Rescheduled (Old: ${oldDate} → New: ${newDate})`;
                     } else {
                         statusText = task.status || "Pending";
-                        statusText = statusText.charAt(0).toUpperCase() + statusText.slice(1).toLowerCase();
+                        statusText = statusText?.charAt(0).toUpperCase() + statusText.slice(1).toLowerCase();
                     }
 
                     // Add follow-up info if available
@@ -4375,7 +4375,7 @@ exports.exportPaymentFolderDifferenceToExcel = async (req, res) => {
                         statusText = `Rescheduled (Old: ${oldDate} → New: ${newDate})`;
                     } else {
                         statusText = task.status || "Pending";
-                        statusText = statusText.charAt(0).toUpperCase() + statusText.slice(1).toLowerCase();
+                        statusText = statusText?.charAt(0).toUpperCase() + statusText.slice(1).toLowerCase();
                     }
 
                     // Add follow-up info if available
@@ -5412,7 +5412,7 @@ exports.exportStaffBillingToExcel = async (req, res) => {
 
         // File download
         res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-        const typeLabel = staffType.charAt(0).toUpperCase() + staffType.slice(1);
+        const typeLabel = staffType?.charAt(0).toUpperCase() + staffType.slice(1);
         const fileName = `${staffName}_${typeLabel}_Bill_${moment().format('DDMMYYYY_HHmm')}.xlsx`;
         res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
 

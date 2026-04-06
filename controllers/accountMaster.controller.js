@@ -3577,7 +3577,9 @@ exports.getFilterOptionsData = async (req, res) => {
 
     // Base AccountMaster query (company + staff + date)
     const amQuery = {};
-    if (otherFilters.companyName) amQuery.companyName = otherFilters.companyName;
+    if (otherFilters.companyId) amQuery.companyName = otherFilters.companyId;
+    else if (otherFilters.companyName) amQuery.companyName = otherFilters.companyName;
+
     if (otherFilters.staffId) amQuery.createdBy = otherFilters.staffId;
     if (otherFilters.startDate || otherFilters.endDate) {
       amQuery.createdAt = {};
@@ -3618,7 +3620,8 @@ exports.getFilterOptionsData = async (req, res) => {
       }
 
       case "partyType": {
-        uniqueValues = ["STATIONERY", "OTHER", "BOOKLET"];
+        const ids = await AccountMaster.distinct("party", amQuery);
+        uniqueValues = await Party.distinct("partyType", { _id: { $in: ids } });
         break;
       }
 
@@ -3700,8 +3703,12 @@ exports.getFilterOptionsData = async (req, res) => {
       }
 
       case "assignedTo": {
-        // FIX: use distinct directly instead of fetching full Staff docs
-        const taskStaffIds = await AssignTask.distinct("assignTo", { assignTo: { $exists: true, $ne: null } });
+        // Fetch only staff who are assigned to tasks in the current company
+        const taskQuery = { assignTo: { $exists: true, $ne: null } };
+        if (otherFilters.companyId) taskQuery.companyName = otherFilters.companyId;
+        else if (otherFilters.companyName) taskQuery.companyName = otherFilters.companyName;
+
+        const taskStaffIds = await AssignTask.distinct("assignTo", taskQuery);
         const docs = await Staff.find({ _id: { $in: taskStaffIds } }, "firstName lastName").lean();
         uniqueValues = docs.map((u) => `${u.firstName} ${u.lastName}`);
         break;
