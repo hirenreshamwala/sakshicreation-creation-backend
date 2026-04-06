@@ -57,7 +57,7 @@ exports.createMaterial = async (req, res) => {
 // Get all Materials
 exports.getAllMaterials = async (req, res) => {
   try {
-    const materials = await Material.find().select('-__v -updatedAt -createdAt');
+    const materials = await Material.find().select('-__v');
     res.status(200).json({
       success: true,
       message: 'Materials retrieved successfully',

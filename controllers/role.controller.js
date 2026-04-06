@@ -123,7 +123,7 @@ exports.createRole = async (req, res) => {
 exports.getAllRoles = async (req, res) => {
   try {
     const roles = await Role.find({ isDelete: false }).select(
-      "-__v -updatedAt -company"
+      "-__v -updatedAt"
     );
 
     res.status(200).json({

@@ -2643,12 +2643,10 @@ const PARTY_LOOKUP = {
           ownerMobileNo: 1, ownerName: 1,
           contactForPayment: 1, ownerWhatsAppNo: 1,
           contactPerson: 1, personMobileNo: 1, personWhatsAppNo: 1,
-          contactMobileNo: 1,
-           contactWhatsAppNo: 1, GSTNo: 1,
-          // statusApproval: 1,
+          contactMobileNo: 1, contactWhatsAppNo: 1, GSTNo: 1,
+          statusApproval: 1,
           "address.unitNo": 1, "address.marketName": 1,
-          "address.area": 1
-          // , "address.state": 1, "address.city": 1,
+          "address.area": 1, "address.state": 1, "address.city": 1,
         },
       },
     ],
@@ -2681,7 +2679,7 @@ const MARKET_LOOKUP = {
     localField: "party.address.marketName",
     foreignField: "_id",
     as: "party.address.marketName",
-    pipeline: [{ $project: { _id: 0, marketName: 1 } }],
+    pipeline: [{ $project: { marketName: 1 } }],
   },
 };
 
@@ -2691,7 +2689,7 @@ const AREA_LOOKUP = {
     localField: "party.address.area",
     foreignField: "_id",
     as: "party.address.area",
-    pipeline: [{ $project: { _id: 0, area: 1 } }],
+    pipeline: [{ $project: { area: 1 } }],
   },
 };
 
@@ -2719,7 +2717,7 @@ const LATEST_TASK_LOOKUP = {
           localField: "assignTo",
           foreignField: "_id",
           as: "assignTo",
-          pipeline: [{ $project: { _id: 0, firstName: 1, lastName: 1 } }],
+          pipeline: [{ $project: { firstName: 1, lastName: 1 } }],
         },
       },
       { $unwind: { path: "$assignTo", preserveNullAndEmptyArrays: true } },
@@ -2747,14 +2745,14 @@ const FINAL_PROJECT = {
   $project: {
     reasonToVisit: 1,
     createdAt: 1,
-    // updatedAt: 1,
+    updatedAt: 1,
     party: 1,
     "createdBy.firstName": 1,
     "createdBy.lastName": 1,
-    // "createdBy._id": 1,
+    "createdBy._id": 1,
     "companyName.companyName": 1,
     "companyName.avatar": 1,
-    // "companyName._id": 1,
+    "companyName._id": 1,
     "latestTask.remarks": 1,
     "latestTask.status": 1,
     "latestTask.assignTo": 1,
@@ -2834,8 +2832,8 @@ exports.createAccountMaster = async (req, res) => {
       }).select("_id").lean(),
     ]);
 
-    if (!staff) return res.status(400).json({ success: false, message: "Invalid createdBy ID. Staff member does not exist." });
-    if (!company) return res.status(400).json({ success: false, message: "Invalid companyName ID. Company does not exist." });
+    if (!staff)        return res.status(400).json({ success: false, message: "Invalid createdBy ID. Staff member does not exist." });
+    if (!company)      return res.status(400).json({ success: false, message: "Invalid companyName ID. Company does not exist." });
     if (existingParty) return res.status(400).json({ success: false, message: "A party with this company, name and mobile number already exists" });
 
     const newParty = await Party.create({
@@ -2875,9 +2873,9 @@ exports.createAccountMaster = async (req, res) => {
         select: "-__v",
         populate: [
           { path: "address.marketName", model: "Market", select: "marketName" },
-          { path: "address.landMark", model: "Market", select: "landmark" },
-          { path: "address.area", model: "Market", select: "area" },
-          { path: "address.pincode", model: "Market", select: "pincode" },
+          { path: "address.landMark",   model: "Market", select: "landmark" },
+          { path: "address.area",       model: "Market", select: "area" },
+          { path: "address.pincode",    model: "Market", select: "pincode" },
         ],
       })
       .populate("createdBy", "firstName lastName email");
@@ -2932,8 +2930,8 @@ exports.getAllAccountMasters = async (req, res) => {
       }
     } else if (startDate || endDate) {
       amQuery.createdAt = {};
-      if (startDate) { const s = new Date(startDate); s.setHours(0, 0, 0, 0); amQuery.createdAt.$gte = s; }
-      if (endDate) { const e = new Date(endDate); e.setHours(23, 59, 59, 999); amQuery.createdAt.$lte = e; }
+      if (startDate) { const s = new Date(startDate); s.setHours(0,0,0,0); amQuery.createdAt.$gte = s; }
+      if (endDate)   { const e = new Date(endDate);   e.setHours(23,59,59,999); amQuery.createdAt.$lte = e; }
     }
 
     if (filters.reason?.length) amQuery.reasonToVisit = { $in: filters.reason };
@@ -2964,11 +2962,11 @@ exports.getAllAccountMasters = async (req, res) => {
 
     // Bail early if any required filter matched nothing
     if (filters.createdBy?.length && (!staffIds || staffIds.length === 0)) return res.status(200).json(emptyResponse(isPagination, page, pageSize));
-    if (filters.company?.length && (!companyDocs || companyDocs.length === 0)) return res.status(200).json(emptyResponse(isPagination, page, pageSize));
-    if (filters.market?.length && (!marketDocs || marketDocs.length === 0)) return res.status(200).json(emptyResponse(isPagination, page, pageSize));
-    if (filters.area?.length && (!areaDocs || areaDocs.length === 0)) return res.status(200).json(emptyResponse(isPagination, page, pageSize));
+    if (filters.company?.length  && (!companyDocs || companyDocs.length === 0)) return res.status(200).json(emptyResponse(isPagination, page, pageSize));
+    if (filters.market?.length   && (!marketDocs  || marketDocs.length === 0))  return res.status(200).json(emptyResponse(isPagination, page, pageSize));
+    if (filters.area?.length     && (!areaDocs    || areaDocs.length === 0))    return res.status(200).json(emptyResponse(isPagination, page, pageSize));
 
-    if (staffIds) amQuery.createdBy = { $in: staffIds };
+    if (staffIds)    amQuery.createdBy  = { $in: staffIds };
     const companyIds = companyDocs ? companyDocs.map((c) => c._id) : [];
     if (companyIds.length) amQuery.companyName = { $in: companyIds };
 
@@ -2976,26 +2974,26 @@ exports.getAllAccountMasters = async (req, res) => {
     // This becomes a $lookup + $match inside the aggregation — no separate query.
     const partyMatchExpr = {};
 
-    if (filters.party?.length) partyMatchExpr.partyName = { $in: filters.party };
-    if (filters.contactPerson?.length) partyMatchExpr.contactPerson = { $in: filters.contactPerson };
-    if (filters.partyTag?.length) partyMatchExpr.partyTag = { $in: filters.partyTag };
-    if (filters.partyType?.length) partyMatchExpr.partyType = { $in: filters.partyType };
-    if (filters.mobile?.length) partyMatchExpr.ownerMobileNo = { $in: filters.mobile };
-    if (filters.unitNo?.length) partyMatchExpr["address.unitNo"] = { $in: filters.unitNo };
-    if (marketDocs?.length) partyMatchExpr["address.marketName"] = { $in: marketDocs.map((m) => m._id) };
-    if (areaDocs?.length) partyMatchExpr["address.area"] = { $in: areaDocs.map((a) => a._id) };
+    if (filters.party?.length)         partyMatchExpr.partyName               = { $in: filters.party };
+    if (filters.contactPerson?.length) partyMatchExpr.contactPerson           = { $in: filters.contactPerson };
+    if (filters.partyTag?.length)      partyMatchExpr.partyTag                = { $in: filters.partyTag };
+    if (filters.partyType?.length)     partyMatchExpr.partyType               = { $in: filters.partyType };
+    if (filters.mobile?.length)        partyMatchExpr.ownerMobileNo           = { $in: filters.mobile };
+    if (filters.unitNo?.length)        partyMatchExpr["address.unitNo"]       = { $in: filters.unitNo };
+    if (marketDocs?.length)            partyMatchExpr["address.marketName"]   = { $in: marketDocs.map((m) => m._id) };
+    if (areaDocs?.length)              partyMatchExpr["address.area"]         = { $in: areaDocs.map((a) => a._id) };
 
     if (search) {
       partyMatchExpr.$or = [
-        { partyName: { $regex: search, $options: "i" } },
-        { ownerName: { $regex: search, $options: "i" } },
-        { ownerMobileNo: { $regex: search, $options: "i" } },
-        { ownerWhatsAppNo: { $regex: search, $options: "i" } },
-        { contactPerson: { $regex: search, $options: "i" } },
-        { personMobileNo: { $regex: search, $options: "i" } },
-        { personWhatsAppNo: { $regex: search, $options: "i" } },
-        { GSTNo: { $regex: search, $options: "i" } },
-        { "address.unitNo": { $regex: search, $options: "i" } },
+        { partyName:         { $regex: search, $options: "i" } },
+        { ownerName:         { $regex: search, $options: "i" } },
+        { ownerMobileNo:     { $regex: search, $options: "i" } },
+        { ownerWhatsAppNo:   { $regex: search, $options: "i" } },
+        { contactPerson:     { $regex: search, $options: "i" } },
+        { personMobileNo:    { $regex: search, $options: "i" } },
+        { personWhatsAppNo:  { $regex: search, $options: "i" } },
+        { GSTNo:             { $regex: search, $options: "i" } },
+        { "address.unitNo":  { $regex: search, $options: "i" } },
       ];
     }
 
@@ -3009,7 +3007,7 @@ exports.getAllAccountMasters = async (req, res) => {
         const tStaff = await Staff.find({
           $or: [
             { firstName: { $in: filters.assignedTo } },
-            { lastName: { $in: filters.assignedTo } },
+            { lastName:  { $in: filters.assignedTo } },
             {
               $expr: {
                 $regexMatch: {
@@ -3049,13 +3047,13 @@ exports.getAllAccountMasters = async (req, res) => {
 
     // ── STEP 5: Determine whether we need a party-join inside the pipeline ────
     const needsPartyFilter = Object.keys(partyMatchExpr).length > 0;
-    const hasStatusFilter = filters.status?.length > 0;
+    const hasStatusFilter  = filters.status?.length > 0;
 
     // ── STEP 6: Single $facet aggregation ────────────────────────────────────
     // One DB round-trip returns: paginated data + total count + status counts.
     // Party filter and status counts are computed in the SAME collection scan.
 
-    const skip = isPagination ? (page - 1) * pageSize : 0;
+    const skip  = isPagination ? (page - 1) * pageSize : 0;
     const limit = isPagination ? pageSize : 100000; // safe ceiling for non-paginated
 
     // Base pipeline: match AM, join Party (with filter), filter status
@@ -3069,30 +3067,8 @@ exports.getAllAccountMasters = async (req, res) => {
           foreignField: "_id",
           as: "party",
           pipeline: needsPartyFilter
-            ? [{ $match: partyMatchExpr }, {
-              $project: {
-                partyName: 1, partyTag: 1, partyType: 1,
-                ownerMobileNo: 1, ownerName: 1, contactForPayment: 1,
-                ownerWhatsAppNo: 1, contactPerson: 1, personMobileNo: 1,
-                personWhatsAppNo: 1, contactMobileNo: 1, contactWhatsAppNo: 1,
-                // GSTNo: 1,
-                statusApproval: 1,
-                "address.unitNo": 1, "address.marketName": 1,
-                "address.area": 1
-              }
-            }]
-            : [{
-              $project: {
-                partyName: 1, partyTag: 1, partyType: 1,
-                ownerMobileNo: 1, ownerName: 1, contactForPayment: 1,
-                ownerWhatsAppNo: 1, contactPerson: 1, personMobileNo: 1,
-                personWhatsAppNo: 1, contactMobileNo: 1, contactWhatsAppNo: 1,
-                // GSTNo: 1,
-                statusApproval: 1,
-                "address.unitNo": 1, "address.marketName": 1,
-                "address.area": 1
-              }
-            }],
+            ? [{ $match: partyMatchExpr }, { $project: { partyName: 1, partyTag: 1, partyType: 1, ownerMobileNo: 1, ownerName: 1, contactForPayment: 1, ownerWhatsAppNo: 1, contactPerson: 1, personMobileNo: 1, personWhatsAppNo: 1, contactMobileNo: 1, contactWhatsAppNo: 1, GSTNo: 1, statusApproval: 1, "address.unitNo": 1, "address.marketName": 1, "address.area": 1, "address.state": 1, "address.city": 1 } }]
+            : [{ $project: { partyName: 1, partyTag: 1, partyType: 1, ownerMobileNo: 1, ownerName: 1, contactForPayment: 1, ownerWhatsAppNo: 1, contactPerson: 1, personMobileNo: 1, personWhatsAppNo: 1, contactMobileNo: 1, contactWhatsAppNo: 1, GSTNo: 1, statusApproval: 1, "address.unitNo": 1, "address.marketName": 1, "address.area": 1, "address.state": 1, "address.city": 1 } }],
         },
       },
       { $unwind: { path: "$party", preserveNullAndEmptyArrays: false } },
@@ -3108,13 +3084,13 @@ exports.getAllAccountMasters = async (req, res) => {
           // Counts branch (no skip/limit, groups by status)
           counts: includeCounts
             ? [
-              {
-                $group: {
-                  _id: "$party.statusApproval",
-                  count: { $sum: 1 },
+                {
+                  $group: {
+                    _id: "$party.statusApproval",
+                    count: { $sum: 1 },
+                  },
                 },
-              },
-            ]
+              ]
             : [{ $count: "total" }],
 
           // Total count (needed for pagination meta)
@@ -3151,7 +3127,7 @@ exports.getAllAccountMasters = async (req, res) => {
       facetResult.counts.forEach((sc) => {
         const key = (sc._id || "").toLowerCase();
         if (key === "approved") counts.approved = sc.count;
-        if (key === "pending") counts.pending = sc.count;
+        if (key === "pending")  counts.pending  = sc.count;
       });
       counts.total = counts.approved + counts.pending;
     }
@@ -3193,8 +3169,8 @@ exports.getAccountMasterByStaffId = async (req, res) => {
 
     if (startDate || endDate) {
       amQuery.createdAt = {};
-      if (startDate) { const s = new Date(startDate); s.setHours(0, 0, 0, 0); amQuery.createdAt.$gte = s; }
-      if (endDate) { const e = new Date(endDate); e.setHours(23, 59, 59, 999); amQuery.createdAt.$lte = e; }
+      if (startDate) { const s = new Date(startDate); s.setHours(0,0,0,0); amQuery.createdAt.$gte = s; }
+      if (endDate)   { const e = new Date(endDate);   e.setHours(23,59,59,999); amQuery.createdAt.$lte = e; }
     }
 
     if (filters.reason?.length) amQuery.reasonToVisit = { $in: filters.reason };
@@ -3202,29 +3178,29 @@ exports.getAccountMasterByStaffId = async (req, res) => {
     // Parallel pre-fetch
     const [staffIds, companyDocs, marketDocs, areaDocs] = await Promise.all([
       filters.createdBy?.length ? resolveStaffIds(filters.createdBy) : Promise.resolve(null),
-      filters.company?.length ? CompanyName.find({ companyName: { $in: filters.company } }).select("_id").lean() : Promise.resolve(null),
-      filters.market?.length ? Market.find({ marketName: { $in: filters.market } }).select("_id").lean() : Promise.resolve(null),
-      filters.area?.length ? Market.find({ area: { $in: filters.area } }).select("_id").lean() : Promise.resolve(null),
+      filters.company?.length   ? CompanyName.find({ companyName: { $in: filters.company } }).select("_id").lean() : Promise.resolve(null),
+      filters.market?.length    ? Market.find({ marketName: { $in: filters.market } }).select("_id").lean() : Promise.resolve(null),
+      filters.area?.length      ? Market.find({ area: { $in: filters.area } }).select("_id").lean() : Promise.resolve(null),
     ]);
 
-    if (filters.createdBy?.length && (!staffIds || !staffIds.length)) return res.status(200).json(emptyResponse(isPagination, page, pageSize));
-    if (filters.company?.length && (!companyDocs || !companyDocs.length)) return res.status(200).json(emptyResponse(isPagination, page, pageSize));
-    if (filters.market?.length && (!marketDocs || !marketDocs.length)) return res.status(200).json(emptyResponse(isPagination, page, pageSize));
-    if (filters.area?.length && (!areaDocs || !areaDocs.length)) return res.status(200).json(emptyResponse(isPagination, page, pageSize));
+    if (filters.createdBy?.length && (!staffIds || !staffIds.length))   return res.status(200).json(emptyResponse(isPagination, page, pageSize));
+    if (filters.company?.length   && (!companyDocs || !companyDocs.length)) return res.status(200).json(emptyResponse(isPagination, page, pageSize));
+    if (filters.market?.length    && (!marketDocs  || !marketDocs.length))  return res.status(200).json(emptyResponse(isPagination, page, pageSize));
+    if (filters.area?.length      && (!areaDocs    || !areaDocs.length))    return res.status(200).json(emptyResponse(isPagination, page, pageSize));
 
     if (staffIds?.length) amQuery.createdBy = { $in: staffIds };
     const companyIds = companyDocs ? companyDocs.map((c) => c._id) : [];
     if (companyIds.length) amQuery.companyName = { $in: companyIds };
 
     const partyMatchExpr = {};
-    if (filters.party?.length) partyMatchExpr.partyName = { $in: filters.party };
-    if (filters.contactPerson?.length) partyMatchExpr.contactPerson = { $in: filters.contactPerson };
-    if (filters.partyTag?.length) partyMatchExpr.partyTag = { $in: filters.partyTag };
-    if (filters.mobile?.length) partyMatchExpr.ownerMobileNo = { $in: filters.mobile };
-    if (filters.unitNo?.length) partyMatchExpr["address.unitNo"] = { $in: filters.unitNo };
-    if (filters.status?.length) partyMatchExpr.statusApproval = { $in: filters.status };
-    if (marketDocs?.length) partyMatchExpr["address.marketName"] = { $in: marketDocs.map((m) => m._id) };
-    if (areaDocs?.length) partyMatchExpr["address.area"] = { $in: areaDocs.map((a) => a._id) };
+    if (filters.party?.length)         partyMatchExpr.partyName             = { $in: filters.party };
+    if (filters.contactPerson?.length) partyMatchExpr.contactPerson         = { $in: filters.contactPerson };
+    if (filters.partyTag?.length)      partyMatchExpr.partyTag              = { $in: filters.partyTag };
+    if (filters.mobile?.length)        partyMatchExpr.ownerMobileNo         = { $in: filters.mobile };
+    if (filters.unitNo?.length)        partyMatchExpr["address.unitNo"]     = { $in: filters.unitNo };
+    if (filters.status?.length)        partyMatchExpr.statusApproval        = { $in: filters.status };
+    if (marketDocs?.length)            partyMatchExpr["address.marketName"] = { $in: marketDocs.map((m) => m._id) };
+    if (areaDocs?.length)              partyMatchExpr["address.area"]       = { $in: areaDocs.map((a) => a._id) };
 
     if (search) {
       partyMatchExpr.$or = [
@@ -3245,7 +3221,7 @@ exports.getAccountMasterByStaffId = async (req, res) => {
         const tStaff = await Staff.find({
           $or: [
             { firstName: { $in: filters.assignedTo } },
-            { lastName: { $in: filters.assignedTo } },
+            { lastName:  { $in: filters.assignedTo } },
           ],
         }).select("_id").lean();
         if (!tStaff.length) return res.status(200).json(emptyResponse(isPagination, page, pageSize));
@@ -3270,7 +3246,7 @@ exports.getAccountMasterByStaffId = async (req, res) => {
     if (taskAmIds) amQuery._id = { $in: taskAmIds };
 
     const needsPartyFilter = Object.keys(partyMatchExpr).length > 0;
-    const skip = isPagination ? (page - 1) * pageSize : 0;
+    const skip  = isPagination ? (page - 1) * pageSize : 0;
     const limit = isPagination ? pageSize : 100000;
 
     const partyProjection = { partyName: 1, partyTag: 1, partyType: 1, ownerMobileNo: 1, ownerName: 1, contactPerson: 1, ownerWhatsAppNo: 1, contactForPayment: 1, personMobileNo: 1, personWhatsAppNo: 1, contactMobileNo: 1, contactWhatsAppNo: 1, GSTNo: 1, statusApproval: 1, "address.unitNo": 1, "address.marketName": 1, "address.area": 1, "address.landMark": 1, "address.pincode": 1, "address.state": 1, "address.city": 1 };
@@ -3349,9 +3325,9 @@ exports.getAccountMasterById = async (req, res) => {
         select: "partyName ownerName ownerMobileNo ownerWhatsAppNo ownerEmail contactPerson personMobileNo personWhatsAppNo contactPersonEmail contactForPayment contactMobileNo contactWhatsAppNo contactForPaymentEmail GSTNo partyTag partyType address",
         populate: [
           { path: "address.marketName", model: "Market", select: "marketName" },
-          { path: "address.landMark", model: "Market", select: "landmark" },
-          { path: "address.area", model: "Market", select: "area" },
-          { path: "address.pincode", model: "Market", select: "pincode" },
+          { path: "address.landMark",   model: "Market", select: "landmark" },
+          { path: "address.area",       model: "Market", select: "area" },
+          { path: "address.pincode",    model: "Market", select: "pincode" },
         ],
       })
       .populate("createdBy", "_id firstName lastName email")
@@ -3417,7 +3393,7 @@ exports.updateAccountMaster = async (req, res) => {
     }
 
     const emailRegex = /^\S+@\S+\.\S+$/;
-    for (const [key, label] of [["ownerEmail", "owner"], ["contactPersonEmail", "contact person"], ["contactForPaymentEmail", "contact for payment"]]) {
+    for (const [key, label] of [["ownerEmail","owner"],["contactPersonEmail","contact person"],["contactForPaymentEmail","contact for payment"]]) {
       if (req.body[key] && !emailRegex.test(req.body[key])) {
         return res.status(400).json({ success: false, message: `Invalid ${label} email format` });
       }
@@ -3436,8 +3412,8 @@ exports.updateAccountMaster = async (req, res) => {
       Party.findById(accountMaster.party).select("statusApproval").lean(),
     ]);
 
-    if (!company) return res.status(400).json({ success: false, message: "Invalid companyName ID." });
-    if (!staff) return res.status(400).json({ success: false, message: "Invalid createdBy ID." });
+    if (!company)      return res.status(400).json({ success: false, message: "Invalid companyName ID." });
+    if (!staff)        return res.status(400).json({ success: false, message: "Invalid createdBy ID." });
     if (existingParty) return res.status(400).json({ success: false, message: "A party with this company, name and mobile number already exists" });
 
     // Parallel: update party + update accountMaster
@@ -3479,16 +3455,16 @@ exports.updateAccountMaster = async (req, res) => {
           select: "-__v",
           populate: [
             { path: "address.marketName", model: "Market", select: "marketName" },
-            { path: "address.landMark", model: "Market", select: "landmark" },
-            { path: "address.area", model: "Market", select: "area" },
-            { path: "address.pincode", model: "Market", select: "pincode" },
+            { path: "address.landMark",   model: "Market", select: "landmark" },
+            { path: "address.area",       model: "Market", select: "area" },
+            { path: "address.pincode",    model: "Market", select: "pincode" },
           ],
         })
         .populate("createdBy", "firstName lastName email"),
     ]);
 
     if (!updatedParty) return res.status(404).json({ success: false, message: "Associated Party not found" });
-    if (!updatedAM) return res.status(404).json({ success: false, message: "Failed to update AccountMaster" });
+    if (!updatedAM)    return res.status(404).json({ success: false, message: "Failed to update AccountMaster" });
 
     res.status(200).json({ success: true, message: "Account master updated successfully", data: updatedAM });
   } catch (error) {
@@ -3516,7 +3492,7 @@ exports.approveParty = async (req, res) => {
 
     if (!party) {
       const exists = await Party.findById(id).select("statusApproval").lean();
-      if (!exists) return res.status(404).json({ success: false, message: "Party not found" });
+      if (!exists)                           return res.status(404).json({ success: false, message: "Party not found" });
       if (exists.statusApproval === "Approved") return res.status(400).json({ success: false, message: "Party is already approved" });
     }
 
@@ -3577,14 +3553,12 @@ exports.getFilterOptionsData = async (req, res) => {
 
     // Base AccountMaster query (company + staff + date)
     const amQuery = {};
-    if (otherFilters.companyId) amQuery.companyName = otherFilters.companyId;
-    else if (otherFilters.companyName) amQuery.companyName = otherFilters.companyName;
-
-    if (otherFilters.staffId) amQuery.createdBy = otherFilters.staffId;
+    if (otherFilters.companyName) amQuery.companyName = otherFilters.companyName;
+    if (otherFilters.staffId)     amQuery.createdBy   = otherFilters.staffId;
     if (otherFilters.startDate || otherFilters.endDate) {
       amQuery.createdAt = {};
-      if (otherFilters.startDate) { const s = new Date(otherFilters.startDate); s.setHours(0, 0, 0, 0); amQuery.createdAt.$gte = s; }
-      if (otherFilters.endDate) { const e = new Date(otherFilters.endDate); e.setHours(23, 59, 59, 999); amQuery.createdAt.$lte = e; }
+      if (otherFilters.startDate) { const s = new Date(otherFilters.startDate); s.setHours(0,0,0,0); amQuery.createdAt.$gte = s; }
+      if (otherFilters.endDate)   { const e = new Date(otherFilters.endDate);   e.setHours(23,59,59,999); amQuery.createdAt.$lte = e; }
     }
 
     let uniqueValues = [];

@@ -91,17 +91,16 @@ exports.getAllCompanyNames = async (req, res) => {
 
 exports.getCompanyNames = async (req, res) => {
   try {
-    // const companies = await CompanyName.aggregate([
-    //   {
-    //     $lookup: {
-    //       from: "accountmasters", // must match MongoDB collection name (lowercase plural)
-    //       localField: "_id",
-    //       foreignField: "companyName",
-    //       as: "partyList"
-    //     }
-    //   }
-    // ]);
-    const companies = await CompanyName.find();
+    const companies = await CompanyName.aggregate([
+      {
+        $lookup: {
+          from: "accountmasters", // must match MongoDB collection name (lowercase plural)
+          localField: "_id",
+          foreignField: "companyName",
+          as: "partyList"
+        }
+      }
+    ]);
 
     res.status(200).json({
       success: true,

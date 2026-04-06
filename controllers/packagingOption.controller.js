@@ -74,7 +74,7 @@ exports.getAllPackagingOptions = async (req, res) => {
     const options = await PackagingOption.find()
       .populate("party",'partyName')
       .populate("kantan", "kantanName") // NEW: populate kantan
-      .sort({ createdAt: -1 }).lean().select('-__v -updatedAt');
+      .sort({ createdAt: -1 }).lean();
     return res.status(200).json({ data: options });
   } catch (error) {
     return res
