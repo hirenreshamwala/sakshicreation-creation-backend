@@ -142,9 +142,9 @@ exports.deleteOrder = async (req, res) => {
 // const Size = require('../models/size.model');
 exports.createOrder = async (req, res) => {
   try {
-    console.log("=== CREATE ORDER DEBUG ===");
-    console.log("req.body:", req.body);
-    console.log("=========================");
+    // console.log("=== CREATE ORDER DEBUG ===");
+    // console.log("req.body:", req.body);
+    // console.log("=========================");
 
     const {
       companyName,
@@ -279,7 +279,7 @@ exports.createOrder = async (req, res) => {
             uploadedAt: new Date(),
           }));
         }
-        console.log("Processed file paths:", processedFilePaths);
+        // console.log("Processed file paths:", processedFilePaths);
       } catch (error) {
         console.error("Error processing file paths:", error);
         processedFilePaths = [];
@@ -329,8 +329,8 @@ exports.createOrder = async (req, res) => {
     if (partyDoc && partyDoc.partyTag === "NEW") {
       partyDoc.partyTag = "CUSTOMER";
       await partyDoc.save();
-      console.log(`Updated party ${partyDoc._id} tag from New to Customer`);
-      console.log("🚀 ~ Update:", Update);
+      // console.log(`Updated party ${partyDoc._id} tag from New to Customer`);
+      // console.log("🚀 ~ Update:", Update);
     }
     // Populate the order for response
     const populatedOrder = await Order.findById(order._id)
@@ -399,12 +399,12 @@ exports.getFilterOptionsData = async (req, res) => {
         .json({ success: false, message: "Field parameter is required" });
     }
 
-    console.log(
-      "Order Filter Options - Field:",
-      field,
-      "Filters:",
-      otherFilters
-    );
+    // console.log(
+    //   "Order Filter Options - Field:",
+    //   field,
+    //   "Filters:",
+    //   otherFilters
+    // );
 
     // Build main filter query
     const query = {};
@@ -535,7 +535,7 @@ exports.getFilterOptionsData = async (req, res) => {
     // LIMIT FOR SAFETY
     // uniqueValues = uniqueValues.slice(0, 100);
 
-    console.log(`Filter options for ${field}:`, uniqueValues.length, "items");
+    // console.log(`Filter options for ${field}:`, uniqueValues.length, "items");
 
     res.status(200).json({
       success: true,
@@ -1182,9 +1182,9 @@ exports.getOrderById = async (req, res) => {
   try {
     const { id } = req.params;
 
-    console.log("=== GET ORDER BY ID DEBUG ===");
-    console.log("Order ID:", id);
-    console.log("=============================");
+    // console.log("=== GET ORDER BY ID DEBUG ===");
+    // console.log("Order ID:", id);
+    // console.log("=============================");
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({
@@ -1256,9 +1256,9 @@ exports.getOrderById = async (req, res) => {
       });
     }
 
-    console.log("✅ Order found:", order._id);
-    console.log("File paths:", order.filePaths);
-    console.log("Design files:", order.designFiles);
+    // console.log("✅ Order found:", order._id);
+    // console.log("File paths:", order.filePaths);
+    // console.log("Design files:", order.designFiles);
 
     res.status(200).json({
       success: true,
@@ -1295,7 +1295,7 @@ exports.updateOrder = async (req, res) => {
       color2,
       ...updateData
     } = req.body;
-    console.log("DEBUG : req.body:", req.body);
+    // console.log("DEBUG : req.body:", req.body);
 
 
     const orderData = await Order.findById(id);
@@ -1424,11 +1424,11 @@ exports.updateOrder = async (req, res) => {
         reasonForVisit: "Delivery",
         remarks: req.body.remarks || "",
       });
-      console.log("🚀 ~ newAssignTask:", newAssignTask);
+      // console.log("🚀 ~ newAssignTask:", newAssignTask);
 
       const dataassigntask = await newAssignTask.save();
 
-      console.log("dataassigntask", dataassigntask);
+      // console.log("dataassigntask", dataassigntask);
     }
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
@@ -1801,7 +1801,7 @@ exports.updateOrder = async (req, res) => {
       });
     }
 
-    console.log("✅ Order updated successfully:", order._id);
+    // console.log("✅ Order updated successfully:", order._id);
 
     try {
       const io = req.app.get("io");
@@ -1922,9 +1922,9 @@ exports.deleteOrder = async (req, res) => {
   try {
     const { id } = req.params;
 
-    console.log("=== DELETE ORDER DEBUG ===");
-    console.log("Order ID:", id);
-    console.log("=========================");
+    // console.log("=== DELETE ORDER DEBUG ===");
+    // console.log("Order ID:", id);
+    // console.log("=========================");
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({
@@ -1950,10 +1950,10 @@ exports.deleteOrder = async (req, res) => {
         { lastSequence: 100 },
         { upsert: true }
       );
-      console.log("✅ Sequence reset to 100 as no orders remain");
+      // console.log("✅ Sequence reset to 100 as no orders remain");
     }
 
-    console.log("✅ Order deleted successfully:", order._id);
+    // console.log("✅ Order deleted successfully:", order._id);
 
     res.status(200).json({
       success: true,
@@ -1974,10 +1974,10 @@ exports.getOrdersByCompanyAndParty = async (req, res) => {
   try {
     const { companyId, partyId } = req.params;
 
-    console.log("=== GET ORDERS BY COMPANY AND PARTY DEBUG ===");
-    console.log("Company ID:", companyId);
-    console.log("Party ID:", partyId);
-    console.log("============================================");
+    // console.log("=== GET ORDERS BY COMPANY AND PARTY DEBUG ===");
+    // console.log("Company ID:", companyId);
+    // console.log("Party ID:", partyId);
+    // console.log("============================================");
 
     if (
       !mongoose.Types.ObjectId.isValid(companyId) ||
@@ -2030,9 +2030,9 @@ exports.getOrdersByCompanyAndParty = async (req, res) => {
       .populate("designer", "name")
       .sort({ createdAt: -1 });
 
-    console.log(
-      `📊 Found ${orders.length} orders for company-party combination`
-    );
+    // console.log(
+    //   `📊 Found ${orders.length} orders for company-party combination`
+    // );
 
     res.status(200).json({
       success: true,
@@ -2106,7 +2106,7 @@ exports.getDesignerById = async (req, res) => {
     //     message: "No orders found for this designer",
     //   });
     // }
-    console.log(orders.filter((el) => el.designerStatus !== "Approved").length);
+    // console.log(orders.filter((el) => el.designerStatus !== "Approved").length);
     res.status(200).json({
       success: true,
       count: orders.length,
@@ -2275,7 +2275,7 @@ exports.getBinderById = async (req, res) => {
 exports.getBookletBinderById = async (req, res) => {
   try {
     const { id } = req.user;
-    console.log("bookletBinder", id);
+    // console.log("bookletBinder", id);
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({
@@ -2327,7 +2327,7 @@ exports.getBookletBinderById = async (req, res) => {
       .populate("bindingType", "name")
       .sort({ createdAt: -1 });
 
-    console.log("orders", orders);
+    // console.log("orders", orders);
 
     // if (!orders || orders.length === 0) {
     //   return res.status(404).json({
@@ -2354,7 +2354,7 @@ exports.getBookletBinderById = async (req, res) => {
 exports.getOrdersByStaffId = async (req, res) => {
   try {
     const { id } = req.params;
-    console.log(id, "id");
+    // console.log(id, "id");
     // 1. Validate staffId format
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({
@@ -2436,10 +2436,10 @@ exports.getOrdersByStaffId = async (req, res) => {
         query.$or = directOr;
       }
 
-      console.log(
-        "🔍 Built search conditions for staff:",
-        JSON.stringify(query.$or, null, 2)
-      ); // Debug log
+      // console.log(
+      //   "🔍 Built search conditions for staff:",
+      //   JSON.stringify(query.$or, null, 2)
+      // ); // Debug log
     }
 
     // Date range filter (unchanged)
@@ -2675,10 +2675,10 @@ exports.updateStaffStatus = async (req, res) => {
     const { orderId } = req.params;
     const { statusType, status } = req.body;
 
-    console.log("📥 Incoming request:", { orderId, statusType, status });
+    // console.log("📥 Incoming request:", { orderId, statusType, status });
 
     if (!mongoose.Types.ObjectId.isValid(orderId)) {
-      console.log("❌ Invalid Order ID:", orderId);
+      // console.log("❌ Invalid Order ID:", orderId);
       return res
         .status(400)
         .json({ success: false, message: "Invalid Order ID" });
@@ -2688,20 +2688,20 @@ exports.updateStaffStatus = async (req, res) => {
     const validStatusValues = ["Pending", "In Progress", "Done"];
 
     if (!validStatusTypes.includes(statusType)) {
-      console.log("❌ Invalid status type:", statusType);
+      // console.log("❌ Invalid status type:", statusType);
       return res
         .status(400)
         .json({ success: false, message: "Invalid status type" });
     }
 
     if (!validStatusValues.includes(status)) {
-      console.log("❌ Invalid status value:", status);
+      // console.log("❌ Invalid status value:", status);
       return res
         .status(400)
         .json({ success: false, message: "Invalid status value" });
     }
 
-    console.log("🔍 Fetching order:", orderId);
+    // console.log("🔍 Fetching order:", orderId);
     const currentOrder = await Order.findById(orderId)
       .populate("companyName", "companyName avatar")
       .populate({
@@ -2738,7 +2738,7 @@ exports.updateStaffStatus = async (req, res) => {
       .populate("productItem", "itemName");
 
     if (!currentOrder) {
-      console.log("❌ Order not found:", orderId);
+      // console.log("❌ Order not found:", orderId);
       return res
         .status(404)
         .json({ success: false, message: "Order not found" });
@@ -2766,25 +2766,25 @@ exports.updateStaffStatus = async (req, res) => {
 
     const staffRole = await Staff.findById(req.user.id);
     if (!staffRole) {
-      console.log("❌ Staff not found:", req.user.id);
+      // console.log("❌ Staff not found:", req.user.id);
       return res
         .status(404)
         .json({ success: false, message: "Staff not found" });
     }
 
-    console.log("✅ Staff role found:", staffRole.role);
+    // console.log("✅ Staff role found:", staffRole.role);
 
     // Helper to process inventory for any category
     const processInventory = async (category, papers) => {
-      console.log(`📦 Processing inventory for category: ${category}`);
+      // console.log(`📦 Processing inventory for category: ${category}`);
 
       if (!papers || !Array.isArray(papers)) {
-        console.log("⚠️ No papers found for", category, papers);
+        // console.log("⚠️ No papers found for", category, papers);
         return;
       }
 
       for (const paper of papers) {
-        console.log("➡️ Checking paper:", paper);
+        // console.log("➡️ Checking paper:", paper);
 
         if (paper.numberOfSheetsUsed && Number(paper.numberOfSheetsUsed) > 0) {
           await Inventory.create({
@@ -2809,7 +2809,7 @@ exports.updateStaffStatus = async (req, res) => {
 
     // Process inventory if status is "In Progress"
     if (status === "In Progress") {
-      console.log("🔄 Processing inventory because status = In Progress");
+      // console.log("🔄 Processing inventory because status = In Progress");
       if (statusType === "printer") {
         await processInventory("printer", currentOrder.printerPapers);
       } else if (statusType === "binder") {
@@ -2832,7 +2832,7 @@ exports.updateStaffStatus = async (req, res) => {
           ? "binderNotificationUnread"
           : "bookletBinderNotificationUnread";
 
-    console.log("📝 Updating order status:", updateField, "=>", status);
+    // console.log("📝 Updating order status:", updateField, "=>", status);
 
     const updatePayload = {
       [updateField]: status,
@@ -3174,6 +3174,7 @@ exports.assignFollowUp = async (req, res) => {
           status: "Pending",
           assignedAt: new Date(),
           remarks: remarks || "",
+          date: date ? new Date(date) : new Date(),
         },
       },
       { new: true }

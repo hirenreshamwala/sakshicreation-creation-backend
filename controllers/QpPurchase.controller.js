@@ -47,7 +47,7 @@ exports.getStaffByRole = async (req, res) => {
     const { roleId } = req.params;
 
     // Log the roleId for debugging
-    console.log("Received roleId:", roleId);
+    // console.log("Received roleId:", roleId);
 
     // Check if roleId is a valid ObjectId
     if (!mongoose.Types.ObjectId.isValid(roleId)) {

@@ -1990,8 +1990,8 @@ const getscDesigner = async (req, res) => {
 
     const start = new Date(startDate);
     const end = new Date(endDate);
-    console.log("start", start);
-    console.log("end", end);
+    // console.log("start", start);
+    // console.log("end", end);
     end.setHours(23, 59, 59, 999);
 
     const designerRoles = await Role.find({
