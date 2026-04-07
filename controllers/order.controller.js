@@ -106,6 +106,39 @@ exports.cancelOrder = async (req, res) => {
   }
 };
 
+exports.deleteOrder = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid order ID",
+      });
+    }
+
+    const order = await Order.findByIdAndDelete(id);
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: "Order not found",
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Order deleted successfully",
+    });
+  } catch (error) {
+    console.error("Error deleting order:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to delete order",
+      error: error.message,
+    });
+  }
+};
+
 // const Size = require('../models/size.model');
 exports.createOrder = async (req, res) => {
   try {
@@ -3074,7 +3107,7 @@ exports.updateStaffStatus = async (req, res) => {
 exports.assignFollowUp = async (req, res) => {
   try {
     const { orderId } = req.params;
-    const { staffId, remarks } = req.body;
+    const { staffId, remarks, date } = req.body;
 
     if (!mongoose.Types.ObjectId.isValid(orderId)) {
       return res.status(400).json({
@@ -3119,7 +3152,7 @@ exports.assignFollowUp = async (req, res) => {
     const assignTaskData = {
       companyName: order.companyName._id,
       partyName: order.party._id,
-      date: new Date(),
+      date: date ? new Date(date) : new Date(),
       orderId: order._id, // Pass orderId to the task
       time: moment().format("HH:mm"),
       reasonForVisit: `Follow up for Order: ${order.orderNumber} - ${order.productItem?.itemName || "N/A"}`,
