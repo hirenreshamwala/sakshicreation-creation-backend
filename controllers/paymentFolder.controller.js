@@ -239,6 +239,39 @@ exports.getPaymentFolders = async (req, res) => {
       query.area = { $in: filters.area };
     }
 
+    // Task Status filter
+    if (filters.taskStatus && filters.taskStatus.length > 0) {
+      const taskStatusValues = Array.isArray(filters.taskStatus) ? filters.taskStatus : [filters.taskStatus];
+      
+      if (taskStatusValues.includes("Pending")) {
+        // Find tasks that are Pending or don't exist (not yet assigned)
+        const pendingTasks = await AssignTask.find({ 
+          status: { $in: ["Pending", "Rescheduled"] } 
+        }).select("_id").lean();
+        
+        const pendingTaskIds = pendingTasks.map(t => t._id);
+        
+        query.$or = query.$or || [];
+        query.$or.push(
+          { assignTask: { $in: pendingTaskIds } },
+          { assignTask: { $exists: false } },
+          { assignTask: null }
+        );
+      } else if (taskStatusValues.includes("Completed")) {
+        const completedTasks = await AssignTask.find({ 
+          status: "Completed" 
+        }).select("_id").lean();
+        
+        query.assignTask = { $in: completedTasks.map(t => t._id) };
+      } else {
+        const matchingTasks = await AssignTask.find({ 
+          status: { $in: taskStatusValues } 
+        }).select("_id").lean();
+        
+        query.assignTask = { $in: matchingTasks.map(t => t._id) };
+      }
+    }
+
     // Month filter
     if (filters.month && filters.month.length > 0) {
       query.month = { $in: filters.month };
@@ -382,7 +415,7 @@ exports.getPaymentFolderFilterOptions = async (req, res) => {
       });
     }
 
-    const validFields = ['company', 'party', 'area', 'month', 'assignTo', 'paymentAmount', 'receivedAmount', 'pendingAmount', 'assignedDate', 'remarks'];
+    const validFields = ['company', 'party', 'area', 'month', 'assignTo', 'paymentAmount', 'receivedAmount', 'pendingAmount', 'assignedDate', 'remarks', 'taskStatus'];
 
     if (!validFields.includes(field)) {
       return res.status(400).json({
@@ -403,6 +436,33 @@ exports.getPaymentFolderFilterOptions = async (req, res) => {
         query.company = { $in: companies.map(c => c._id) };
       }
     }
+
+    // Task Status filter (to maintain consistency in dropdown options)
+    if (otherFilters.taskStatus && otherFilters.taskStatus.length > 0) {
+      const taskStatusValues = Array.isArray(otherFilters.taskStatus) ? otherFilters.taskStatus : [otherFilters.taskStatus];
+      
+      if (taskStatusValues.includes("Pending")) {
+        const pendingTasks = await AssignTask.find({ 
+          status: { $in: ["Pending", "Rescheduled"] } 
+        }).select("_id").lean();
+        
+        const pendingTaskIds = pendingTasks.map(t => t._id);
+        
+        query.$or = query.$or || [];
+        query.$or.push(
+          { assignTask: { $in: pendingTaskIds } },
+          { assignTask: { $exists: false } },
+          { assignTask: null }
+        );
+      } else {
+        const matchingTasks = await AssignTask.find({ 
+          status: { $in: taskStatusValues } 
+        }).select("_id").lean();
+        
+        query.assignTask = { $in: matchingTasks.map(t => t._id) };
+      }
+    }
+
     // Date range filter
     if (otherFilters.startDate || otherFilters.endDate) {
       query.createdAt = {};
@@ -494,6 +554,9 @@ exports.getPaymentFolderFilterOptions = async (req, res) => {
       case "remarks":
         uniqueValues = await PaymentFolder.distinct("remarks", query);
         uniqueValues = uniqueValues.filter(val => val && String(val).trim() !== "");
+        break;
+      case "taskStatus":
+        uniqueValues = ["Pending", "Completed", "Rescheduled", "Cancelled"];
         break;
       default:
         return res.status(400).json({

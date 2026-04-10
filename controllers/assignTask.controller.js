@@ -1104,7 +1104,8 @@ exports.getAllAssignTasks = async (req, res) => {
       });
 
       if (createdByConditions.length > 0) {
-        postMatchConditions.$or = createdByConditions;
+        postMatchConditions.$and = postMatchConditions.$and || [];
+        postMatchConditions.$and.push({ $or: createdByConditions });
       }
     }
 

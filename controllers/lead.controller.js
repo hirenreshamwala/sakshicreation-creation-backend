@@ -183,7 +183,16 @@ exports.getAllLeads = async (req, res) => {
     /* ================================
        STATUS FILTER
     ================================ */
-    if (status && Array.isArray(status) && status.length > 0) {
+    if (status && (Array.isArray(status) ? status.includes("pending") : status === "pending")) {
+      // Pending includes actual Pending status or no date set (missing follow-up)
+      preMatchConditions.$or = [
+        ...(preMatchConditions.$or || []),
+        { status: "pending" },
+        { status: "rescheduled" },
+        { date: { $exists: false } },
+        { date: null }
+      ];
+    } else if (status && Array.isArray(status) && status.length > 0) {
       preMatchConditions.status = { $in: status };
     } else if (status) {
       preMatchConditions.status = status;
@@ -549,7 +558,8 @@ exports.getAllLeads = async (req, res) => {
       });
 
       if (assignToConditions.length > 0) {
-        postMatchConditions.$or = assignToConditions;
+        postMatchConditions.$and = postMatchConditions.$and || [];
+        postMatchConditions.$and.push({ $or: assignToConditions });
       }
     }
 
