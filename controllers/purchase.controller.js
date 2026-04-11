@@ -99,8 +99,7 @@ exports.createPurchase = async (req, res) => {
     } = req.body;
 
     // Validate required fields
-    if (!vendorName || !billNumber || !material || !quantity || !ratePerSheet || 
-        !kg || !companyName || !role || !staff) {
+    if (!vendorName || !billNumber || !material || !quantity || !companyName || !role || !staff) {
       return res.status(400).json({
         success: false,
         message: 'All required fields must be provided'
@@ -119,16 +118,7 @@ exports.createPurchase = async (req, res) => {
       });
     }
 
-    // Check if bill number already exists
-    const existingPurchase = await Purchase.findOne({ billNumber });
-    if (existingPurchase) {
-      return res.status(400).json({
-        success: false,
-        message: 'Bill number must be unique'
-      });
-    }
-
-        // Verify vendor exists
+    // Verify vendor exists
     const vendorExists = await Vendor.findById(vendorName);
     if (!vendorExists) {
       return res.status(400).json({
@@ -337,20 +327,6 @@ exports.updatePurchase = async (req, res) => {
         success: false,
         message: 'Invalid staff ID'
       });
-    }
-
-    // Check if bill number is being updated to an existing one
-    if (billNumber) {
-      const existingPurchase = await Purchase.findOne({
-        billNumber,
-        _id: { $ne: req.params.id }
-      });
-      if (existingPurchase) {
-        return res.status(400).json({
-          success: false,
-          message: 'Bill number must be unique'
-        });
-      }
     }
 
     // Verify vendor exists if provided
@@ -724,19 +700,10 @@ exports.bulkCreatePurchases = async (req, res) => {
             const { billNumber, quantity, ratePerSheet, kg } = row;
 
             // Validate required fields
-            if (!billNumber || !quantity || !ratePerSheet || !kg) {
+            if (!billNumber || !quantity) {
               return res.status(400).json({
                 success: false,
                 message: `Missing required fields in row: ${JSON.stringify(row)}`,
-              });
-            }
-
-            // Check for duplicate bill number
-            const existingPurchase = await Purchase.findOne({ billNumber });
-            if (existingPurchase) {
-              return res.status(400).json({
-                success: false,
-                message: `Duplicate bill number: ${billNumber}`,
               });
             }
 
@@ -746,8 +713,8 @@ exports.bulkCreatePurchases = async (req, res) => {
               billNumber,
               material: material._id,
               quantity: Number(quantity),
-              ratePerSheet: Number(ratePerSheet),
-              kg: Number(kg),
+              ratePerSheet: ratePerSheet ? Number(ratePerSheet) : 0,
+              kg: kg ? Number(kg) : 0,
               companyName,
               for: role,
               forCompany: staff,
@@ -767,7 +734,7 @@ exports.bulkCreatePurchases = async (req, res) => {
               type: 'inward',
               material: material._id,
               quantity: Number(quantity),
-              kg: Number(kg),
+              kg: kg ? Number(kg) : 0,
               vendor: vendorName,
               date: new Date(),
               companyName,

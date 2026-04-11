@@ -207,7 +207,9 @@ exports.exportPendingApprovalOrdersToExcel = async (req, res) => {
         const { startDate, endDate } = req.body;
 
         const filter = {
-            status: { $nin: ["Cancelled", "Delivery"] }
+            designer: { $exists: true, $ne: null },
+            status: 'Designer',
+            designerStatus: { $ne: 'Approved' }
         };
 
         if (startDate && endDate) {
@@ -4844,7 +4846,7 @@ exports.exportPendingClientApprovalOrdersToExcel = async (req, res) => {
 
 exports.exportPendingOrdersToExcel = async (req, res) => {
     try {
-        const { type } = req.body; // 'printer', 'binder', 'booklet-binder'
+        const { type } = req.body; // 'designer', 'printer', 'binder', 'booklet-binder'
 
         let query = {};
         let assignField = '';
@@ -4862,6 +4864,17 @@ exports.exportPendingOrdersToExcel = async (req, res) => {
             query = {
                 printer: { $exists: true, $ne: null },
                 printerStatus: { $in: ['Pending', 'In Progress'] }
+            };
+        } else if (type === 'designer') {
+            assignField = 'designerAssignedAt';
+            statusField = 'designerStatus';
+            remarksField = 'designerRemarks';
+            typeLabel = 'Designer';
+            populateField = 'designer';
+            query = {
+                designer: { $exists: true, $ne: null },
+                status: 'Designer',
+                designerStatus: { $ne: 'Approved' }
             };
         } else if (type === 'binder') {
             assignField = 'binderAssignedAt';
@@ -4886,11 +4899,12 @@ exports.exportPendingOrdersToExcel = async (req, res) => {
         } else {
             return res.status(400).json({
                 success: false,
-                message: "Invalid type. Use 'printer', 'binder', or 'booklet-binder'"
+                message: "Invalid type. Use 'designer', 'printer', 'binder', or 'booklet-binder'"
             });
         }
 
         const orders = await Order.find(query)
+            .populate('designer', 'firstName lastName')
             .populate('printer', 'firstName lastName')
             .populate('binder', 'firstName lastName')
             .populate('bookletBinder', 'firstName lastName')
@@ -4942,6 +4956,9 @@ exports.exportPendingOrdersToExcel = async (req, res) => {
 
             if (type === 'printer') {
                 assignee = order.printer;
+                assigneeName = assignee ? `${assignee.firstName || ''} ${assignee.lastName || ''}`.trim() : 'Unassigned';
+            } else if (type === 'designer') {
+                assignee = order.designer;
                 assigneeName = assignee ? `${assignee.firstName || ''} ${assignee.lastName || ''}`.trim() : 'Unassigned';
             } else if (type === 'binder') {
                 assignee = order.binder;
