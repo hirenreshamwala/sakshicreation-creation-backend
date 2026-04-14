@@ -295,8 +295,8 @@ exports.exportPendingApprovalOrdersToExcel = async (req, res) => {
                     : '',
                 currentStage: getStageStatusText(order),
                 followUpBy: followUpStaff,
-                taskAssignedDate: order.followUp?.assignedAt
-                    ? moment(order.followUp.assignedAt).format('DD-MM-YYYY')
+                taskAssignedDate: order.followUp?.date
+                    ? moment(order.followUp.date).format('DD-MM-YYYY')
                     : '',
                 rescheduleDate: order.followUp?.taskId?.rescheduleDate
                     ? moment(order.followUp.taskId.rescheduleDate).format('DD-MM-YYYY')
