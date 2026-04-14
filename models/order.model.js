@@ -828,6 +828,10 @@ const orderSchema = new mongoose.Schema(
         type: Date,
         default: null
       },
+      date: {
+        type: Date,
+        default: null
+      },
       remarks: {
         type: String,
         default: ""

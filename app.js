@@ -3,6 +3,8 @@ var express = require('express');
 var path = require('path');
 var cookieParser = require('cookie-parser');
 // var logger = require('morgan');
+require('node:dns').setServers(['1.1.1.1','8.8.8.8'])
+
 const { connectDB } = require("./db/connectDB");
 require("dotenv").config();
 const cors = require("cors");

@@ -3197,7 +3197,7 @@ exports.assignFollowUp = async (req, res) => {
       .populate("productItem", "itemName")
       .populate("createdBy", "firstName lastName")
       .populate("followUp.staff", "firstName lastName")
-      .populate("followUp.taskId", "status");
+      .populate("followUp.taskId", "status rescheduleDate");
 
     res.status(200).json({
       success: true,

@@ -392,8 +392,18 @@ exports.exportAccountMastersToExcel = async (req, res) => {
             // { header: 'Assign', key: 'assign', width: 20 }
         ];
 
+        const resolveMarketName = (marketValue) => {
+            if (!marketValue) return '';
+            if (typeof marketValue === 'string') return marketValue;
+            if (typeof marketValue === 'object') return marketValue.marketName || marketValue.area || '';
+            return '';
+        };
+
         // Format and add data rows
         responseData.data.forEach((account, index) => {
+            const marketName = resolveMarketName(account.party?.address?.marketName);
+            const areaName = resolveMarketName(account.party?.address?.area);
+
             worksheet.addRow({
                 srNo: index + 1,
                 company: account.companyName?.companyName || '',
@@ -404,8 +414,8 @@ exports.exportAccountMastersToExcel = async (req, res) => {
                 mobileNo: account.party?.personMobileNo || account.party?.ownerMobileNo || '',
                 reasonToVisit: account.reasonToVisit || '',
                 unitNo: account.party?.address?.unitNo || '',
-                market: account.party?.address?.marketName || '',
-                area: account.party?.address?.area || '',
+                market: marketName,
+                area: areaName,
                 remarks: account.latestTask?.remarks || '',
                 status: account.party?.statusApproval || '',
                 createdBy: `${account.createdBy?.firstName || ''} ${account.createdBy?.lastName || ''}`.trim(),
@@ -3498,7 +3508,34 @@ exports.exportPaymentFolderToExcel = async (req, res) => {
 
             // Task Status filter
             if (filters.taskStatus && filters.taskStatus.length > 0) {
-                query.taskStatus = { $in: filters.taskStatus };
+                const taskStatusValues = Array.isArray(filters.taskStatus) ? filters.taskStatus : [filters.taskStatus];
+
+                if (taskStatusValues.includes("Pending")) {
+                    const pendingTasks = await assignTaskModel.find({
+                        status: { $in: ["Pending", "Rescheduled"] }
+                    }).select("_id").lean();
+
+                    const pendingTaskIds = pendingTasks.map(t => t._id);
+
+                    query.$or = query.$or || [];
+                    query.$or.push(
+                        { assignTask: { $in: pendingTaskIds } },
+                        { assignTask: { $exists: false } },
+                        { assignTask: null }
+                    );
+                } else if (taskStatusValues.includes("Completed")) {
+                    const completedTasks = await assignTaskModel.find({
+                        status: "Completed"
+                    }).select("_id").lean();
+
+                    query.assignTask = { $in: completedTasks.map(t => t._id) };
+                } else {
+                    const matchingTasks = await assignTaskModel.find({
+                        status: { $in: taskStatusValues }
+                    }).select("_id").lean();
+
+                    query.assignTask = { $in: matchingTasks.map(t => t._id) };
+                }
             }
 
             // Difference filter
@@ -3980,201 +4017,225 @@ exports.exportPaymentFolderDifferenceToExcel = async (req, res) => {
             const query = {};
 
             // Helper function to build multi-word search conditions
-            // const buildMultiWordSearch = (searchStr, fields) => {
-            //     if (!searchStr || !searchStr.trim()) return [];
-            //     const parts = searchStr.trim().split(/\s+/).filter(p => p.length > 0);
-            //     if (parts.length === 0) return [];
+            const buildMultiWordSearch = (searchStr, fields) => {
+                if (!searchStr || !searchStr.trim()) return [];
+                const parts = searchStr.trim().split(/\s+/).filter(p => p.length > 0);
+                if (parts.length === 0) return [];
 
-            //     const partConditions = parts.map(part => ({
-            //         $or: fields.map(field => ({
-            //             [field]: { $regex: part, $options: "i" }
-            //         }))
-            //     }));
+                const partConditions = parts.map(part => ({
+                    $or: fields.map(field => ({
+                        [field]: { $regex: part, $options: "i" }
+                    }))
+                }));
 
-            //     if (parts.length === 1) {
-            //         return partConditions[0].$or;
-            //     } else {
-            //         return [{ $and: partConditions }];
-            //     }
-            // };
+                if (parts.length === 1) {
+                    return partConditions[0].$or;
+                } else {
+                    return [{ $and: partConditions }];
+                }
+            };
 
             // Search functionality
-            // if (search && search.trim()) {
-            //     const directOr = [
-            //         { remarks: { $regex: search, $options: "i" } },
-            //         { month: { $regex: search, $options: "i" } },
-            //         { area: { $regex: search, $options: "i" } },
-            //     ];
+            if (search && search.trim()) {
+                const directOr = [
+                    { remarks: { $regex: search, $options: "i" } },
+                    { month: { $regex: search, $options: "i" } },
+                    { area: { $regex: search, $options: "i" } },
+                ];
 
-            //     // Company search with multi-word support
-            //     const companyFields = ['companyName'];
-            //     const companyConditions = buildMultiWordSearch(search, companyFields);
-            //     if (companyConditions.length > 0) {
-            //         const matchingCompanies = await Company.find({
-            //             $or: companyConditions
-            //         }).select('_id').lean();
-            //         const companyIds = matchingCompanies.map(c => c._id);
-            //         if (companyIds.length > 0) {
-            //             directOr.push({ company: { $in: companyIds } });
-            //         }
-            //     }
+                // Company search with multi-word support
+                const companyFields = ['companyName'];
+                const companyConditions = buildMultiWordSearch(search, companyFields);
+                if (companyConditions.length > 0) {
+                    const matchingCompanies = await Company.find({
+                        $or: companyConditions
+                    }).select('_id').lean();
+                    const companyIds = matchingCompanies.map(c => c._id);
+                    if (companyIds.length > 0) {
+                        directOr.push({ company: { $in: companyIds } });
+                    }
+                }
 
-            //     // Party search with multi-word support
-            //     const partyFields = ['partyName'];
-            //     const partyConditions = buildMultiWordSearch(search, partyFields);
-            //     if (partyConditions.length > 0) {
-            //         const matchingParties = await Party.find({
-            //             $or: partyConditions
-            //         }).select('_id').lean();
-            //         const partyIds = matchingParties.map(p => p._id);
-            //         if (partyIds.length > 0) {
-            //             directOr.push({ party: { $in: partyIds } });
-            //         }
-            //     }
+                // Party search with multi-word support
+                const partyFields = ['partyName'];
+                const partyConditions = buildMultiWordSearch(search, partyFields);
+                if (partyConditions.length > 0) {
+                    const matchingParties = await Party.find({
+                        $or: partyConditions
+                    }).select('_id').lean();
+                    const partyIds = matchingParties.map(p => p._id);
+                    if (partyIds.length > 0) {
+                        directOr.push({ party: { $in: partyIds } });
+                    }
+                }
 
-            //     // Assigned to (Staff) search with multi-word support
-            //     const staffFields = ['firstName', 'lastName', 'email'];
-            //     const staffConditions = buildMultiWordSearch(search, staffFields);
-            //     if (staffConditions.length > 0) {
-            //         const matchingStaff = await Staff.find({
-            //             $or: staffConditions
-            //         }).select('_id').lean();
-            //         const staffIds = matchingStaff.map(s => s._id);
-            //         if (staffIds.length > 0) {
-            //             directOr.push({ assignedTo: { $in: staffIds } });
-            //         }
-            //     }
+                // Assigned to (Staff) search with multi-word support
+                const staffFields = ['firstName', 'lastName', 'email'];
+                const staffConditions = buildMultiWordSearch(search, staffFields);
+                if (staffConditions.length > 0) {
+                    const matchingStaff = await Staff.find({
+                        $or: staffConditions
+                    }).select('_id').lean();
+                    const staffIds = matchingStaff.map(s => s._id);
+                    if (staffIds.length > 0) {
+                        directOr.push({ assignedTo: { $in: staffIds } });
+                    }
+                }
 
-            //     if (directOr.length > 0) {
-            //         query.$or = directOr;
-            //     }
-            // }
+                if (directOr.length > 0) {
+                    query.$or = directOr;
+                }
+            }
 
-            // // AssignedDate filter - Match exact dates from array
-            // if (filters.assignedDate && Array.isArray(filters.assignedDate) && filters.assignedDate.length > 0) {
-            //     // Filter out null/empty values
-            //     const validDates = filters.assignedDate.filter(d => d && d !== 'null');
+            // AssignedDate filter - Match exact dates from array
+            if (filters.assignedDate && Array.isArray(filters.assignedDate) && filters.assignedDate.length > 0) {
+                const validDates = filters.assignedDate.filter(d => d && d !== 'null');
 
-            //     if (validDates.length > 0) {
-            //         // Create date range conditions for each date (match full day)
-            //         const dateConditions = validDates.map(dateStr => {
-            //             const startOfDay = new Date(dateStr);
-            //             startOfDay.setHours(0, 0, 0, 0);
+                if (validDates.length > 0) {
+                    const dateConditions = validDates.map(dateStr => {
+                        const startOfDay = new Date(dateStr);
+                        startOfDay.setHours(0, 0, 0, 0);
 
-            //             const endOfDay = new Date(dateStr);
-            //             endOfDay.setHours(23, 59, 59, 999);
+                        const endOfDay = new Date(dateStr);
+                        endOfDay.setHours(23, 59, 59, 999);
 
-            //             return {
-            //                 assignedDate: {
-            //                     $gte: startOfDay,
-            //                     $lte: endOfDay
-            //                 }
-            //             };
-            //         });
+                        return {
+                            assignedDate: {
+                                $gte: startOfDay,
+                                $lte: endOfDay
+                            }
+                        };
+                    });
 
-            //         // Use $or to match any of the dates
-            //         if (dateConditions.length === 1) {
-            //             query.assignedDate = dateConditions[0].assignedDate;
-            //         } else {
-            //             query.$or = query.$or
-            //                 ? [...query.$or, ...dateConditions]
-            //                 : dateConditions;
-            //         }
-            //     }
-            // }
+                    if (dateConditions.length === 1) {
+                        query.assignedDate = dateConditions[0].assignedDate;
+                    } else {
+                        query.$or = query.$or
+                            ? [...query.$or, ...dateConditions]
+                            : dateConditions;
+                    }
+                }
+            }
 
-            // // Top-level startDate/endDate (for date range if needed separately)
-            // if ((startDate || endDate) && (!filters.assignedDate || filters.assignedDate.length === 0)) {
-            //     query.assignedDate = {};
-            //     if (startDate) {
-            //         const start = new Date(startDate);
-            //         start.setHours(0, 0, 0, 0);
-            //         query.assignedDate.$gte = start;
-            //     }
-            //     if (endDate) {
-            //         const end = new Date(endDate);
-            //         end.setHours(23, 59, 59, 999);
-            //         query.assignedDate.$lte = end;
-            //     }
-            // }
+            // Top-level startDate/endDate (for date range if needed separately)
+            if ((startDate || endDate) && (!filters.assignedDate || filters.assignedDate.length === 0)) {
+                query.assignedDate = {};
+                if (startDate) {
+                    const start = new Date(startDate);
+                    start.setHours(0, 0, 0, 0);
+                    query.assignedDate.$gte = start;
+                }
+                if (endDate) {
+                    const end = new Date(endDate);
+                    end.setHours(23, 59, 59, 999);
+                    query.assignedDate.$lte = end;
+                }
+            }
 
-            // // Company filter
-            // if (filters.company && filters.company.length > 0) {
-            //     const companies = await CompanyName.find({
-            //         companyName: { $in: filters.company }
-            //     }).select('_id').lean();
-            //     if (companies.length > 0) {
-            //         query.company = { $in: companies.map(c => c._id) };
-            //     }
-            // }
+            // Company filter
+            if (filters.company && filters.company.length > 0) {
+                const companies = await CompanyName.find({
+                    companyName: { $in: filters.company }
+                }).select('_id').lean();
+                if (companies.length > 0) {
+                    query.company = { $in: companies.map(c => c._id) };
+                }
+            }
 
-            // // Party filter
-            // if (filters.party && filters.party.length > 0) {
-            //     const parties = await Party.find({
-            //         partyName: { $in: filters.party }
-            //     }).select('_id').lean();
-            //     if (parties.length > 0) {
-            //         query.party = { $in: parties.map(p => p._id) };
-            //     }
-            // }
+            // Party filter
+            if (filters.party && filters.party.length > 0) {
+                const parties = await Party.find({
+                    partyName: { $in: filters.party }
+                }).select('_id').lean();
+                if (parties.length > 0) {
+                    query.party = { $in: parties.map(p => p._id) };
+                }
+            }
 
-            // // Area filter
-            // if (filters.area && filters.area.length > 0) {
-            //     query.area = { $in: filters.area };
-            // }
+            // Area filter
+            if (filters.area && filters.area.length > 0) {
+                query.area = { $in: filters.area };
+            }
 
-            // // Month filter
-            // if (filters.month && filters.month.length > 0) {
-            //     query.month = { $in: filters.month };
-            // }
+            // Month filter
+            if (filters.month && filters.month.length > 0) {
+                query.month = { $in: filters.month };
+            }
 
-            // // Remarks filter
-            // if (filters.remarks && filters.remarks.length > 0) {
-            //     query.remarks = { $in: filters.remarks };
-            // }
+            // Remarks filter
+            if (filters.remarks && filters.remarks.length > 0) {
+                query.remarks = { $in: filters.remarks };
+            }
 
-            // // Assigned to filter
-            // if (filters.assignTo && filters.assignTo.length > 0) {
-            //     const nameConditions = filters.assignTo.map(name => {
-            //         const parts = name.split(' ');
-            //         if (parts.length === 2) {
-            //             return {
-            //                 firstName: { $regex: `^${parts[0]}`, $options: "i" },
-            //                 lastName: { $regex: `^${parts[1]}`, $options: "i" }
-            //             };
-            //         } else {
-            //             return {
-            //                 $or: [
-            //                     { firstName: { $regex: `^${name}`, $options: "i" } },
-            //                     { lastName: { $regex: `^${name}`, $options: "i" } }
-            //                 ]
-            //             };
-            //         }
-            //     });
-            //     const matchingStaff = await Staff.find({
-            //         $or: nameConditions
-            //     }).select('_id').lean();
+            // Assigned to filter
+            if (filters.assignTo && filters.assignTo.length > 0) {
+                const nameConditions = filters.assignTo.map(name => {
+                    const parts = name.split(' ');
+                    if (parts.length === 2) {
+                        return {
+                            firstName: { $regex: `^${parts[0]}`, $options: "i" },
+                            lastName: { $regex: `^${parts[1]}`, $options: "i" }
+                        };
+                    } else {
+                        return {
+                            $or: [
+                                { firstName: { $regex: `^${name}`, $options: "i" } },
+                                { lastName: { $regex: `^${name}`, $options: "i" } }
+                            ]
+                        };
+                    }
+                });
+                const matchingStaff = await Staff.find({
+                    $or: nameConditions
+                }).select('_id').lean();
 
-            //     if (matchingStaff.length > 0) {
-            //         query.assignedTo = { $in: matchingStaff.map(s => s._id) };
-            //     }
-            // }
+                if (matchingStaff.length > 0) {
+                    query.assignedTo = { $in: matchingStaff.map(s => s._id) };
+                }
+            }
 
-            // // Payment amount range filter
-            // if (filters.paymentAmount && (filters.paymentAmount.min !== undefined || filters.paymentAmount.max !== undefined)) {
-            //     query.paymentAmount = {};
-            //     if (filters.paymentAmount.min !== undefined) {
-            //         query.paymentAmount.$gte = filters.paymentAmount.min;
-            //     }
-            //     if (filters.paymentAmount.max !== undefined) {
-            //         query.paymentAmount.$lte = filters.paymentAmount.max;
-            //     }
-            // }
+            // Payment amount range filter
+            if (filters.paymentAmount && (filters.paymentAmount.min !== undefined || filters.paymentAmount.max !== undefined)) {
+                query.paymentAmount = {};
+                if (filters.paymentAmount.min !== undefined) {
+                    query.paymentAmount.$gte = filters.paymentAmount.min;
+                }
+                if (filters.paymentAmount.max !== undefined) {
+                    query.paymentAmount.$lte = filters.paymentAmount.max;
+                }
+            }
 
-            // // Task Status filter
-            // if (filters.taskStatus && filters.taskStatus.length > 0) {
-            //     query.taskStatus = { $in: filters.taskStatus };
-            // }
+            // Task Status filter
+            if (filters.taskStatus && filters.taskStatus.length > 0) {
+                const taskStatusValues = Array.isArray(filters.taskStatus) ? filters.taskStatus : [filters.taskStatus];
+
+                if (taskStatusValues.includes("Pending")) {
+                    const pendingTasks = await assignTaskModel.find({
+                        status: { $in: ["Pending", "Rescheduled"] }
+                    }).select("_id").lean();
+
+                    const pendingTaskIds = pendingTasks.map(t => t._id);
+
+                    query.$or = query.$or || [];
+                    query.$or.push(
+                        { assignTask: { $in: pendingTaskIds } },
+                        { assignTask: { $exists: false } },
+                        { assignTask: null }
+                    );
+                } else if (taskStatusValues.includes("Completed")) {
+                    const completedTasks = await assignTaskModel.find({
+                        status: "Completed"
+                    }).select("_id").lean();
+
+                    query.assignTask = { $in: completedTasks.map(t => t._id) };
+                } else {
+                    const matchingTasks = await assignTaskModel.find({
+                        status: { $in: taskStatusValues }
+                    }).select("_id").lean();
+
+                    query.assignTask = { $in: matchingTasks.map(t => t._id) };
+                }
+            }
 
             // SIRF DIFFERENCE WALA DATA - Only fetch folders with difference amount > 0
             query.differenceAmount = { $gt: 0 };
