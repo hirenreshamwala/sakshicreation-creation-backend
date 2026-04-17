@@ -2591,6 +2591,7 @@ exports.exportPrinterPerformanceToExcel = async (req, res) => {
             const orders = await Order.find({
                 printer: staff._id,
                 printerAssignedAt: { $gte: start, $lte: end },
+                printerStatus: { $in: ['Pending'] },
             })
                 .populate("party", "partyName")
                 .populate("productItem", "itemName")
@@ -2725,6 +2726,8 @@ exports.exportBinderPerformanceToExcel = async (req, res) => {
             { header: 'Size', key: 'size', width: 15 },
             { header: 'Item Name', key: 'itemName', width: 25 },
             { header: 'Qty', key: 'qty', width: 10 },
+            { header: 'Total Numbering', key: 'totalNumbering', width: 18 },
+            { header: 'No. of Sheets Used', key: 'sheetsUsed', width: 20 },
             { header: 'Remark', key: 'remark', width: 35 },
         ];
 
@@ -2742,13 +2745,14 @@ exports.exportBinderPerformanceToExcel = async (req, res) => {
             const orders = await Order.find({
                 binder: staff._id,
                 binderAssignedAt: { $gte: start, $lte: end },
+                binderStatus: { $in: ['Pending'] },
             })
                 .populate("party", "partyName")
                 .populate("productItem", "itemName")
-                .select("orderNumber binderRemarks size party productItem qty");
+                .select("orderNumber binderRemarks size party productItem qty totalNumbering binderPapers");
 
-            // Binder Name - Merged across all 6 columns
-            worksheet.mergeCells(currentRowNumber, 1, currentRowNumber, 7);
+            // Binder Name - Merged across all 9 columns
+            worksheet.mergeCells(currentRowNumber, 1, currentRowNumber, 9);
             const binderHeaderCell = worksheet.getCell(currentRowNumber, 1);
             binderHeaderCell.value = binderName;
             binderHeaderCell.font = { bold: true, size: 13 };
@@ -2761,6 +2765,7 @@ exports.exportBinderPerformanceToExcel = async (req, res) => {
 
             if (orders.length > 0) {
                 orders.forEach((order) => {
+                    const sheetsUsed = (order.binderPapers || []).reduce((sum, p) => sum + (Number(p.numberOfSheetsUsed) || 0), 0);
                     worksheet.addRow({
                         srNo: localSrNo++,
                         orderNo: order.orderNumber || '-',
@@ -2768,18 +2773,17 @@ exports.exportBinderPerformanceToExcel = async (req, res) => {
                         size: order.size || '-',
                         itemName: order.productItem?.itemName || '-',
                         qty: order.qty || '-',
+                        totalNumbering: order.totalNumbering || 0,
+                        sheetsUsed: sheetsUsed || 0,
                         remark: order.binderRemarks || '-',
                     });
                 });
             } else {
                 worksheet.addRow({
                     srNo: localSrNo++,
-                    orderNo: 'No orders in this period',
-                    partyName: '',
-                    size: '',
-                    itemName: '',
-                    qty: '',
-                    remark: '',
+                    orderNo: 'No pending orders in this period',
+                    partyName: '', size: '', itemName: '', qty: '',
+                    totalNumbering: '', sheetsUsed: '', remark: '',
                 });
             }
 
@@ -5365,7 +5369,7 @@ exports.exportStaffBillingToExcel = async (req, res) => {
             .populate("party", "partyName")
             .populate("productItem", "itemName")
             .populate("companyName", "companyName")
-            .select("orderNumber party size qty productItem companyName createdAt binderAssignedAt printerAssignedAt bookletBinderAssignedAt totalAmount numberingAmount rateBook printingrate ratePerUnit")
+            .select("orderNumber party size qty productItem companyName createdAt binderAssignedAt printerAssignedAt bookletBinderAssignedAt totalAmount numberingAmount rateBook printingrate ratePerUnit totalNumbering binderPapers")
             .sort({ createdAt: -1 });
 
         // Create Excel workbook
@@ -5373,15 +5377,32 @@ exports.exportStaffBillingToExcel = async (req, res) => {
         const worksheet = workbook.addWorksheet('Staff Billing');
 
         // Staff name header
-        worksheet.mergeCells('A1:G1');
+        const isBinder = staffType.toLowerCase() === 'binder';
+        const totalCols = isBinder ? 'I' : 'G';
+
+        // Define columns FIRST (without headers showing on row 1)
+        const baseColumns = [
+            { key: 'srNo', width: 10 },
+            { key: 'orderNumber', width: 18 },
+            { key: 'partyName', width: 30 },
+            { key: 'size', width: 15 },
+            { key: 'qty', width: 10 },
+            ...(isBinder ? [{ key: 'totalNumbering', width: 18 }, { key: 'sheetsUsed', width: 20 }] : []),
+            { key: 'rate', width: 12 },
+            { key: 'amount', width: 15 },
+        ];
+        worksheet.columns = baseColumns;
+
+        // Row 1: Staff name merged header
+        worksheet.mergeCells(`A1:${totalCols}1`);
         const headerCell = worksheet.getCell('A1');
         headerCell.value = `${staffName} - ${staffType.toUpperCase()} BILL`;
         headerCell.font = { bold: true, size: 14 };
         headerCell.alignment = { horizontal: 'center', vertical: 'middle' };
         headerCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8E8E8' } };
 
-        // Date range header
-        worksheet.mergeCells('A2:G2');
+        // Row 2: Date range merged header
+        worksheet.mergeCells(`A2:${totalCols}2`);
         const dateRangeCell = worksheet.getCell('A2');
         if (isFullBill) {
             dateRangeCell.value = "Full Bill - All Time";
@@ -5393,22 +5414,20 @@ exports.exportStaffBillingToExcel = async (req, res) => {
         dateRangeCell.font = { bold: true, size: 11 };
         dateRangeCell.alignment = { horizontal: 'center', vertical: 'middle' };
 
-        // Define columns
-        worksheet.columns = [
-            { header: 'Sr No', key: 'srNo', width: 10 },
-            { header: 'Order No', key: 'orderNumber', width: 18 },
-            { header: 'Party Name', key: 'partyName', width: 30 },
-            { header: 'Size', key: 'size', width: 15 },
-            { header: 'Qty', key: 'qty', width: 10 },
-            { header: 'Rate', key: 'rate', width: 12 },
-            { header: 'Amount', key: 'amount', width: 15 },
-        ];
+        // Row 3: Column headers (manually written)
+        const colHeaders = ['Sr No', 'Order No', 'Party Name', 'Size', 'Qty'];
+        if (isBinder) { colHeaders.push('Total Numbering', 'No. of Sheets Used'); }
+        colHeaders.push('Rate', 'Amount');
 
-        // Style header row
         const headerRow = worksheet.getRow(3);
-        headerRow.font = { bold: true };
-        headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD3D3D3' } };
-        headerRow.alignment = { vertical: 'middle', horizontal: 'center' };
+        colHeaders.forEach((h, i) => {
+            const cell = headerRow.getCell(i + 1);
+            cell.value = h;
+            cell.font = { bold: true };
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD3D3D3' } };
+            cell.alignment = { vertical: 'middle', horizontal: 'center' };
+        });
+        headerRow.height = 20;
 
         // Check if orders exist
         if (orders.length === 0) {
@@ -5449,6 +5468,8 @@ exports.exportStaffBillingToExcel = async (req, res) => {
                     qty: order.qty || 0,
                     rate: rate,
                     amount: amount,
+                    totalNumbering: staffType.toLowerCase() === 'binder' ? (order.totalNumbering || 0) : undefined,
+                    sheetsUsed: staffType.toLowerCase() === 'binder' ? (order.binderPapers || []).reduce((sum, p) => sum + (Number(p.numberOfSheetsUsed) || 0), 0) : undefined,
                     date: order[assignField] ? moment(order[assignField]).format('DD-MM-YYYY') : '-',
                 };
             });
@@ -5459,33 +5480,47 @@ exports.exportStaffBillingToExcel = async (req, res) => {
             // Add data rows
             let srNo = 1;
             ordersWithAmounts.forEach(order => {
-                worksheet.addRow([
-                    srNo++,
-                    order.orderNumber || '-',
-                    order.partyName,
-                    order.size,
-                    order.qty,
-                    order.rate,
-                    order.amount
-                ]);
+                worksheet.addRow({
+                    srNo: srNo++,
+                    orderNumber: order.orderNumber || '-',
+                    partyName: order.partyName,
+                    size: order.size,
+                    qty: order.qty,
+                    ...(isBinder ? { totalNumbering: order.totalNumbering, sheetsUsed: order.sheetsUsed } : {}),
+                    rate: order.rate,
+                    amount: order.amount
+                });
+                // Fix alignment and number format for binder-specific columns
+                if (isBinder) {
+                    const currentRow = worksheet.lastRow;
+                    const tnCell = currentRow.getCell('totalNumbering');
+                    tnCell.alignment = { horizontal: order.totalNumbering > 0 ? 'right' : 'right' };
+                    tnCell.numFmt = '0';
+                    const suCell = currentRow.getCell('sheetsUsed');
+                    suCell.numFmt = '0';
+                    suCell.alignment = { horizontal: 'right' };
+                }
             });
 
             // Add total row
             const totalRowNum = worksheet.lastRow.number + 1;
-            worksheet.mergeCells(`A${totalRowNum}:E${totalRowNum}`);
+            const lastDataCol = isBinder ? 'I' : 'G';
+            const totalLabelEndCol = isBinder ? 'G' : 'E';
+            worksheet.mergeCells(`A${totalRowNum}:${totalLabelEndCol}${totalRowNum}`);
             const totalLabelCell = worksheet.getCell(`A${totalRowNum}`);
             totalLabelCell.value = 'TOTAL';
             totalLabelCell.font = { bold: true };
             totalLabelCell.alignment = { horizontal: 'right' };
 
-            const totalAmountCell = worksheet.getCell(`G${totalRowNum}`);
+            const totalAmountCell = worksheet.getCell(`${lastDataCol}${totalRowNum}`);
             totalAmountCell.value = totalAmount;
             totalAmountCell.font = { bold: true };
             totalAmountCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8E8E8' } };
 
             // Format amount column as currency
-            worksheet.getColumn('G').numFmt = '₹#,##0.00';
-            worksheet.getColumn('F').numFmt = '₹#,##0.00';
+            worksheet.getColumn(lastDataCol).numFmt = '₹#,##0.00';
+            // Rate column: binder=H, non-binder=F — plain number, no ₹
+            worksheet.getColumn(isBinder ? 'H' : 'F').numFmt = '#,##0.00';
         }
 
         // File download
