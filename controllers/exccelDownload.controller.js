@@ -2565,7 +2565,7 @@ exports.exportPrinterPerformanceToExcel = async (req, res) => {
         worksheet.columns = [
             { header: 'Sr No', key: 'srNo', width: 10 },
             { header: 'Order No', key: 'orderNo', width: 18 },
-            { header: 'Date', key: 'date', width: 15 },
+            { header: 'PrinterAssign Date', key: 'date', width: 30 },
             { header: 'Party Name', key: 'partyName', width: 30 },
             { header: 'Size', key: 'size', width: 15 },           // Size first
             { header: 'Item Name', key: 'itemName', width: 25 }, // Item Name after
@@ -2574,6 +2574,7 @@ exports.exportPrinterPerformanceToExcel = async (req, res) => {
             { header: 'Color', key: 'color', width: 12 },
             { header: 'P.Type', key: 'pType', width: 12 },    // Width reduced because only 1 letter
             { header: 'Remarks', key: 'remarks', width: 30 },
+            { header: 'Status', key: 'status', width: 15 },
             // Status column removed from here
         ];
 
@@ -2591,7 +2592,7 @@ exports.exportPrinterPerformanceToExcel = async (req, res) => {
             const orders = await Order.find({
                 printer: staff._id,
                 printerAssignedAt: { $gte: start, $lte: end },
-                printerStatus: { $in: ['Pending'] },
+                printerStatus: { $in: ['Pending', 'In Progress', 'Done'] },
             })
                 .populate("party", "partyName")
                 .populate("productItem", "itemName")
@@ -2599,8 +2600,8 @@ exports.exportPrinterPerformanceToExcel = async (req, res) => {
                     "orderNumber printerAssignedAt size printerRemarks qty number color pType printerStatus"
                 );
 
-            // Printer Name - Merged Header (now 11 columns instead of 12 since status removed)
-            worksheet.mergeCells(currentRowNumber, 1, currentRowNumber, 11);
+            // Printer Name - Merged Header (now 12 columns instead of 11 since status added)
+            worksheet.mergeCells(currentRowNumber, 1, currentRowNumber, 12);
             const printerHeaderCell = worksheet.getCell(currentRowNumber, 1);
             printerHeaderCell.value = printerName;
             printerHeaderCell.font = { bold: true, size: 13 };
@@ -2625,7 +2626,7 @@ exports.exportPrinterPerformanceToExcel = async (req, res) => {
                     // Number - First character only (Y/N)
                     const numberShort = order?.number ? order?.number?.charAt(0)?.toUpperCase() : '-';
 
-                    worksheet.addRow({
+                    const rowData = {
                         srNo: localSrNo++,
                         orderNo: order.orderNumber || '-',
                         date: order.printerAssignedAt ? new Date(order.printerAssignedAt).toLocaleDateString('en-IN') : '-',
@@ -2637,8 +2638,24 @@ exports.exportPrinterPerformanceToExcel = async (req, res) => {
                         color: order.color || '-',
                         pType: pTypeShort,                          // O, S, or O
                         remarks: order.printerRemarks || '-',
-                        // Status column value removed from here
-                    });
+                        status: order.printerStatus || '-',
+                    };
+                    
+                    const row = worksheet.addRow(rowData);
+                    
+                    // Add color to status cell
+                    const statusCell = row.getCell('status');
+                    if (order.printerStatus === 'Pending') {
+                        statusCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF3CD' } }; // Yellow background
+                        statusCell.font = { color: { argb: 'FF856404' }, bold: true }; // Dark yellow text
+                    } else if (order.printerStatus === 'In Progress') {
+                        statusCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFCCE5FF' } }; // Blue background
+                        statusCell.font = { color: { argb: 'FF004085' }, bold: true }; // Dark blue text
+                    } else if (order.printerStatus === 'Done') {
+                        statusCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD4EDDA' } }; // Green background
+                        statusCell.font = { color: { argb: 'FF155724' }, bold: true }; // Dark green text
+                    }
+                    statusCell.alignment = { horizontal: 'center', vertical: 'middle' };
                 });
             } else {
                 worksheet.addRow({
@@ -2653,6 +2670,7 @@ exports.exportPrinterPerformanceToExcel = async (req, res) => {
                     color: '',
                     pType: '',
                     remarks: '',
+                    status: '',
                     // Status column value removed from here
                 });
             }
@@ -2722,6 +2740,7 @@ exports.exportBinderPerformanceToExcel = async (req, res) => {
         worksheet.columns = [
             { header: 'Sr No', key: 'srNo', width: 10 },
             { header: 'Order No', key: 'orderNo', width: 18 },
+            { header: 'BinderAssign Date', key: 'date', width: 30 },
             { header: 'Party Name', key: 'partyName', width: 30 },
             { header: 'Size', key: 'size', width: 15 },
             { header: 'Item Name', key: 'itemName', width: 25 },
@@ -2729,6 +2748,7 @@ exports.exportBinderPerformanceToExcel = async (req, res) => {
             { header: 'Total Numbering', key: 'totalNumbering', width: 18 },
             { header: 'No. of Sheets Used', key: 'sheetsUsed', width: 20 },
             { header: 'Remark', key: 'remark', width: 35 },
+            { header: 'Status', key: 'status', width: 15 },
         ];
 
         // Header style
@@ -2745,14 +2765,14 @@ exports.exportBinderPerformanceToExcel = async (req, res) => {
             const orders = await Order.find({
                 binder: staff._id,
                 binderAssignedAt: { $gte: start, $lte: end },
-                binderStatus: { $in: ['Pending'] },
+                binderStatus: { $in: ['Pending', 'In Progress', 'Done'] },
             })
                 .populate("party", "partyName")
                 .populate("productItem", "itemName")
-                .select("orderNumber binderRemarks size party productItem qty totalNumbering binderPapers");
+                .select("orderNumber binderAssignedAt binderRemarks size party productItem qty totalNumbering binderPapers binderStatus");
 
-            // Binder Name - Merged across all 9 columns
-            worksheet.mergeCells(currentRowNumber, 1, currentRowNumber, 9);
+            // Binder Name - Merged across all 10 columns
+            worksheet.mergeCells(currentRowNumber, 1, currentRowNumber, 11);
             const binderHeaderCell = worksheet.getCell(currentRowNumber, 1);
             binderHeaderCell.value = binderName;
             binderHeaderCell.font = { bold: true, size: 13 };
@@ -2766,9 +2786,10 @@ exports.exportBinderPerformanceToExcel = async (req, res) => {
             if (orders.length > 0) {
                 orders.forEach((order) => {
                     const sheetsUsed = (order.binderPapers || []).reduce((sum, p) => sum + (Number(p.numberOfSheetsUsed) || 0), 0);
-                    worksheet.addRow({
+                    const rowData = {
                         srNo: localSrNo++,
                         orderNo: order.orderNumber || '-',
+                        date: order.binderAssignedAt ? new Date(order.binderAssignedAt).toLocaleDateString('en-IN') : '-',
                         partyName: order.party?.partyName || '-',
                         size: order.size || '-',
                         itemName: order.productItem?.itemName || '-',
@@ -2776,14 +2797,32 @@ exports.exportBinderPerformanceToExcel = async (req, res) => {
                         totalNumbering: order.totalNumbering || 0,
                         sheetsUsed: sheetsUsed || 0,
                         remark: order.binderRemarks || '-',
-                    });
+                        status: order.binderStatus || '-',
+                    };
+                    
+                    const row = worksheet.addRow(rowData);
+                    
+                    // Add color to status cell
+                    const statusCell = row.getCell('status');
+                    if (order.binderStatus === 'Pending') {
+                        statusCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF3CD' } }; // Yellow background
+                        statusCell.font = { color: { argb: 'FF856404' }, bold: true }; // Dark yellow text
+                    } else if (order.binderStatus === 'In Progress') {
+                        statusCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFCCE5FF' } }; // Blue background
+                        statusCell.font = { color: { argb: 'FF004085' }, bold: true }; // Dark blue text
+                    } else if (order.binderStatus === 'Done') {
+                        statusCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD4EDDA' } }; // Green background
+                        statusCell.font = { color: { argb: 'FF155724' }, bold: true }; // Dark green text
+                    }
+                    statusCell.alignment = { horizontal: 'center', vertical: 'middle' };
                 });
             } else {
                 worksheet.addRow({
                     srNo: localSrNo++,
                     orderNo: 'No pending orders in this period',
+                    date: '-',
                     partyName: '', size: '', itemName: '', qty: '',
-                    totalNumbering: '', sheetsUsed: '', remark: '',
+                    totalNumbering: '', sheetsUsed: '', remark: '', status: '',
                 });
             }
 
@@ -2853,11 +2892,13 @@ exports.exportBookletBinderPerformanceToExcel = async (req, res) => {
         worksheet.columns = [
             { header: 'Sr No', key: 'srNo', width: 10 },
             { header: 'Order No', key: 'orderNo', width: 18 },
+            { header: 'BookletBinderAssign Date', key: 'date', width: 30 },
             { header: 'Party Name', key: 'partyName', width: 30 },
             { header: 'Size', key: 'size', width: 15 },
             { header: 'Item Name', key: 'itemName', width: 25 },
             { header: 'Qty', key: 'qty', width: 10 },
             { header: 'Remark', key: 'remark', width: 35 },
+            { header: 'Status', key: 'status', width: 15 },
         ];
 
         // Header style
@@ -2874,13 +2915,14 @@ exports.exportBookletBinderPerformanceToExcel = async (req, res) => {
             const orders = await Order.find({
                 bookletBinder: staff._id,
                 bookletBinderAssignedAt: { $gte: start, $lte: end },
+                bookletBinderStatus: { $in: ['Pending', 'In Progress', 'Done'] },
             })
                 .populate("party", "partyName")
                 .populate("productItem", "itemName")
-                .select("orderNumber bookletBinderRemarks size qty");
+                .select("orderNumber bookletBinderAssignedAt bookletBinderRemarks size qty bookletBinderStatus");
 
             // Merged header for name
-            worksheet.mergeCells(currentRowNumber, 1, currentRowNumber, 7);
+            worksheet.mergeCells(currentRowNumber, 1, currentRowNumber, 9);
             const headerCell = worksheet.getCell(currentRowNumber, 1);
             headerCell.value = bookletBinderName;
             headerCell.font = { bold: true, size: 13 };
@@ -2893,25 +2935,45 @@ exports.exportBookletBinderPerformanceToExcel = async (req, res) => {
 
             if (orders.length > 0) {
                 orders.forEach((order) => {
-                    worksheet.addRow({
+                    const rowData = {
                         srNo: localSrNo++,
                         orderNo: order.orderNumber || '-',
+                        date: order.bookletBinderAssignedAt ? new Date(order.bookletBinderAssignedAt).toLocaleDateString('en-IN') : '-',
                         partyName: order.party?.partyName || '-',
                         size: order.size || '-',
                         itemName: order.productItem?.itemName || '-',
                         qty: order.qty || '-',
                         remark: order.bookletBinderRemarks || '-',
-                    });
+                        status: order.bookletBinderStatus || '-',
+                    };
+                    
+                    const row = worksheet.addRow(rowData);
+                    
+                    // Add color to status cell
+                    const statusCell = row.getCell('status');
+                    if (order.bookletBinderStatus === 'Pending') {
+                        statusCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF3CD' } }; // Yellow background
+                        statusCell.font = { color: { argb: 'FF856404' }, bold: true }; // Dark yellow text
+                    } else if (order.bookletBinderStatus === 'In Progress') {
+                        statusCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFCCE5FF' } }; // Blue background
+                        statusCell.font = { color: { argb: 'FF004085' }, bold: true }; // Dark blue text
+                    } else if (order.bookletBinderStatus === 'Done') {
+                        statusCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD4EDDA' } }; // Green background
+                        statusCell.font = { color: { argb: 'FF155724' }, bold: true }; // Dark green text
+                    }
+                    statusCell.alignment = { horizontal: 'center', vertical: 'middle' };
                 });
             } else {
                 worksheet.addRow({
                     srNo: localSrNo++,
                     orderNo: 'No orders in this period',
+                    date: '-',
                     partyName: '',
                     size: '',
                     itemName: '',
                     qty: '',
                     remark: '',
+                    status: '',
                 });
             }
 
