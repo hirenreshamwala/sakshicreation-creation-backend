@@ -5379,12 +5379,14 @@ exports.exportStaffBillingToExcel = async (req, res) => {
         // Build query based on staff type
         let query = {};
         let assignField = '';
+        let completedAtField = '';
         let amountFields = {};
 
         switch (staffType.toLowerCase()) {
             case 'binder':
                 query = { binder: staffId };
                 assignField = 'binderAssignedAt';
+                completedAtField = 'bindingCompletedAt';
                 amountFields = {
                     amount: '$numberingAmount',
                     rate: '$rateBook',
@@ -5394,6 +5396,7 @@ exports.exportStaffBillingToExcel = async (req, res) => {
             case 'printer':
                 query = { printer: staffId };
                 assignField = 'printerAssignedAt';
+                completedAtField = 'printingCompletedAt';
                 amountFields = {
                     amount: { $multiply: ['$qty', { $toDouble: '$printingrate' }] },
                     rate: '$printingrate',
@@ -5404,6 +5407,7 @@ exports.exportStaffBillingToExcel = async (req, res) => {
             case 'bookletbinder':
                 query = { bookletBinder: staffId };
                 assignField = 'bookletBinderAssignedAt';
+                completedAtField = 'bookletBindingCompletedAt';
                 amountFields = {
                     amount: { $multiply: ['$qty', { $toDouble: '$ratePerUnit' }] },
                     rate: '$ratePerUnit',
@@ -5431,7 +5435,7 @@ exports.exportStaffBillingToExcel = async (req, res) => {
             .populate("party", "partyName")
             .populate("productItem", "itemName")
             .populate("companyName", "companyName")
-            .select("orderNumber party size qty productItem companyName createdAt binderAssignedAt printerAssignedAt bookletBinderAssignedAt totalAmount numberingAmount rateBook printingrate ratePerUnit totalNumbering binderPapers")
+            .select("orderNumber party size qty productItem companyName createdAt binderAssignedAt printerAssignedAt bookletBinderAssignedAt bindingCompletedAt printingCompletedAt bookletBindingCompletedAt totalAmount numberingAmount rateBook printingrate ratePerUnit totalNumbering binderPapers")
             .sort({ createdAt: -1 });
 
         // Create Excel workbook
@@ -5440,7 +5444,12 @@ exports.exportStaffBillingToExcel = async (req, res) => {
 
         // Staff name header
         const isBinder = staffType.toLowerCase() === 'binder';
-        const totalCols = isBinder ? 'I' : 'G';
+        const totalCols = isBinder ? 'J' : 'H';
+        const completedHeader = isBinder
+            ? 'Binding Completed'
+            : staffType.toLowerCase() === 'printer'
+                ? 'Printing Completed'
+                : 'Booklet Binding Completed';
 
         // Define columns FIRST (without headers showing on row 1)
         const baseColumns = [
@@ -5449,6 +5458,7 @@ exports.exportStaffBillingToExcel = async (req, res) => {
             { key: 'partyName', width: 30 },
             { key: 'size', width: 15 },
             { key: 'qty', width: 10 },
+            { key: 'completedDate', width: 18 },
             ...(isBinder ? [{ key: 'totalNumbering', width: 18 }, { key: 'sheetsUsed', width: 20 }] : []),
             { key: 'rate', width: 12 },
             { key: 'amount', width: 15 },
@@ -5477,7 +5487,7 @@ exports.exportStaffBillingToExcel = async (req, res) => {
         dateRangeCell.alignment = { horizontal: 'center', vertical: 'middle' };
 
         // Row 3: Column headers (manually written)
-        const colHeaders = ['Sr No', 'Order No', 'Party Name', 'Size', 'Qty'];
+        const colHeaders = ['Sr No', 'Order No', 'Party Name', 'Size', 'Qty', completedHeader];
         if (isBinder) { colHeaders.push('Total Numbering', 'No. of Sheets Used'); }
         colHeaders.push('Rate', 'Amount');
 
@@ -5528,6 +5538,7 @@ exports.exportStaffBillingToExcel = async (req, res) => {
                     size: order.size || '-',
                     itemName: order.productItem?.itemName || '-',
                     qty: order.qty || 0,
+                    completedDate: order[completedAtField] ? moment(order[completedAtField]).format('DD-MM-YYYY') : '-',
                     rate: rate,
                     amount: amount,
                     totalNumbering: staffType.toLowerCase() === 'binder' ? (order.totalNumbering || 0) : undefined,
@@ -5548,6 +5559,7 @@ exports.exportStaffBillingToExcel = async (req, res) => {
                     partyName: order.partyName,
                     size: order.size,
                     qty: order.qty,
+                    completedDate: order.completedDate,
                     ...(isBinder ? { totalNumbering: order.totalNumbering, sheetsUsed: order.sheetsUsed } : {}),
                     rate: order.rate,
                     amount: order.amount
@@ -5566,8 +5578,8 @@ exports.exportStaffBillingToExcel = async (req, res) => {
 
             // Add total row
             const totalRowNum = worksheet.lastRow.number + 1;
-            const lastDataCol = isBinder ? 'I' : 'G';
-            const totalLabelEndCol = isBinder ? 'G' : 'E';
+            const lastDataCol = isBinder ? 'J' : 'H';
+            const totalLabelEndCol = isBinder ? 'H' : 'E';
             worksheet.mergeCells(`A${totalRowNum}:${totalLabelEndCol}${totalRowNum}`);
             const totalLabelCell = worksheet.getCell(`A${totalRowNum}`);
             totalLabelCell.value = 'TOTAL';
@@ -5581,8 +5593,8 @@ exports.exportStaffBillingToExcel = async (req, res) => {
 
             // Format amount column as currency
             worksheet.getColumn(lastDataCol).numFmt = '₹#,##0.00';
-            // Rate column: binder=H, non-binder=F — plain number, no ₹
-            worksheet.getColumn(isBinder ? 'H' : 'F').numFmt = '#,##0.00';
+            // Rate column: binder=I, non-binder=G — plain number, no ₹
+            worksheet.getColumn(isBinder ? 'I' : 'G').numFmt = '#,##0.00';
         }
 
         // File download
