@@ -5455,10 +5455,10 @@ exports.exportStaffBillingToExcel = async (req, res) => {
         const baseColumns = [
             { key: 'srNo', width: 10 },
             { key: 'orderNumber', width: 18 },
+            { key: 'completedDate', width: 18 },
             { key: 'partyName', width: 30 },
             { key: 'size', width: 15 },
             { key: 'qty', width: 10 },
-            { key: 'completedDate', width: 18 },
             ...(isBinder ? [{ key: 'totalNumbering', width: 18 }, { key: 'sheetsUsed', width: 20 }] : []),
             { key: 'rate', width: 12 },
             { key: 'amount', width: 15 },
@@ -5487,7 +5487,7 @@ exports.exportStaffBillingToExcel = async (req, res) => {
         dateRangeCell.alignment = { horizontal: 'center', vertical: 'middle' };
 
         // Row 3: Column headers (manually written)
-        const colHeaders = ['Sr No', 'Order No', 'Party Name', 'Size', 'Qty', completedHeader];
+        const colHeaders = ['Sr No', 'Order No', completedHeader, 'Party Name', 'Size', 'Qty'];
         if (isBinder) { colHeaders.push('Total Numbering', 'No. of Sheets Used'); }
         colHeaders.push('Rate', 'Amount');
 
