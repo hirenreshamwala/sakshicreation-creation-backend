@@ -350,9 +350,15 @@ const getSCReport = async (req, res) => {
       roleName: { $regex: "Sales Staff", $options: "i" },
       isDelete: false,
     }).select("_id").lean();
+    const driverRoles = await Role.find({
+      roleName: { $regex: "Driver", $options: "i" },
+      isDelete: false,
+    }).select("_id").lean();
     const salesRoleIds = salesRoles.map((r) => r._id);
+    const driverRoleIds = driverRoles.map((r) => r._id);
+    const allRoleIds = [...salesRoleIds, ...driverRoleIds];
 
-    const staffList = await Staff.find({ role: { $in: salesRoleIds } }).select(
+    const staffList = await Staff.find({ role: { $in: allRoleIds } }).select(
       "firstName lastName _id"
     ).lean();
 
@@ -893,9 +899,15 @@ const getQPReport = async (req, res) => {
       roleName: { $regex: "Sales Staff", $options: "i" },
       isDelete: false,
     }).select("_id");
+    const driverRoles = await Role.find({
+      roleName: { $regex: "Driver", $options: "i" },
+      isDelete: false,
+    }).select("_id");
     const salesRoleIds = salesRoles.map((r) => r._id);
+    const driverRoleIds = driverRoles.map((r) => r._id);
+    const allRoleIds = [...salesRoleIds, ...driverRoleIds];
 
-    const staffList = await Staff.find({ role: { $in: salesRoleIds } }).select(
+    const staffList = await Staff.find({ role: { $in: allRoleIds } }).select(
       "firstName lastName _id"
     );
 
