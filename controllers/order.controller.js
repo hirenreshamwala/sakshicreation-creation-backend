@@ -1723,12 +1723,13 @@ exports.updateOrder = async (req, res) => {
       Array.isArray(printerPapers)
     ) {
       for (const paper of printerPapers) {
-        if (paper.numberOfSheetsUsed && paper.numberOfSheetsUsed > 0) {
+        if (paper.numberOfSheetsUsed && Number(paper.numberOfSheetsUsed) > 0) {
+          // Create outward entry for sheets used
           await Inventory.create({
             category: "printer",
             type: "outward",
             material: paper.paperType || "Unknown",
-            quantity: paper.wastage,
+            quantity: Number(paper.numberOfSheetsUsed),
             date: new Date(),
             companyName: orderData.companyName,
             for: staffRole.role,
@@ -1738,6 +1739,24 @@ exports.updateOrder = async (req, res) => {
             sheetSize: paper.sheetSize || "",
             gsm: paper.gsm || "",
           });
+          
+          // Create additional outward entry for wastage if any
+          if (paper.wastage && Number(paper.wastage) > 0) {
+            await Inventory.create({
+              category: "printer",
+              type: "outward",
+              material: paper.paperType || "Unknown",
+              quantity: Number(paper.wastage),
+              date: new Date(),
+              companyName: orderData.companyName,
+              for: staffRole.role,
+              forCompany: req.user.id,
+              orderId: id,
+              paperName: `${paper.paperType || "Unnamed Paper"} (Wastage)`,
+              sheetSize: paper.sheetSize || "",
+              gsm: paper.gsm || "",
+            });
+          }
         }
       }
     }
@@ -1749,12 +1768,13 @@ exports.updateOrder = async (req, res) => {
       Array.isArray(binderPapers)
     ) {
       for (const paper of binderPapers) {
-        if (paper.numberOfSheetsUsed && paper.numberOfSheetsUsed > 0) {
+        if (paper.numberOfSheetsUsed && Number(paper.numberOfSheetsUsed) > 0) {
+          // Create outward entry for sheets used
           await Inventory.create({
             category: "binder",
             type: "outward",
             material: paper.paperType || "Unknown",
-            quantity: paper.wastage,
+            quantity: Number(paper.numberOfSheetsUsed),
             date: new Date(),
             companyName: orderData.companyName,
             for: staffRole.role,
@@ -1764,6 +1784,24 @@ exports.updateOrder = async (req, res) => {
             sheetSize: paper.sheetSize || "",
             gsm: paper.gsm || "",
           });
+          
+          // Create additional outward entry for wastage if any
+          if (paper.wastage && Number(paper.wastage) > 0) {
+            await Inventory.create({
+              category: "binder",
+              type: "outward",
+              material: paper.paperType || "Unknown",
+              quantity: Number(paper.wastage),
+              date: new Date(),
+              companyName: orderData.companyName,
+              for: staffRole.role,
+              forCompany: req.user.id,
+              orderId: id,
+              paperName: `${paper.paperType || "Unnamed Paper"} (Wastage)`,
+              sheetSize: paper.sheetSize || "",
+              gsm: paper.gsm || "",
+            });
+          }
         }
       }
     }
@@ -1775,12 +1813,13 @@ exports.updateOrder = async (req, res) => {
       Array.isArray(bookletPapers)
     ) {
       for (const paper of bookletPapers) {
-        if (paper.numberOfSheetsUsed && paper.numberOfSheetsUsed > 0) {
+        if (paper.numberOfSheetsUsed && Number(paper.numberOfSheetsUsed) > 0) {
+          // Create outward entry for sheets used
           await Inventory.create({
             category: "booklet",
             type: "outward",
             material: paper.paperType || "Unknown",
-            quantity: paper.wastage,
+            quantity: Number(paper.numberOfSheetsUsed),
             date: new Date(),
             companyName: orderData.companyName,
             for: staffRole.role,
@@ -1790,6 +1829,24 @@ exports.updateOrder = async (req, res) => {
             sheetSize: paper.sheetSize || "",
             gsm: paper.gsm || "",
           });
+          
+          // Create additional outward entry for wastage if any
+          if (paper.wastage && Number(paper.wastage) > 0) {
+            await Inventory.create({
+              category: "booklet",
+              type: "outward",
+              material: paper.paperType || "Unknown",
+              quantity: Number(paper.wastage),
+              date: new Date(),
+              companyName: orderData.companyName,
+              for: staffRole.role,
+              forCompany: req.user.id,
+              orderId: id,
+              paperName: `${paper.paperType || "Unnamed Paper"} (Wastage)`,
+              sheetSize: paper.sheetSize || "",
+              gsm: paper.gsm || "",
+            });
+          }
         }
       }
     }
@@ -2787,11 +2844,12 @@ exports.updateStaffStatus = async (req, res) => {
         // console.log("➡️ Checking paper:", paper);
 
         if (paper.numberOfSheetsUsed && Number(paper.numberOfSheetsUsed) > 0) {
+          // Create outward entry for sheets used
           await Inventory.create({
             category,
             type: "outward",
             material: paper.paperType || "Unknown",
-            quantity: paper.numberOfSheetsUsed,
+            quantity: Number(paper.numberOfSheetsUsed),
             date: new Date(),
             companyName: currentOrder.companyName || "Unknown",
             for: staffRole.role,
@@ -2801,15 +2859,33 @@ exports.updateStaffStatus = async (req, res) => {
             sheetSize: paper.sheetSize || "",
             gsm: paper.gsm || "",
           });
+          
+          // Create additional outward entry for wastage if any
+          if (paper.wastage && Number(paper.wastage) > 0) {
+            await Inventory.create({
+              category,
+              type: "outward",
+              material: paper.paperType || "Unknown",
+              quantity: Number(paper.wastage),
+              date: new Date(),
+              companyName: currentOrder.companyName || "Unknown",
+              for: staffRole.role,
+              forCompany: req.user.id,
+              orderId: currentOrder._id,
+              paperName: `${paper.paperType || "Unnamed Paper"} (Wastage)`,
+              sheetSize: paper.sheetSize || "",
+              gsm: paper.gsm || "",
+            });
+          }
         } else {
           console.log("⚠️ Skipping paper, no sheets used:", paper);
         }
       }
     };
 
-    // Process inventory if status is "In Progress"
-    if (status === "In Progress") {
-      // console.log("🔄 Processing inventory because status = In Progress");
+    // Process inventory if status is "Done" - when work is completed
+    if (status === "Done") {
+      // console.log("🔄 Processing inventory because status = Done");
       if (statusType === "printer") {
         await processInventory("printer", currentOrder.printerPapers);
       } else if (statusType === "binder") {
@@ -2819,7 +2895,7 @@ exports.updateStaffStatus = async (req, res) => {
       }
     } else {
       console.log(
-        "ℹ️ Inventory not processed because status is not In Progress"
+        "ℹ️ Inventory not processed because status is not Done"
       );
     }
 

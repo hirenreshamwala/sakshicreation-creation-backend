@@ -79,6 +79,11 @@ const InventorySchema = new mongoose.Schema(
       ref: "QpOrder",
       required: false,
     },
+    orderId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Order",
+      required: false,
+    },
     qpPurchase: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "QualityPurchase",
