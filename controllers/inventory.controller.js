@@ -40,7 +40,14 @@ exports.getInventoryByCategory = async (req, res) => {
         .populate("for", "roleName")
         .populate("kantan", "kantanName")
         .populate("forCompany", "firstName lastName")
-        .populate("orderId", "orderNumber")
+        .populate({
+          path: "orderId",
+          select: "orderNumber party",
+          populate: {
+            path: "party",
+            select: "partyName"
+          }
+        })
         .sort({ date: -1 });
 
       pagination = {
@@ -60,7 +67,14 @@ exports.getInventoryByCategory = async (req, res) => {
         .populate("for", "roleName")
         .populate("kantan", "kantanName")
         .populate("forCompany", "firstName lastName")
-        .populate("orderId", "orderNumber")
+        .populate({
+          path: "orderId",
+          select: "orderNumber party",
+          populate: {
+            path: "party",
+            select: "partyName"
+          }
+        })
         .sort({ date: -1 });
     }
 
@@ -250,7 +264,14 @@ exports.getAllInventory = async (req, res) => {
       .populate('for', 'roleName -__v')
       .populate('kantan', 'kantanName -__v')
       .populate('forCompany', 'firstName lastName -__v')
-      .populate('orderId', 'orderNumber -__v')
+      .populate({
+        path: 'orderId',
+        select: 'orderNumber party -__v',
+        populate: {
+          path: 'party',
+          select: 'partyName -__v'
+        }
+      })
       .sort({ date: -1 })
       .lean();
 
@@ -412,7 +433,14 @@ exports.getAllInventoryForQuality = async (req, res) => {
       { path: "for", select: "roleName" },
       { path: "kantan", select: "kantanName" },
       { path: "forCompany", select: "firstName lastName" },
-      { path: "orderId", select: "orderNumber" },
+      { 
+        path: "orderId", 
+        select: "orderNumber party",
+        populate: {
+          path: "party",
+          select: "partyName"
+        }
+      },
     ];
 
     let data = [];
