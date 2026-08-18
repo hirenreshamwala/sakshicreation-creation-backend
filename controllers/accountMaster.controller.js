@@ -3077,69 +3077,83 @@ exports.getAllAccountMasters = async (req, res) => {
     ];
 
     // $facet: simultaneously compute counts AND paginated data in one scan
-    const facetPipeline = [
-      ...basePipeline,
-      {
-        $facet: {
-          // Counts branch (no skip/limit, groups by status)
-          counts: includeCounts
-            ? [
-                {
-                  $group: {
-                    _id: "$party.statusApproval",
-                    count: { $sum: 1 },
-                  },
-                },
-              ]
-            : [{ $count: "total" }],
-
-          // Total count (needed for pagination meta)
-          totalCount: [{ $count: "n" }],
-
-          // Paginated data branch — enrichment only on this slice
-          data: [
-            { $sort: { createdAt: -1 } },
-            { $skip: skip },
-            { $limit: limit },
-            MARKET_LOOKUP,
-            { $unwind: { path: "$party.address.marketName", preserveNullAndEmptyArrays: true } },
-            AREA_LOOKUP,
-            { $unwind: { path: "$party.address.area", preserveNullAndEmptyArrays: true } },
-            CREATED_BY_LOOKUP,
-            { $unwind: { path: "$createdBy", preserveNullAndEmptyArrays: true } },
-            COMPANY_LOOKUP,
-            { $unwind: { path: "$companyName", preserveNullAndEmptyArrays: true } },
-            LATEST_TASK_LOOKUP,
-            { $unwind: { path: "$latestTask", preserveNullAndEmptyArrays: true } },
-            FINAL_PROJECT,
-          ],
-        },
-      },
+    const enrichmentPipeline = [
+      { $sort: { createdAt: -1 } },
+      { $skip: skip },
+      { $limit: limit },
+      MARKET_LOOKUP,
+      { $unwind: { path: "$party.address.marketName", preserveNullAndEmptyArrays: true } },
+      AREA_LOOKUP,
+      { $unwind: { path: "$party.address.area", preserveNullAndEmptyArrays: true } },
+      CREATED_BY_LOOKUP,
+      { $unwind: { path: "$createdBy", preserveNullAndEmptyArrays: true } },
+      COMPANY_LOOKUP,
+      { $unwind: { path: "$companyName", preserveNullAndEmptyArrays: true } },
+      LATEST_TASK_LOOKUP,
+      { $unwind: { path: "$latestTask", preserveNullAndEmptyArrays: true } },
+      FINAL_PROJECT,
     ];
 
-    const [facetResult] = await AccountMaster.aggregate(facetPipeline);
+    let data = [];
+    let totalCount = 0;
+    let counts = { approved: 0, pending: 0, total: 0 };
+    let pagination = null;
 
-    // ── STEP 7: Build response ────────────────────────────────────────────────
-    const totalCount = facetResult?.totalCount?.[0]?.n || 0;
+    if (isPagination || includeCounts) {
+      const facetPipeline = [
+        ...basePipeline,
+        {
+          $facet: {
+            counts: includeCounts
+              ? [
+                  {
+                    $group: {
+                      _id: "$party.statusApproval",
+                      count: { $sum: 1 },
+                    },
+                  },
+                ]
+              : [{ $count: "total" }],
+            totalCount: [{ $count: "n" }],
+            data: enrichmentPipeline,
+          },
+        },
+      ];
 
-    let counts = { approved: 0, pending: 0, total: totalCount };
-    if (includeCounts && facetResult?.counts) {
-      facetResult.counts.forEach((sc) => {
-        const key = (sc._id || "").toLowerCase();
-        if (key === "approved") counts.approved = sc.count;
-        if (key === "pending")  counts.pending  = sc.count;
-      });
-      counts.total = counts.approved + counts.pending;
+      const [facetResult] = await AccountMaster.aggregate(facetPipeline);
+
+      totalCount = facetResult?.totalCount?.[0]?.n || 0;
+      if (includeCounts && facetResult?.counts) {
+        facetResult.counts.forEach((sc) => {
+          const key = (sc._id || "").toLowerCase();
+          if (key === "approved") counts.approved = sc.count;
+          if (key === "pending") counts.pending = sc.count;
+        });
+        counts.total = counts.approved + counts.pending;
+      } else {
+        counts.total = totalCount;
+      }
+      
+      data = facetResult?.data || [];
+      
+      if (totalCount > 0) {
+        const totalPages = Math.ceil(totalCount / pageSize);
+        pagination = isPagination
+          ? { currentPage: page, pageSize, totalCount, totalPages, hasNext: page < totalPages, hasPrev: page > 1, counts }
+          : null;
+      } else {
+        return res.status(200).json({ ...emptyResponse(isPagination, page, pageSize), counts });
+      }
+    } else {
+      // Bypass $facet to avoid 16MB limit for bulk data (Excel export)
+      data = await AccountMaster.aggregate([...basePipeline, ...enrichmentPipeline]);
+      totalCount = data.length;
+      counts.total = totalCount;
+      
+      if (totalCount === 0) {
+        return res.status(200).json({ ...emptyResponse(isPagination, page, pageSize), counts });
+      }
     }
-
-    const data = facetResult?.data || [];
-
-    if (totalCount === 0) return res.status(200).json({ ...emptyResponse(isPagination, page, pageSize), counts });
-
-    const totalPages = Math.ceil(totalCount / pageSize);
-    const pagination = isPagination
-      ? { currentPage: page, pageSize, totalCount, totalPages, hasNext: page < totalPages, hasPrev: page > 1, counts }
-      : null;
 
     res.status(200).json({ success: true, data, pagination, counts });
   } catch (error) {
