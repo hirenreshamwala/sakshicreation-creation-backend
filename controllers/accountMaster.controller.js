@@ -2787,6 +2787,222 @@ function emptyResponse(isPagination, page, pageSize) {
   };
 }
 
+async function buildAccountMasterQueryContext(body = {}, options = {}) {
+  const {
+    filters: rawFilters = {},
+    search = "",
+    startDate,
+    endDate,
+    staffId,
+    partyTag,
+    companyName,
+  } = body;
+  const filters = { ...rawFilters };
+
+  if ((!filters.company || filters.company.length === 0) && companyName) {
+    filters.company = Array.isArray(companyName) ? companyName : [companyName];
+  }
+  if ((!filters.partyTag || filters.partyTag.length === 0) && partyTag) {
+    const tags = Array.isArray(partyTag) ? partyTag : String(partyTag).split(",");
+    filters.partyTag = tags.map((tag) => String(tag).trim().toUpperCase()).filter(Boolean);
+  }
+
+  const amQuery = {};
+  if (filters.createdAt?.length) {
+    const [datePart, timePart] = filters.createdAt[0].split(" ");
+    const [day, month, year] = datePart.split("-");
+    if (!timePart || timePart === "00:00:00") {
+      amQuery.createdAt = {
+        $gte: new Date(year, month - 1, day, 0, 0, 0, 0),
+        $lte: new Date(year, month - 1, day, 23, 59, 59, 999),
+      };
+    } else {
+      const [hours, minutes] = timePart.split(":");
+      const base = new Date(year, month - 1, day, hours, minutes, 0, 0);
+      amQuery.createdAt = { $gte: base, $lte: new Date(+base + 59999) };
+    }
+  } else if (startDate || endDate) {
+    amQuery.createdAt = {};
+    if (startDate) {
+      const start = new Date(startDate);
+      start.setHours(0, 0, 0, 0);
+      amQuery.createdAt.$gte = start;
+    }
+    if (endDate) {
+      const end = new Date(endDate);
+      end.setHours(23, 59, 59, 999);
+      amQuery.createdAt.$lte = end;
+    }
+  }
+
+  if (filters.reason?.length) amQuery.reasonToVisit = { $in: filters.reason };
+
+  const forcedCreatedById = options.forceCreatedById;
+  const directStaffId = forcedCreatedById || staffId;
+  if (directStaffId) {
+    if (!mongoose.Types.ObjectId.isValid(directStaffId)) return { empty: true };
+    amQuery.createdBy = new mongoose.Types.ObjectId(directStaffId);
+  }
+
+  const [staffIds, companyDocs, marketDocs, areaDocs] = await Promise.all([
+    !directStaffId && filters.createdBy?.length
+      ? resolveStaffIds(filters.createdBy)
+      : Promise.resolve(null),
+    filters.company?.length
+      ? CompanyName.find({ companyName: { $in: filters.company } }).select("_id").lean()
+      : Promise.resolve(null),
+    filters.market?.length
+      ? Market.find({ marketName: { $in: filters.market } }).select("_id").lean()
+      : Promise.resolve(null),
+    filters.area?.length
+      ? Market.find({ area: { $in: filters.area } }).select("_id").lean()
+      : Promise.resolve(null),
+  ]);
+
+  if (
+    (!directStaffId && filters.createdBy?.length && !staffIds?.length) ||
+    (filters.company?.length && !companyDocs?.length) ||
+    (filters.market?.length && !marketDocs?.length) ||
+    (filters.area?.length && !areaDocs?.length)
+  ) {
+    return { empty: true };
+  }
+
+  if (staffIds?.length) amQuery.createdBy = { $in: staffIds };
+  const companyIds = companyDocs?.map((company) => company._id) || [];
+  if (companyIds.length) amQuery.companyName = { $in: companyIds };
+
+  const partyMatchExpr = {};
+  if (filters.party?.length) partyMatchExpr.partyName = { $in: filters.party };
+  if (filters.contactPerson?.length) partyMatchExpr.contactPerson = { $in: filters.contactPerson };
+  if (filters.partyTag?.length) partyMatchExpr.partyTag = { $in: filters.partyTag };
+  if (filters.partyType?.length) partyMatchExpr.partyType = { $in: filters.partyType };
+  if (filters.mobile?.length) partyMatchExpr.ownerMobileNo = { $in: filters.mobile };
+  if (filters.unitNo?.length) partyMatchExpr["address.unitNo"] = { $in: filters.unitNo };
+  if (marketDocs?.length) partyMatchExpr["address.marketName"] = { $in: marketDocs.map((market) => market._id) };
+  if (areaDocs?.length) partyMatchExpr["address.area"] = { $in: areaDocs.map((area) => area._id) };
+
+  if (search) {
+    partyMatchExpr.$or = [
+      { partyName: { $regex: search, $options: "i" } },
+      { ownerName: { $regex: search, $options: "i" } },
+      { ownerMobileNo: { $regex: search, $options: "i" } },
+      { ownerWhatsAppNo: { $regex: search, $options: "i" } },
+      { contactPerson: { $regex: search, $options: "i" } },
+      { personMobileNo: { $regex: search, $options: "i" } },
+      { personWhatsAppNo: { $regex: search, $options: "i" } },
+      { GSTNo: { $regex: search, $options: "i" } },
+      { "address.unitNo": { $regex: search, $options: "i" } },
+    ];
+  }
+
+  if (filters.assignedTo?.length || filters.remarks?.length) {
+    const taskQuery = {};
+    if (filters.assignedTo?.length) {
+      const taskStaff = await Staff.find({
+        $or: [
+          { firstName: { $in: filters.assignedTo } },
+          { lastName: { $in: filters.assignedTo } },
+          {
+            $expr: {
+              $regexMatch: {
+                input: { $concat: ["$firstName", " ", "$lastName"] },
+                regex: new RegExp(filters.assignedTo.join("|"), "i"),
+              },
+            },
+          },
+        ],
+      }).select("_id").lean();
+      if (!taskStaff.length) return { empty: true };
+      taskQuery.assignTo = { $in: taskStaff.map((staff) => staff._id) };
+    }
+    if (filters.remarks?.length) {
+      taskQuery.$or = filters.remarks.map((remarks) => ({ remarks: { $regex: remarks, $options: "i" } }));
+    }
+    if (companyIds.length) taskQuery.companyName = { $in: companyIds };
+
+    const matchingTasks = await AssignTask.aggregate([
+      { $match: taskQuery },
+      { $sort: { createdAt: -1 } },
+      { $group: { _id: { partyName: "$partyName", companyName: "$companyName" } } },
+    ]);
+    if (!matchingTasks.length) return { empty: true };
+
+    const combinations = matchingTasks.map((task) => ({
+      party: task._id.partyName,
+      companyName: task._id.companyName,
+    }));
+    const accountMasters = await AccountMaster.find({ ...amQuery, $or: combinations }).select("_id").lean();
+    if (!accountMasters.length) return { empty: true };
+    amQuery._id = { $in: accountMasters.map((account) => account._id) };
+  }
+
+  return {
+    empty: false,
+    amQuery,
+    partyMatchExpr,
+    filters,
+  };
+}
+
+exports.createAccountMasterExportCursor = async (body, options = {}) => {
+  const queryContext = await buildAccountMasterQueryContext(body, options);
+  if (queryContext.empty) return null;
+
+  const { amQuery, partyMatchExpr, filters } = queryContext;
+  const needsPartyFilter = Object.keys(partyMatchExpr).length > 0;
+  const partyProjection = {
+    partyName: 1,
+    partyTag: 1,
+    partyType: 1,
+    contactPerson: 1,
+    personMobileNo: 1,
+    ownerMobileNo: 1,
+    statusApproval: 1,
+    "address.unitNo": 1,
+    "address.marketName": 1,
+    "address.area": 1,
+  };
+
+  const pipeline = [
+    { $match: amQuery },
+    { $sort: { createdAt: -1 } },
+    {
+      $lookup: {
+        from: "parties",
+        localField: "party",
+        foreignField: "_id",
+        as: "party",
+        pipeline: needsPartyFilter
+          ? [{ $match: partyMatchExpr }, { $project: partyProjection }]
+          : [{ $project: partyProjection }],
+      },
+    },
+    { $unwind: { path: "$party", preserveNullAndEmptyArrays: false } },
+    ...(filters.status?.length
+      ? [{ $match: { "party.statusApproval": { $in: filters.status } } }]
+      : []),
+    MARKET_LOOKUP,
+    { $unwind: { path: "$party.address.marketName", preserveNullAndEmptyArrays: true } },
+    AREA_LOOKUP,
+    { $unwind: { path: "$party.address.area", preserveNullAndEmptyArrays: true } },
+    CREATED_BY_LOOKUP,
+    { $unwind: { path: "$createdBy", preserveNullAndEmptyArrays: true } },
+    {
+      $project: {
+        createdAt: 1,
+        party: 1,
+        "createdBy.firstName": 1,
+        "createdBy.lastName": 1,
+      },
+    },
+  ];
+
+  return AccountMaster.aggregate(pipeline)
+    .allowDiskUse(true)
+    .cursor({ batchSize: 500 });
+};
+
 // ─────────────────────────────────────────────────────────────────────────────
 // CREATE ACCOUNT MASTER
 // ─────────────────────────────────────────────────────────────────────────────
@@ -2935,6 +3151,12 @@ exports.getAllAccountMasters = async (req, res) => {
     }
 
     if (filters.reason?.length) amQuery.reasonToVisit = { $in: filters.reason };
+    if (req.body.staffId) {
+      if (!mongoose.Types.ObjectId.isValid(req.body.staffId)) {
+        return res.status(200).json(emptyResponse(isPagination, page, pageSize));
+      }
+      amQuery.createdBy = new mongoose.Types.ObjectId(req.body.staffId);
+    }
 
     // ── STEP 2: Parallel pre-fetch of reference IDs ──────────────────────────
     // All independent ID lookups fire at the same time instead of one-by-one.
@@ -2977,6 +3199,14 @@ exports.getAllAccountMasters = async (req, res) => {
     if (filters.party?.length)         partyMatchExpr.partyName               = { $in: filters.party };
     if (filters.contactPerson?.length) partyMatchExpr.contactPerson           = { $in: filters.contactPerson };
     if (filters.partyTag?.length)      partyMatchExpr.partyTag                = { $in: filters.partyTag };
+    else if (req.body.partyTag) {
+      const tags = Array.isArray(req.body.partyTag)
+        ? req.body.partyTag
+        : String(req.body.partyTag).split(",");
+      partyMatchExpr.partyTag = {
+        $in: tags.map((tag) => String(tag).trim().toUpperCase()).filter(Boolean),
+      };
+    }
     if (filters.partyType?.length)     partyMatchExpr.partyType               = { $in: filters.partyType };
     if (filters.mobile?.length)        partyMatchExpr.ownerMobileNo           = { $in: filters.mobile };
     if (filters.unitNo?.length)        partyMatchExpr["address.unitNo"]       = { $in: filters.unitNo };

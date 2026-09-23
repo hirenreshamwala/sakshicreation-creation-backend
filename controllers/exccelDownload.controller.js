@@ -1,5 +1,5 @@
 const ExcelJS = require('exceljs');
-const { getAllAccountMasters } = require('./accountMaster.controller'); // Assuming the original function is in this file
+const { createAccountMasterExportCursor } = require('./accountMaster.controller');
 const { getAllAssignTasksForExcel } = require('./assignTask.controller');
 const assignTaskModel = require('../models/assignTask.model');
 const mongoose = require('mongoose');
@@ -339,57 +339,62 @@ exports.exportPendingApprovalOrdersToExcel = async (req, res) => {
 };
 
 exports.exportAccountMastersToExcel = async (req, res) => {
+    const startedAt = Date.now();
+    let cursor = null;
+    let cancelled = false;
+    let rowCount = 0;
+
+    const handleAbort = () => {
+        cancelled = true;
+        if (cursor) void cursor.close().catch(() => {});
+    };
+    const handleClose = () => {
+        if (!res.writableFinished) handleAbort();
+    };
+
+    req.once('aborted', handleAbort);
+    res.once('close', handleClose);
+
     try {
-        // Create a mock request object with pagination disabled
-        const mockReq = {
-            body: {
-                ...req.body,
-                isPagination: false,
-                includeCounts: false
-            }
-        };
+        const authenticatedStaff = await Staff.findById(req.user?.id)
+            .select('role')
+            .populate({ path: 'role', select: 'permissions' })
+            .lean();
+        const permissions = authenticatedStaff?.role?.permissions?.account_master;
 
-        // Create a mock response object to capture the data
-        let responseData;
-        const mockRes = {
-            status: () => ({
-                json: (data) => {
-                    responseData = data;
-                }
-            })
-        };
-
-        // Reuse the existing controller logic to get filtered data
-        await getAllAccountMasters(mockReq, mockRes);
-
-        if (!responseData || !responseData.success) {
-            return res.status(500).json({
+        if (!permissions?.view_global && !permissions?.view_own) {
+            return res.status(403).json({
                 success: false,
-                message: "Failed to fetch account masters for export"
+                message: 'You do not have permission to export account masters'
             });
         }
 
-        // Create a new Excel workbook
-        const workbook = new ExcelJS.Workbook();
+        cursor = await createAccountMasterExportCursor(req.body, {
+            forceCreatedById: permissions.view_global ? null : req.user.id,
+        });
+
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.setHeader('Content-Disposition', 'attachment; filename=AccountMasters.xlsx');
+
+        const workbook = new ExcelJS.stream.xlsx.WorkbookWriter({
+            stream: res,
+            useStyles: true,
+            useSharedStrings: false,
+        });
         const worksheet = workbook.addWorksheet('Account Masters');
 
-        // Define columns
         worksheet.columns = [
             { header: 'Sr No', key: 'srNo', width: 10 },
-            // { header: 'Company', key: 'company', width: 20 },
             { header: 'Created Date', key: 'createdDate', width: 20 },
             { header: 'Party Name', key: 'party', width: 30 },
+            { header: 'Party Type', key: 'partyType', width: 15 },
             { header: 'Unit No', key: 'unitNo', width: 15 },
             { header: 'Market', key: 'market', width: 20 },
             { header: 'Area', key: 'area', width: 15 },
             { header: 'Contact Person', key: 'contactPerson', width: 20 },
             { header: 'Mobile No.', key: 'mobileNo', width: 15 },
             { header: 'Party Tag', key: 'partyTag', width: 15 },
-            // { header: 'Reason to Visit', key: 'reasonToVisit', width: 20 },
-            // { header: 'Remarks', key: 'remarks', width: 20 },
-            // { header: 'Status', key: 'status', width: 15 },
             { header: 'Created By', key: 'createdBy', width: 20 },
-            // { header: 'Assign', key: 'assign', width: 20 }
         ];
 
         const resolveMarketName = (marketValue) => {
@@ -399,33 +404,8 @@ exports.exportAccountMastersToExcel = async (req, res) => {
             return '';
         };
 
-        // Format and add data rows
-        responseData.data.forEach((account, index) => {
-            const marketName = resolveMarketName(account.party?.address?.marketName);
-            const areaName = resolveMarketName(account.party?.address?.area);
-
-            worksheet.addRow({
-                srNo: index + 1,
-                company: account.companyName?.companyName || '',
-                createdDate: moment(account.createdAt).format('DD-MM-YYYY'),
-                party: account.party?.partyName || '',
-                contactPerson: account.party?.contactPerson || '',
-                partyTag: account.party?.partyTag || '',
-                mobileNo: account.party?.personMobileNo || account.party?.ownerMobileNo || '',
-                reasonToVisit: account.reasonToVisit || '',
-                unitNo: account.party?.address?.unitNo || '',
-                market: marketName,
-                area: areaName,
-                remarks: account.latestTask?.remarks || '',
-                status: account.party?.statusApproval || '',
-                createdBy: `${account.createdBy?.firstName || ''} ${account.createdBy?.lastName || ''}`.trim(),
-                assign: `${account.latestTask?.assignTo?.firstName || ''} ${account.latestTask?.assignTo?.lastName || ''}`.trim()
-            });
-        });
-
-
-        // Style the header row
-        worksheet.getRow(1).eachCell((cell) => {
+        const headerRow = worksheet.getRow(1);
+        headerRow.eachCell((cell) => {
             cell.font = { bold: true };
             cell.fill = {
                 type: 'pattern',
@@ -433,22 +413,48 @@ exports.exportAccountMastersToExcel = async (req, res) => {
                 fgColor: { argb: 'FFD3D3D3' }
             };
         });
+        headerRow.commit();
 
-        // Set response headers for Excel download
-        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-        res.setHeader('Content-Disposition', 'attachment; filename=AccountMasters.xlsx');
+        if (cursor) {
+            for await (const account of cursor) {
+                if (cancelled) break;
+                rowCount += 1;
+                worksheet.addRow({
+                    srNo: rowCount,
+                    createdDate: moment(account.createdAt).format('DD-MM-YYYY'),
+                    party: account.party?.partyName || '',
+                    unitNo: account.party?.address?.unitNo || '',
+                    market: resolveMarketName(account.party?.address?.marketName),
+                    area: resolveMarketName(account.party?.address?.area),
+                    contactPerson: account.party?.contactPerson || '',
+                    mobileNo: account.party?.personMobileNo || account.party?.ownerMobileNo || '',
+                    partyTag: account.party?.partyTag || '',
+                    partyType: account.party?.partyType || '',
+                    createdBy: `${account.createdBy?.firstName || ''} ${account.createdBy?.lastName || ''}`.trim(),
+                }).commit();
+            }
+        }
 
-        // Write the Excel file to the response
-        await workbook.xlsx.write(res);
-        res.end();
+        if (cancelled) return;
+        worksheet.commit();
+        await workbook.commit();
+        console.info(`Account master Excel export completed: ${rowCount} rows in ${Date.now() - startedAt}ms`);
 
     } catch (error) {
         console.error("Error exporting account masters to Excel:", error);
-        res.status(500).json({
-            success: false,
-            message: "Failed to export account masters to Excel",
-            error: error.message,
-        });
+        if (!res.headersSent) {
+            res.status(500).json({
+                success: false,
+                message: "Failed to export account masters to Excel",
+                error: error.message,
+            });
+        } else if (!res.destroyed) {
+            res.destroy(error);
+        }
+    } finally {
+        req.removeListener('aborted', handleAbort);
+        res.removeListener('close', handleClose);
+        if (cursor) await cursor.close().catch(() => {});
     }
 };
 
