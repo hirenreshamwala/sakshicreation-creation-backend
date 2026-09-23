@@ -2759,17 +2759,77 @@ const FINAL_PROJECT = {
   },
 };
 
+const escapeRegex = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+const normalizeFilterValue = (value) =>
+  String(value ?? "").trim().replace(/\s+/g, " ");
+
+const buildEquivalentValueRegex = (value) => {
+  const normalized = normalizeFilterValue(value);
+  const pattern = normalized.split(" ").map(escapeRegex).join("\\s+");
+  return new RegExp(`^\\s*${pattern}\\s*$`, "i");
+};
+
+const buildEquivalentValueCondition = (values) => ({
+  $in: values.map(buildEquivalentValueRegex),
+});
+
+const dedupeFilterValues = (values) => {
+  const seen = new Set();
+  const result = [];
+
+  values.forEach((value) => {
+    const displayValue = normalizeFilterValue(value);
+    if (!displayValue) return;
+    const key = displayValue.toLocaleLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    result.push(displayValue);
+  });
+
+  return result.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base", numeric: true }));
+};
+
+const applyCreatedAtFilter = (query, values) => {
+  const ranges = values.map((value) => {
+    const [datePart, timePart] = String(value).split(" ");
+    const [day, month, year] = datePart.split("-").map(Number);
+    if (!day || !month || !year) return null;
+
+    if (!timePart || timePart === "00:00:00") {
+      return {
+        $gte: new Date(year, month - 1, day, 0, 0, 0, 0),
+        $lte: new Date(year, month - 1, day, 23, 59, 59, 999),
+      };
+    }
+
+    const [hours, minutes] = timePart.split(":").map(Number);
+    const base = new Date(year, month - 1, day, hours || 0, minutes || 0, 0, 0);
+    return { $gte: base, $lte: new Date(+base + 59999) };
+  }).filter(Boolean);
+
+  if (ranges.length === 1) query.createdAt = ranges[0];
+  else if (ranges.length > 1) {
+    query.$and = [...(query.$and || []), { $or: ranges.map((range) => ({ createdAt: range })) }];
+  }
+};
+
 // ── Helper: resolve ID array from Staff by full-name strings ──────────────────
 async function resolveStaffIds(nameList) {
   const conds = [];
   nameList.forEach((full) => {
-    const parts = full.trim().split(" ");
+    const parts = normalizeFilterValue(full).split(" ");
     if (parts.length === 1) {
-      conds.push({ firstName: parts[0] }, { lastName: parts[0] });
+      const nameRegex = buildEquivalentValueRegex(parts[0]);
+      conds.push({ firstName: nameRegex }, { lastName: nameRegex });
     } else {
-      conds.push({ firstName: parts[0], lastName: parts.slice(1).join(" ") });
+      conds.push({
+        firstName: buildEquivalentValueRegex(parts[0]),
+        lastName: buildEquivalentValueRegex(parts.slice(1).join(" ")),
+      });
     }
   });
+  if (!conds.length) return [];
   const staff = await Staff.find({ $or: conds }).select("_id").lean();
   return staff.map((s) => s._id);
 }
@@ -2809,18 +2869,7 @@ async function buildAccountMasterQueryContext(body = {}, options = {}) {
 
   const amQuery = {};
   if (filters.createdAt?.length) {
-    const [datePart, timePart] = filters.createdAt[0].split(" ");
-    const [day, month, year] = datePart.split("-");
-    if (!timePart || timePart === "00:00:00") {
-      amQuery.createdAt = {
-        $gte: new Date(year, month - 1, day, 0, 0, 0, 0),
-        $lte: new Date(year, month - 1, day, 23, 59, 59, 999),
-      };
-    } else {
-      const [hours, minutes] = timePart.split(":");
-      const base = new Date(year, month - 1, day, hours, minutes, 0, 0);
-      amQuery.createdAt = { $gte: base, $lte: new Date(+base + 59999) };
-    }
+    applyCreatedAtFilter(amQuery, filters.createdAt);
   } else if (startDate || endDate) {
     amQuery.createdAt = {};
     if (startDate) {
@@ -2835,7 +2884,7 @@ async function buildAccountMasterQueryContext(body = {}, options = {}) {
     }
   }
 
-  if (filters.reason?.length) amQuery.reasonToVisit = { $in: filters.reason };
+  if (filters.reason?.length) amQuery.reasonToVisit = buildEquivalentValueCondition(filters.reason);
 
   const forcedCreatedById = options.forceCreatedById;
   const directStaffId = forcedCreatedById || staffId;
@@ -2849,13 +2898,13 @@ async function buildAccountMasterQueryContext(body = {}, options = {}) {
       ? resolveStaffIds(filters.createdBy)
       : Promise.resolve(null),
     filters.company?.length
-      ? CompanyName.find({ companyName: { $in: filters.company } }).select("_id").lean()
+      ? CompanyName.find({ companyName: buildEquivalentValueCondition(filters.company) }).select("_id").lean()
       : Promise.resolve(null),
     filters.market?.length
-      ? Market.find({ marketName: { $in: filters.market } }).select("_id").lean()
+      ? Market.find({ marketName: buildEquivalentValueCondition(filters.market) }).select("_id").lean()
       : Promise.resolve(null),
     filters.area?.length
-      ? Market.find({ area: { $in: filters.area } }).select("_id").lean()
+      ? Market.find({ area: buildEquivalentValueCondition(filters.area) }).select("_id").lean()
       : Promise.resolve(null),
   ]);
 
@@ -2873,12 +2922,12 @@ async function buildAccountMasterQueryContext(body = {}, options = {}) {
   if (companyIds.length) amQuery.companyName = { $in: companyIds };
 
   const partyMatchExpr = {};
-  if (filters.party?.length) partyMatchExpr.partyName = { $in: filters.party };
-  if (filters.contactPerson?.length) partyMatchExpr.contactPerson = { $in: filters.contactPerson };
-  if (filters.partyTag?.length) partyMatchExpr.partyTag = { $in: filters.partyTag };
-  if (filters.partyType?.length) partyMatchExpr.partyType = { $in: filters.partyType };
-  if (filters.mobile?.length) partyMatchExpr.ownerMobileNo = { $in: filters.mobile };
-  if (filters.unitNo?.length) partyMatchExpr["address.unitNo"] = { $in: filters.unitNo };
+  if (filters.party?.length) partyMatchExpr.partyName = buildEquivalentValueCondition(filters.party);
+  if (filters.contactPerson?.length) partyMatchExpr.contactPerson = buildEquivalentValueCondition(filters.contactPerson);
+  if (filters.partyTag?.length) partyMatchExpr.partyTag = buildEquivalentValueCondition(filters.partyTag);
+  if (filters.partyType?.length) partyMatchExpr.partyType = buildEquivalentValueCondition(filters.partyType);
+  if (filters.mobile?.length) partyMatchExpr.ownerMobileNo = buildEquivalentValueCondition(filters.mobile);
+  if (filters.unitNo?.length) partyMatchExpr["address.unitNo"] = buildEquivalentValueCondition(filters.unitNo);
   if (marketDocs?.length) partyMatchExpr["address.marketName"] = { $in: marketDocs.map((market) => market._id) };
   if (areaDocs?.length) partyMatchExpr["address.area"] = { $in: areaDocs.map((area) => area._id) };
 
@@ -2899,22 +2948,9 @@ async function buildAccountMasterQueryContext(body = {}, options = {}) {
   if (filters.assignedTo?.length || filters.remarks?.length) {
     const taskQuery = {};
     if (filters.assignedTo?.length) {
-      const taskStaff = await Staff.find({
-        $or: [
-          { firstName: { $in: filters.assignedTo } },
-          { lastName: { $in: filters.assignedTo } },
-          {
-            $expr: {
-              $regexMatch: {
-                input: { $concat: ["$firstName", " ", "$lastName"] },
-                regex: new RegExp(filters.assignedTo.join("|"), "i"),
-              },
-            },
-          },
-        ],
-      }).select("_id").lean();
-      if (!taskStaff.length) return { empty: true };
-      taskQuery.assignTo = { $in: taskStaff.map((staff) => staff._id) };
+      const taskStaffIds = await resolveStaffIds(filters.assignedTo);
+      if (!taskStaffIds.length) return { empty: true };
+      taskQuery.assignTo = { $in: taskStaffIds };
     }
     if (filters.remarks?.length) {
       taskQuery.$or = filters.remarks.map((remarks) => ({ remarks: { $regex: remarks, $options: "i" } }));
@@ -2980,7 +3016,7 @@ exports.createAccountMasterExportCursor = async (body, options = {}) => {
     },
     { $unwind: { path: "$party", preserveNullAndEmptyArrays: false } },
     ...(filters.status?.length
-      ? [{ $match: { "party.statusApproval": { $in: filters.status } } }]
+      ? [{ $match: { "party.statusApproval": buildEquivalentValueCondition(filters.status) } }]
       : []),
     MARKET_LOOKUP,
     { $unwind: { path: "$party.address.marketName", preserveNullAndEmptyArrays: true } },
@@ -3129,28 +3165,14 @@ exports.getAllAccountMasters = async (req, res) => {
 
     // Date range
     if (filters.createdAt && filters.createdAt.length > 0) {
-      const [datePart, timePart] = filters.createdAt[0].split(" ");
-      const [day, month, year] = datePart.split("-");
-      if (!timePart || timePart === "00:00:00") {
-        amQuery.createdAt = {
-          $gte: new Date(year, month - 1, day, 0, 0, 0, 0),
-          $lte: new Date(year, month - 1, day, 23, 59, 59, 999),
-        };
-      } else {
-        const [h, m] = timePart.split(":");
-        const base = new Date(year, month - 1, day, h, m, 0, 0);
-        amQuery.createdAt = {
-          $gte: base,
-          $lte: new Date(+base + 59999),
-        };
-      }
+      applyCreatedAtFilter(amQuery, filters.createdAt);
     } else if (startDate || endDate) {
       amQuery.createdAt = {};
       if (startDate) { const s = new Date(startDate); s.setHours(0,0,0,0); amQuery.createdAt.$gte = s; }
       if (endDate)   { const e = new Date(endDate);   e.setHours(23,59,59,999); amQuery.createdAt.$lte = e; }
     }
 
-    if (filters.reason?.length) amQuery.reasonToVisit = { $in: filters.reason };
+    if (filters.reason?.length) amQuery.reasonToVisit = buildEquivalentValueCondition(filters.reason);
     if (req.body.staffId) {
       if (!mongoose.Types.ObjectId.isValid(req.body.staffId)) {
         return res.status(200).json(emptyResponse(isPagination, page, pageSize));
@@ -3168,17 +3190,17 @@ exports.getAllAccountMasters = async (req, res) => {
 
       // Company filter
       filters.company?.length
-        ? CompanyName.find({ companyName: { $in: filters.company } }).select("_id").lean()
+        ? CompanyName.find({ companyName: buildEquivalentValueCondition(filters.company) }).select("_id").lean()
         : Promise.resolve(null),
 
       // Market filter
       filters.market?.length
-        ? Market.find({ marketName: { $in: filters.market } }).select("_id").lean()
+        ? Market.find({ marketName: buildEquivalentValueCondition(filters.market) }).select("_id").lean()
         : Promise.resolve(null),
 
       // Area filter
       filters.area?.length
-        ? Market.find({ area: { $in: filters.area } }).select("_id").lean()
+        ? Market.find({ area: buildEquivalentValueCondition(filters.area) }).select("_id").lean()
         : Promise.resolve(null),
     ]);
 
@@ -3196,20 +3218,18 @@ exports.getAllAccountMasters = async (req, res) => {
     // This becomes a $lookup + $match inside the aggregation — no separate query.
     const partyMatchExpr = {};
 
-    if (filters.party?.length)         partyMatchExpr.partyName               = { $in: filters.party };
-    if (filters.contactPerson?.length) partyMatchExpr.contactPerson           = { $in: filters.contactPerson };
-    if (filters.partyTag?.length)      partyMatchExpr.partyTag                = { $in: filters.partyTag };
+    if (filters.party?.length)         partyMatchExpr.partyName               = buildEquivalentValueCondition(filters.party);
+    if (filters.contactPerson?.length) partyMatchExpr.contactPerson           = buildEquivalentValueCondition(filters.contactPerson);
+    if (filters.partyTag?.length)      partyMatchExpr.partyTag                = buildEquivalentValueCondition(filters.partyTag);
     else if (req.body.partyTag) {
       const tags = Array.isArray(req.body.partyTag)
         ? req.body.partyTag
         : String(req.body.partyTag).split(",");
-      partyMatchExpr.partyTag = {
-        $in: tags.map((tag) => String(tag).trim().toUpperCase()).filter(Boolean),
-      };
+      partyMatchExpr.partyTag = buildEquivalentValueCondition(tags);
     }
-    if (filters.partyType?.length)     partyMatchExpr.partyType               = { $in: filters.partyType };
-    if (filters.mobile?.length)        partyMatchExpr.ownerMobileNo           = { $in: filters.mobile };
-    if (filters.unitNo?.length)        partyMatchExpr["address.unitNo"]       = { $in: filters.unitNo };
+    if (filters.partyType?.length)     partyMatchExpr.partyType               = buildEquivalentValueCondition(filters.partyType);
+    if (filters.mobile?.length)        partyMatchExpr.ownerMobileNo           = buildEquivalentValueCondition(filters.mobile);
+    if (filters.unitNo?.length)        partyMatchExpr["address.unitNo"]       = buildEquivalentValueCondition(filters.unitNo);
     if (marketDocs?.length)            partyMatchExpr["address.marketName"]   = { $in: marketDocs.map((m) => m._id) };
     if (areaDocs?.length)              partyMatchExpr["address.area"]         = { $in: areaDocs.map((a) => a._id) };
 
@@ -3234,23 +3254,9 @@ exports.getAllAccountMasters = async (req, res) => {
       const taskQuery = {};
 
       if (filters.assignedTo?.length) {
-        const tStaff = await Staff.find({
-          $or: [
-            { firstName: { $in: filters.assignedTo } },
-            { lastName:  { $in: filters.assignedTo } },
-            {
-              $expr: {
-                $regexMatch: {
-                  input: { $concat: ["$firstName", " ", "$lastName"] },
-                  regex: new RegExp(filters.assignedTo.join("|"), "i"),
-                },
-              },
-            },
-          ],
-        }).select("_id").lean();
-
-        if (!tStaff.length) return res.status(200).json(emptyResponse(isPagination, page, pageSize));
-        taskQuery.assignTo = { $in: tStaff.map((s) => s._id) };
+        const taskStaffIds = await resolveStaffIds(filters.assignedTo);
+        if (!taskStaffIds.length) return res.status(200).json(emptyResponse(isPagination, page, pageSize));
+        taskQuery.assignTo = { $in: taskStaffIds };
       }
 
       if (filters.remarks?.length) {
@@ -3303,7 +3309,7 @@ exports.getAllAccountMasters = async (req, res) => {
       },
       { $unwind: { path: "$party", preserveNullAndEmptyArrays: false } },
       // ── Status filter on party ──
-      ...(hasStatusFilter ? [{ $match: { "party.statusApproval": { $in: filters.status } } }] : []),
+      ...(hasStatusFilter ? [{ $match: { "party.statusApproval": buildEquivalentValueCondition(filters.status) } }] : []),
     ];
 
     // $facet: simultaneously compute counts AND paginated data in one scan
@@ -3409,85 +3415,16 @@ exports.getAccountMasterByStaffId = async (req, res) => {
       includeCounts = false,
     } = req.body;
 
-    const amQuery = {};
-
-    if (startDate || endDate) {
-      amQuery.createdAt = {};
-      if (startDate) { const s = new Date(startDate); s.setHours(0,0,0,0); amQuery.createdAt.$gte = s; }
-      if (endDate)   { const e = new Date(endDate);   e.setHours(23,59,59,999); amQuery.createdAt.$lte = e; }
+    const queryContext = await buildAccountMasterQueryContext(req.body, {
+      forceCreatedById: req.params.id,
+    });
+    if (queryContext.empty) {
+      return res.status(200).json(emptyResponse(isPagination, page, pageSize));
     }
-
-    if (filters.reason?.length) amQuery.reasonToVisit = { $in: filters.reason };
-
-    // Parallel pre-fetch
-    const [staffIds, companyDocs, marketDocs, areaDocs] = await Promise.all([
-      filters.createdBy?.length ? resolveStaffIds(filters.createdBy) : Promise.resolve(null),
-      filters.company?.length   ? CompanyName.find({ companyName: { $in: filters.company } }).select("_id").lean() : Promise.resolve(null),
-      filters.market?.length    ? Market.find({ marketName: { $in: filters.market } }).select("_id").lean() : Promise.resolve(null),
-      filters.area?.length      ? Market.find({ area: { $in: filters.area } }).select("_id").lean() : Promise.resolve(null),
-    ]);
-
-    if (filters.createdBy?.length && (!staffIds || !staffIds.length))   return res.status(200).json(emptyResponse(isPagination, page, pageSize));
-    if (filters.company?.length   && (!companyDocs || !companyDocs.length)) return res.status(200).json(emptyResponse(isPagination, page, pageSize));
-    if (filters.market?.length    && (!marketDocs  || !marketDocs.length))  return res.status(200).json(emptyResponse(isPagination, page, pageSize));
-    if (filters.area?.length      && (!areaDocs    || !areaDocs.length))    return res.status(200).json(emptyResponse(isPagination, page, pageSize));
-
-    if (staffIds?.length) amQuery.createdBy = { $in: staffIds };
-    const companyIds = companyDocs ? companyDocs.map((c) => c._id) : [];
-    if (companyIds.length) amQuery.companyName = { $in: companyIds };
-
-    const partyMatchExpr = {};
-    if (filters.party?.length)         partyMatchExpr.partyName             = { $in: filters.party };
-    if (filters.contactPerson?.length) partyMatchExpr.contactPerson         = { $in: filters.contactPerson };
-    if (filters.partyTag?.length)      partyMatchExpr.partyTag              = { $in: filters.partyTag };
-    if (filters.mobile?.length)        partyMatchExpr.ownerMobileNo         = { $in: filters.mobile };
-    if (filters.unitNo?.length)        partyMatchExpr["address.unitNo"]     = { $in: filters.unitNo };
-    if (filters.status?.length)        partyMatchExpr.statusApproval        = { $in: filters.status };
-    if (marketDocs?.length)            partyMatchExpr["address.marketName"] = { $in: marketDocs.map((m) => m._id) };
-    if (areaDocs?.length)              partyMatchExpr["address.area"]       = { $in: areaDocs.map((a) => a._id) };
-
-    if (search) {
-      partyMatchExpr.$or = [
-        { partyName: { $regex: search, $options: "i" } },
-        { ownerName: { $regex: search, $options: "i" } },
-        { ownerMobileNo: { $regex: search, $options: "i" } },
-        { contactPerson: { $regex: search, $options: "i" } },
-        { GSTNo: { $regex: search, $options: "i" } },
-        { "address.unitNo": { $regex: search, $options: "i" } },
-      ];
+    const { amQuery, partyMatchExpr } = queryContext;
+    if (queryContext.filters.status?.length) {
+      partyMatchExpr.statusApproval = buildEquivalentValueCondition(queryContext.filters.status);
     }
-
-    // Task filter
-    let taskAmIds = null;
-    if (filters.assignedTo?.length || filters.remarks?.length) {
-      const taskQuery = {};
-      if (filters.assignedTo?.length) {
-        const tStaff = await Staff.find({
-          $or: [
-            { firstName: { $in: filters.assignedTo } },
-            { lastName:  { $in: filters.assignedTo } },
-          ],
-        }).select("_id").lean();
-        if (!tStaff.length) return res.status(200).json(emptyResponse(isPagination, page, pageSize));
-        taskQuery.assignTo = { $in: tStaff.map((s) => s._id) };
-      }
-      if (filters.remarks?.length) taskQuery.$or = filters.remarks.map((r) => ({ remarks: { $regex: r, $options: "i" } }));
-      if (companyIds.length) taskQuery.companyName = { $in: companyIds };
-
-      const matchingTasks = await AssignTask.aggregate([
-        { $match: taskQuery },
-        { $sort: { createdAt: -1 } },
-        { $group: { _id: { partyName: "$partyName", companyName: "$companyName" }, t: { $first: "$$ROOT" } } },
-      ]);
-      if (!matchingTasks.length) return res.status(200).json(emptyResponse(isPagination, page, pageSize));
-
-      const orCombos = matchingTasks.map((t) => ({ party: t._id.partyName, companyName: t._id.companyName }));
-      const amWithTasks = await AccountMaster.find({ ...amQuery, $or: orCombos }).select("_id").lean();
-      if (!amWithTasks.length) return res.status(200).json(emptyResponse(isPagination, page, pageSize));
-      taskAmIds = amWithTasks.map((am) => am._id);
-    }
-
-    if (taskAmIds) amQuery._id = { $in: taskAmIds };
 
     const needsPartyFilter = Object.keys(partyMatchExpr).length > 0;
     const skip  = isPagination ? (page - 1) * pageSize : 0;
@@ -3835,7 +3772,7 @@ exports.getFilterOptionsData = async (req, res) => {
         const dates = await AccountMaster.distinct("createdAt", amQuery);
         uniqueValues = dates
           .sort((a, b) => new Date(b) - new Date(a))
-          .map((d) => moment(d).format("DD-MM-YYYY HH:mm:ss"));
+          .map((d) => moment(d).format("DD-MM-YYYY"));
         break;
       }
 
@@ -3943,7 +3880,7 @@ exports.getFilterOptionsData = async (req, res) => {
       uniqueValues = uniqueValues.filter((v) => v?.toString().toLowerCase().includes(s));
     }
 
-    uniqueValues = [...new Set(uniqueValues)].filter(Boolean).sort();
+    uniqueValues = dedupeFilterValues(uniqueValues);
 
     res.status(200).json({ success: true, data: uniqueValues, count: uniqueValues.length });
   } catch (err) {
