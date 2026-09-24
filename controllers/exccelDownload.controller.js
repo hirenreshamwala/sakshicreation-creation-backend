@@ -384,23 +384,39 @@ exports.exportAccountMastersToExcel = async (req, res) => {
         const worksheet = workbook.addWorksheet('Account Masters');
 
         worksheet.columns = [
-            { header: 'Sr No', key: 'srNo', width: 10 },
-            { header: 'Created Date', key: 'createdDate', width: 20 },
-            { header: 'Party Name', key: 'party', width: 30 },
-            { header: 'Party Type', key: 'partyType', width: 15 },
-            { header: 'Unit No', key: 'unitNo', width: 15 },
-            { header: 'Market', key: 'market', width: 20 },
-            { header: 'Area', key: 'area', width: 15 },
-            { header: 'Contact Person', key: 'contactPerson', width: 20 },
-            { header: 'Mobile No.', key: 'mobileNo', width: 15 },
-            { header: 'Party Tag', key: 'partyTag', width: 15 },
-            { header: 'Created By', key: 'createdBy', width: 20 },
+            { header: '#', key: 'accountId', width: 26 },
+            { header: 'partyName', key: 'partyName', width: 30 },
+            { header: 'ownerName', key: 'ownerName', width: 24 },
+            { header: 'ownerMobileNo', key: 'ownerMobileNo', width: 18 },
+            { header: 'ownerWhatsAppNo', key: 'ownerWhatsAppNo', width: 20 },
+            { header: 'ownerEmail', key: 'ownerEmail', width: 28 },
+            { header: 'contactPerson', key: 'contactPerson', width: 24 },
+            { header: 'personMobileNo', key: 'personMobileNo', width: 18 },
+            { header: 'personWhatsAppNo', key: 'personWhatsAppNo', width: 20 },
+            { header: 'contactPersonEmail', key: 'contactPersonEmail', width: 28 },
+            { header: 'contactForPayment', key: 'contactForPayment', width: 24 },
+            { header: 'contactMobileNo', key: 'contactMobileNo', width: 18 },
+            { header: 'contactWhatsAppNo', key: 'contactWhatsAppNo', width: 20 },
+            { header: 'contactForPaymentEmail', key: 'contactForPaymentEmail', width: 30 },
+            { header: 'GSTNo', key: 'GSTNo', width: 20 },
+            { header: 'unitNo', key: 'unitNo', width: 15 },
+            { header: 'marketName', key: 'marketName', width: 22 },
+            { header: 'landMark', key: 'landMark', width: 22 },
+            { header: 'area', key: 'area', width: 20 },
+            { header: 'pincode', key: 'pincode', width: 12 },
+            { header: 'reasonToVisit', key: 'reasonToVisit', width: 18 },
+            { header: 'reference', key: 'reference', width: 24 },
+            { header: 'isRequestMode', key: 'isRequestMode', width: 16 },
+            { header: 'partyTag', key: 'partyTag', width: 15 },
+            { header: 'partyType', key: 'partyType', width: 15 },
+            { header: 'createdById', key: 'createdById', width: 26 },
+            { header: 'createdBy', key: 'createdBy', width: 24 },
         ];
 
-        const resolveMarketName = (marketValue) => {
+        const resolveMarketField = (marketValue, field) => {
             if (!marketValue) return '';
             if (typeof marketValue === 'string') return marketValue;
-            if (typeof marketValue === 'object') return marketValue.marketName || marketValue.area || '';
+            if (typeof marketValue === 'object') return marketValue[field] || '';
             return '';
         };
 
@@ -420,16 +436,32 @@ exports.exportAccountMastersToExcel = async (req, res) => {
                 if (cancelled) break;
                 rowCount += 1;
                 worksheet.addRow({
-                    srNo: rowCount,
-                    createdDate: moment(account.createdAt).format('DD-MM-YYYY'),
-                    party: account.party?.partyName || '',
-                    unitNo: account.party?.address?.unitNo || '',
-                    market: resolveMarketName(account.party?.address?.marketName),
-                    area: resolveMarketName(account.party?.address?.area),
+                    accountId: String(account._id || ''),
+                    partyName: account.party?.partyName || '',
+                    ownerName: account.party?.ownerName || '',
+                    ownerMobileNo: String(account.party?.ownerMobileNo || ''),
+                    ownerWhatsAppNo: String(account.party?.ownerWhatsAppNo || ''),
+                    ownerEmail: account.party?.ownerEmail || '',
                     contactPerson: account.party?.contactPerson || '',
-                    mobileNo: account.party?.personMobileNo || account.party?.ownerMobileNo || '',
+                    personMobileNo: String(account.party?.personMobileNo || ''),
+                    personWhatsAppNo: String(account.party?.personWhatsAppNo || ''),
+                    contactPersonEmail: account.party?.contactPersonEmail || '',
+                    contactForPayment: account.party?.contactForPayment || '',
+                    contactMobileNo: String(account.party?.contactMobileNo || ''),
+                    contactWhatsAppNo: String(account.party?.contactWhatsAppNo || ''),
+                    contactForPaymentEmail: account.party?.contactForPaymentEmail || '',
+                    GSTNo: String(account.party?.GSTNo || ''),
+                    unitNo: account.party?.address?.unitNo || '',
+                    marketName: resolveMarketField(account.party?.address?.marketName, 'marketName'),
+                    landMark: resolveMarketField(account.party?.address?.landMark, 'landmark'),
+                    area: resolveMarketField(account.party?.address?.area, 'area'),
+                    pincode: String(resolveMarketField(account.party?.address?.pincode, 'pincode')),
+                    reasonToVisit: account.reasonToVisit || '',
+                    reference: account.reference || '',
+                    isRequestMode: String(account.party?.statusApproval || '').toUpperCase() === 'PENDING' ? 'TRUE' : 'FALSE',
                     partyTag: account.party?.partyTag || '',
                     partyType: account.party?.partyType || '',
+                    createdById: String(account.createdBy?._id || ''),
                     createdBy: `${account.createdBy?.firstName || ''} ${account.createdBy?.lastName || ''}`.trim(),
                 }).commit();
             }

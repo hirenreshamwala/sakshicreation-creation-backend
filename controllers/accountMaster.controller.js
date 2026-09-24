@@ -2693,6 +2693,26 @@ const AREA_LOOKUP = {
   },
 };
 
+const LANDMARK_LOOKUP = {
+  $lookup: {
+    from: "markets",
+    localField: "party.address.landMark",
+    foreignField: "_id",
+    as: "party.address.landMark",
+    pipeline: [{ $project: { landmark: 1 } }],
+  },
+};
+
+const PINCODE_LOOKUP = {
+  $lookup: {
+    from: "markets",
+    localField: "party.address.pincode",
+    foreignField: "_id",
+    as: "party.address.pincode",
+    pipeline: [{ $project: { pincode: 1 } }],
+  },
+};
+
 // Latest-task lookup with inline assignTo population (single lookup, no second unwind step)
 const LATEST_TASK_LOOKUP = {
   $lookup: {
@@ -2989,15 +3009,27 @@ exports.createAccountMasterExportCursor = async (body, options = {}) => {
   const needsPartyFilter = Object.keys(partyMatchExpr).length > 0;
   const partyProjection = {
     partyName: 1,
+    ownerName: 1,
+    ownerWhatsAppNo: 1,
+    ownerEmail: 1,
     partyTag: 1,
     partyType: 1,
     contactPerson: 1,
     personMobileNo: 1,
+    personWhatsAppNo: 1,
+    contactPersonEmail: 1,
+    contactForPayment: 1,
+    contactMobileNo: 1,
+    contactWhatsAppNo: 1,
+    contactForPaymentEmail: 1,
+    GSTNo: 1,
     ownerMobileNo: 1,
     statusApproval: 1,
     "address.unitNo": 1,
     "address.marketName": 1,
+    "address.landMark": 1,
     "address.area": 1,
+    "address.pincode": 1,
   };
 
   const pipeline = [
@@ -3022,12 +3054,19 @@ exports.createAccountMasterExportCursor = async (body, options = {}) => {
     { $unwind: { path: "$party.address.marketName", preserveNullAndEmptyArrays: true } },
     AREA_LOOKUP,
     { $unwind: { path: "$party.address.area", preserveNullAndEmptyArrays: true } },
+    LANDMARK_LOOKUP,
+    { $unwind: { path: "$party.address.landMark", preserveNullAndEmptyArrays: true } },
+    PINCODE_LOOKUP,
+    { $unwind: { path: "$party.address.pincode", preserveNullAndEmptyArrays: true } },
     CREATED_BY_LOOKUP,
     { $unwind: { path: "$createdBy", preserveNullAndEmptyArrays: true } },
     {
       $project: {
         createdAt: 1,
+        reasonToVisit: 1,
+        reference: 1,
         party: 1,
+        "createdBy._id": 1,
         "createdBy.firstName": 1,
         "createdBy.lastName": 1,
       },
@@ -3889,102 +3928,307 @@ exports.getFilterOptionsData = async (req, res) => {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// BULK CREATE (unchanged — transaction-bound, limited to upload size)
+// BULK UPSERT (accountId updates; blank accountId creates)
 // ─────────────────────────────────────────────────────────────────────────────
-const normalize = (val) => (val ? String(val).trim().toLowerCase() : null);
-const findMarketByField = async (field, value, session) => {
-  if (!value) return null;
-  const market = await Market.findOne({ [field]: { $regex: new RegExp(`^${normalize(value)}$`, "i") } }).session(session);
-  return market ? market._id : null;
+const cellText = (value) => value === undefined || value === null ? "" : String(value).trim();
+const optionalCell = (value) => cellText(value) || null;
+const exactText = (value) => ({ $regex: new RegExp(`^${escapeRegex(cellText(value))}$`, "i") });
+const getBulkAccountId = (row) => {
+  const supportedHeaders = ["accountId", "Account ID", "Account Id", "accountID", "_id", "id", "#"];
+  for (const header of supportedHeaders) {
+    const value = cellText(row[header]);
+    if (value) return value;
+  }
+  return "";
 };
 
-async function findStaffByFullName(fullName) {
-  const [firstName, lastName] = fullName.trim().split(" ");
-  return Staff.findOne({
-    $expr: {
-      $and: [
-        { $eq: [{ $toLower: { $trim: { input: "$firstName" } } }, firstName.toLowerCase()] },
-        { $eq: [{ $toLower: { $trim: { input: "$lastName" } } }, lastName.toLowerCase()] },
-      ],
-    },
-  });
+async function findStaffForBulkRow(row, cache) {
+  const createdById = cellText(row.createdById);
+  const fullName = cellText(row.createdBy).replace(/\s+/g, " ");
+  const cacheKey = createdById ? `id:${createdById}` : `name:${fullName.toLowerCase()}`;
+  if (cache.has(cacheKey)) return cache.get(cacheKey);
+
+  let staff;
+  if (createdById) {
+    if (!mongoose.Types.ObjectId.isValid(createdById)) return null;
+    staff = await Staff.findById(createdById).select("_id firstName lastName").lean();
+  } else {
+    if (!fullName) return null;
+    staff = await Staff.findOne({
+      $expr: {
+        $eq: [
+          { $toLower: { $trim: { input: { $concat: [{ $ifNull: ["$firstName", ""] }, " ", { $ifNull: ["$lastName", ""] }] } } } },
+          fullName.toLowerCase(),
+        ],
+      },
+    }).select("_id firstName lastName").lean();
+  }
+  cache.set(cacheKey, staff);
+  return staff;
+}
+
+async function resolveBulkAddress(row, cache) {
+  const marketName = cellText(row.marketName);
+  const area = cellText(row.area);
+  const landMark = cellText(row.landMark);
+  const pincode = cellText(row.pincode);
+  if (!marketName || !area || !pincode) return null;
+  const cacheKey = [marketName, area, landMark, pincode].map((value) => value.toUpperCase()).join("::");
+  if (cache.has(cacheKey)) {
+    const cachedAddress = cache.get(cacheKey);
+    return cachedAddress ? { ...cachedAddress, unitNo: optionalCell(row.unitNo) } : null;
+  }
+
+  const market = await Market.findOne({ marketName: exactText(marketName) }).select("_id").lean();
+  const areaMarket = await Market.findOne({
+    marketName: exactText(marketName),
+    area: exactText(area),
+  }).select("_id").lean() || await Market.findOne({ area: exactText(area) }).select("_id").lean();
+
+  let landmarkMarket = null;
+  if (landMark) {
+    landmarkMarket = await Market.findOne({
+      area: exactText(area),
+      landmark: exactText(landMark),
+    }).select("_id").lean() || await Market.findOne({ landmark: exactText(landMark) }).select("_id").lean();
+  }
+
+  const pincodeQuery = {
+    pincode: exactText(pincode),
+    ...(landMark ? { landmark: exactText(landMark) } : {}),
+  };
+  const pincodeMarket = await Market.findOne(pincodeQuery).select("_id").lean()
+    || await Market.findOne({ pincode: exactText(pincode) }).select("_id").lean();
+
+  if (!market || !areaMarket || !pincodeMarket || (landMark && !landmarkMarket)) {
+    cache.set(cacheKey, null);
+    return null;
+  }
+
+  const resolvedAddress = {
+    marketName: market._id,
+    area: areaMarket._id,
+    landMark: landmarkMarket?._id || null,
+    pincode: pincodeMarket._id,
+  };
+  cache.set(cacheKey, resolvedAddress);
+  return { ...resolvedAddress, unitNo: optionalCell(row.unitNo) };
+}
+
+const bulkPartyData = (row, companyId, address, isUpdate) => ({
+  companyName: companyId,
+  partyName: optionalCell(row.partyName),
+  ownerName: optionalCell(row.ownerName),
+  ownerMobileNo: optionalCell(row.ownerMobileNo),
+  ownerWhatsAppNo: optionalCell(row.ownerWhatsAppNo),
+  ownerEmail: optionalCell(row.ownerEmail),
+  contactPerson: optionalCell(row.contactPerson),
+  personMobileNo: optionalCell(row.personMobileNo),
+  personWhatsAppNo: optionalCell(row.personWhatsAppNo),
+  contactPersonEmail: optionalCell(row.contactPersonEmail),
+  contactForPayment: optionalCell(row.contactForPayment),
+  contactMobileNo: optionalCell(row.contactMobileNo),
+  contactWhatsAppNo: optionalCell(row.contactWhatsAppNo),
+  contactForPaymentEmail: optionalCell(row.contactForPaymentEmail),
+  GSTNo: optionalCell(row.GSTNo),
+  address,
+  partyTag: optionalCell(row.partyTag) || (isUpdate ? null : "NEW"),
+  partyType: optionalCell(row.partyType) || "",
+  statusApproval: cellText(row.isRequestMode).toUpperCase() === "TRUE" ? "PENDING" : "APPROVED",
+});
+
+const bulkNaturalKey = (row) => [row.partyName, row.ownerWhatsAppNo]
+  .map((value) => cellText(value).toUpperCase())
+  .join("::");
+
+async function savePreparedBulkRow(prepared, companyId, session = null) {
+  const saveOptions = session ? { session } : {};
+
+  if (prepared.accountMaster) {
+    const partyQuery = Party.findById(prepared.accountMaster.party);
+    const accountQuery = AccountMaster.findById(prepared.accountMaster._id);
+    if (session) {
+      partyQuery.session(session);
+      accountQuery.session(session);
+    }
+
+    const [party, account] = await Promise.all([partyQuery, accountQuery]);
+    if (!party || !account) throw new Error(`Account dependencies missing for row ${prepared.rowNumber}`);
+
+    const originalParty = session ? null : party.toObject({ depopulate: true });
+    party.set(prepared.partyData);
+    account.set({
+      companyName: companyId,
+      reasonToVisit: prepared.reasonToVisit,
+      reference: prepared.reference,
+      createdBy: prepared.staffId,
+    });
+
+    await party.save(saveOptions);
+    try {
+      await account.save(saveOptions);
+    } catch (error) {
+      if (!session && originalParty) {
+        await Party.collection.replaceOne({ _id: originalParty._id }, originalParty);
+      }
+      throw error;
+    }
+    return account;
+  }
+
+  const party = new Party(prepared.partyData);
+  await party.save(saveOptions);
+  try {
+    const account = new AccountMaster({
+      companyName: companyId,
+      party: party._id,
+      reasonToVisit: prepared.reasonToVisit,
+      reference: prepared.reference,
+      createdBy: prepared.staffId,
+    });
+    await account.save(saveOptions);
+    return account;
+  } catch (error) {
+    if (!session) await Party.deleteOne({ _id: party._id });
+    throw error;
+  }
+}
+
+async function supportsMongoTransactions() {
+  try {
+    const hello = await mongoose.connection.db.admin().command({ hello: 1 });
+    return Boolean(hello.setName || hello.msg === "isdbgrid");
+  } catch (_error) {
+    return false;
+  }
 }
 
 exports.bulkCreateAccountMasters = async (req, res) => {
-  const session = await mongoose.startSession();
-  session.startTransaction();
   try {
     if (!req.file) {
-      await session.abortTransaction(); session.endSession();
       return res.status(400).json({ success: false, message: "No file uploaded" });
     }
     const globalCompanyName = req.body.companyName;
     if (!globalCompanyName) {
-      await session.abortTransaction(); session.endSession();
       return res.status(400).json({ success: false, message: "companyName is required" });
     }
+    if (!mongoose.Types.ObjectId.isValid(globalCompanyName)) {
+      return res.status(400).json({ success: false, message: "Invalid companyName" });
+    }
+    const company = await CompanyName.findById(globalCompanyName).select("_id").lean();
+    if (!company) return res.status(400).json({ success: false, message: "Company not found" });
 
     const workbook = xlsx.read(req.file.buffer, { type: "buffer" });
-    const data = xlsx.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]]);
+    const data = xlsx.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]], { defval: "", raw: false });
 
-    const accountMasters = [];
+    const preparedRows = [];
     const skippedRecords = [];
+    const seenAccountIds = new Set();
+    const seenNaturalKeys = new Set();
+    const staffCache = new Map();
+    const addressCache = new Map();
 
     for (const [index, row] of data.entries()) {
       try {
-        const staff = await findStaffByFullName(row.createdBy);
-        if (!staff) { skippedRecords.push({ ...row, reason: `Staff not found: ${row.createdBy}` }); continue; }
+        const rowNumber = index + 2;
+        const accountId = getBulkAccountId(row);
+        const requiredValues = {
+          partyName: row.partyName,
+          ownerWhatsAppNo: row.ownerWhatsAppNo,
+          unitNo: row.unitNo,
+          marketName: row.marketName,
+          area: row.area,
+          pincode: row.pincode,
+          reasonToVisit: row.reasonToVisit,
+        };
+        const missingFields = Object.entries(requiredValues).filter(([, value]) => !cellText(value)).map(([key]) => key);
+        if (missingFields.length) throw new Error(`Missing required fields: ${missingFields.join(", ")}`);
 
-        let partyTag = "New";
-        if (row.partyTag && String(row.partyTag).trim().toLowerCase() === "customer") partyTag = "Customer";
+        let accountMaster = null;
+        if (accountId) {
+          if (!mongoose.Types.ObjectId.isValid(accountId)) throw new Error("Invalid accountId");
+          if (seenAccountIds.has(accountId)) throw new Error("Duplicate accountId in uploaded file");
+          seenAccountIds.add(accountId);
+          accountMaster = await AccountMaster.findById(accountId).select("_id companyName party").lean();
+          if (!accountMaster) throw new Error("Account not found");
+          if (String(accountMaster.companyName) !== String(globalCompanyName)) throw new Error("Account belongs to a different company");
+        }
 
-        const marketId = await findMarketByField("marketName", row.marketName, session);
-        const address = { unitNo: row.unitNo || null, marketName: marketId, landMark: marketId, area: marketId, pincode: marketId };
+        const [staff, address] = await Promise.all([
+          findStaffForBulkRow(row, staffCache),
+          resolveBulkAddress(row, addressCache),
+        ]);
+        if (!staff) throw new Error(`Staff not found: ${cellText(row.createdById) || cellText(row.createdBy)}`);
+        if (!address) throw new Error("Market, area, landmark, or pincode could not be resolved");
 
-        const [newParty] = await Party.create([{
+        const naturalKey = bulkNaturalKey(row);
+        if (seenNaturalKeys.has(naturalKey)) throw new Error("Duplicate party name and owner WhatsApp number in uploaded file");
+        seenNaturalKeys.add(naturalKey);
+
+        const existingParty = await Party.findOne({
+          ...(accountMaster ? { _id: { $ne: accountMaster.party } } : {}),
           companyName: globalCompanyName,
-          partyName: row.partyName || null,
-          ownerName: row.ownerName || null,
-          ownerMobileNo: row.ownerMobileNo || null,
-          ownerWhatsAppNo: row.ownerWhatsAppNo ? String(row.ownerWhatsAppNo) : null,
-          ownerEmail: row.ownerEmail || null,
-          contactPerson: row.contactPerson || null,
-          personMobileNo: row.personMobileNo || null,
-          personWhatsAppNo: row.personWhatsAppNo || null,
-          contactPersonEmail: row.contactPersonEmail || null,
-          contactForPayment: row.contactForPayment || null,
-          contactMobileNo: row.contactMobileNo || null,
-          contactWhatsAppNo: row.contactWhatsAppNo || null,
-          contactForPaymentEmail: row.contactForPaymentEmail || null,
-          GSTNo: row.GSTNo || null,
-          address,
-          reference: row.reference || null,
-          statusApproval: row.isRequestMode === "TRUE" ? "Pending" : "Approved",
-          createdBy: staff._id,
-          partyTag,
-          partyType: row.partyType || "",
-        }], { session });
+          partyName: exactText(row.partyName),
+          ownerWhatsAppNo: exactText(row.ownerWhatsAppNo),
+        }).select("_id").lean();
+        if (existingParty && !accountMaster) {
+          throw new Error("A party with this company, name and mobile number already exists");
+        }
 
-        const [newAM] = await AccountMaster.create([{
-          companyName: globalCompanyName,
-          party: newParty._id,
-          reasonToVisit: row.reasonToVisit || null,
-          reference: row.reference || null,
-          createdBy: staff._id,
-          partyTag,
-        }], { session });
-
-        accountMasters.push(newAM);
+        preparedRows.push({
+          rowNumber,
+          sourceRow: row,
+          accountMaster,
+          staffId: staff._id,
+          partyData: bulkPartyData(row, globalCompanyName, address, Boolean(accountMaster)),
+          reasonToVisit: cellText(row.reasonToVisit),
+          reference: optionalCell(row.reference),
+        });
       } catch (err) {
-        skippedRecords.push({ row: index + 1, reason: err.message });
+        skippedRecords.push({ ...row, row: index + 2, reason: err.message });
       }
     }
 
-    await session.commitTransaction(); session.endSession();
-    res.status(201).json({ success: true, message: "Bulk account masters processed", insertedCount: accountMasters.length, skippedCount: skippedRecords.length, skippedRecords, data: accountMasters });
+    if (await supportsMongoTransactions()) {
+      const session = await mongoose.startSession();
+      try {
+        await session.withTransaction(async () => {
+          for (const prepared of preparedRows) {
+            prepared.result = await savePreparedBulkRow(prepared, globalCompanyName, session);
+          }
+        });
+      } finally {
+        await session.endSession();
+      }
+    } else {
+      for (const prepared of preparedRows) {
+        try {
+          prepared.result = await savePreparedBulkRow(prepared, globalCompanyName);
+        } catch (error) {
+          skippedRecords.push({
+            ...prepared.sourceRow,
+            row: prepared.rowNumber,
+            reason: error.message,
+          });
+        }
+      }
+    }
+
+    const successfulRows = preparedRows.filter((prepared) => prepared.result);
+    const insertedCount = successfulRows.filter((prepared) => !prepared.accountMaster).length;
+    const updatedCount = successfulRows.length - insertedCount;
+    const message = `Bulk upload completed: ${insertedCount} created, ${updatedCount} updated, ${skippedRecords.length} skipped`;
+    res.status(200).json({
+      success: true,
+      message,
+      insertedCount,
+      updatedCount,
+      skippedCount: skippedRecords.length,
+      skippedRecords,
+      data: successfulRows.map((prepared) => prepared.result),
+    });
   } catch (error) {
-    await session.abortTransaction(); session.endSession();
-    res.status(500).json({ success: false, message: "Failed to bulk create account masters", error: error.message });
+    res.status(500).json({ success: false, message: "Failed to bulk upload account masters", error: error.message });
   }
 };
 
