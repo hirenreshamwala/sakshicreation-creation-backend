@@ -338,6 +338,10 @@ exports.getAssignTaskById = async (req, res) => {
       .populate({
         path: "originalTaskId",
         select: "date status createdAt", // Add createdAt here
+      })
+      .populate({
+        path: "orderId",
+        select: "orderNumber jobName",
       });
     if (!assignTask) {
       return res.status(404).json({
@@ -1029,6 +1033,17 @@ exports.getAllAssignTasks = async (req, res) => {
         }
       },
       { $unwind: { path: "$originalTaskData", preserveNullAndEmptyArrays: true } },
+
+      // 13. SOURCE ORDER (DELIVERY TASKS)
+      {
+        $lookup: {
+          from: "orders",
+          localField: "orderId",
+          foreignField: "_id",
+          as: "orderData"
+        }
+      },
+      { $unwind: { path: "$orderData", preserveNullAndEmptyArrays: true } },
     ];
 
     /* ================================
@@ -1330,6 +1345,12 @@ exports.getAllAssignTasks = async (req, res) => {
           isRescheduledTask: 1,
           createdAt: 1,
           updatedAt: 1,
+
+          orderId: {
+            _id: "$orderData._id",
+            orderNumber: "$orderData.orderNumber",
+            jobName: "$orderData.jobName",
+          },
 
           companyName: {
             _id: "$companyData._id",

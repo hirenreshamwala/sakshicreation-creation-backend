@@ -54,6 +54,11 @@ const orderSchema = new mongoose.Schema(
       ref: "productItem",
       required: true,
     },
+    jobName: {
+      type: String,
+      trim: true,
+      default: "",
+    },
     qty: {
       type: Number,
       required: true,

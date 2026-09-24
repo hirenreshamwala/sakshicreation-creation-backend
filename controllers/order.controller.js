@@ -150,6 +150,7 @@ exports.createOrder = async (req, res) => {
       companyName,
       party,
       productItem,
+      jobName,
       qty,
       remarks,
       filePaths,
@@ -167,10 +168,17 @@ exports.createOrder = async (req, res) => {
     } = req.body;
 
     // Validate required fields
-    if (!companyName || !party || !productItem || !qty) {
+    if (
+      !companyName ||
+      !party ||
+      !productItem ||
+      !qty ||
+      typeof jobName !== "string" ||
+      !jobName.trim()
+    ) {
       return res.status(400).json({
         success: false,
-        message: "Company, Party, Product Item, and Quantity are required",
+        message: "Company, Party, Product Item, Quantity, and Job Name are required",
       });
     }
 
@@ -291,6 +299,7 @@ exports.createOrder = async (req, res) => {
       companyName,
       party,
       productItem,
+      jobName: jobName.trim(),
       qty: Number.parseInt(qty),
       remarks: remarks || "",
       filePaths: processedFilePaths,
@@ -466,6 +475,11 @@ exports.getFilterOptionsData = async (req, res) => {
 
       case "orderNumber":
         uniqueValues = await Order.distinct("orderNumber", query);
+        uniqueValues = uniqueValues.filter((val) => val && val.trim() !== "");
+        break;
+
+      case "jobName":
+        uniqueValues = await Order.distinct("jobName", query);
         uniqueValues = uniqueValues.filter((val) => val && val.trim() !== "");
         break;
 
@@ -981,6 +995,7 @@ exports.getAllOrdersPagination = async (req, res) => {
     if (search) {
       const directOr = [
         { orderNumber: { $regex: search, $options: "i" } },
+        { jobName: { $regex: search, $options: "i" } },
         { remarks: { $regex: search, $options: "i" } },
         { size: { $regex: search, $options: "i" } },
         { status: { $regex: search, $options: "i" } },
@@ -1079,6 +1094,8 @@ exports.getAllOrdersPagination = async (req, res) => {
 
     // Order Number filter
     if (filters.orderNumber && filters.orderNumber.length > 0) query.orderNumber = { $in: filters.orderNumber };
+
+    if (filters.jobName && filters.jobName.length > 0) query.jobName = { $in: filters.jobName };
 
     // Remarks filter
     if (filters.remarks && filters.remarks.length > 0) query.remarks = { $in: filters.remarks };
@@ -1299,6 +1316,22 @@ exports.updateOrder = async (req, res) => {
 
 
     const orderData = await Order.findById(id);
+    if (!orderData) {
+      return res.status(404).json({
+        success: false,
+        message: "Order not found",
+      });
+    }
+
+    if (Object.prototype.hasOwnProperty.call(updateData, "jobName")) {
+      if (typeof updateData.jobName !== "string" || !updateData.jobName.trim()) {
+        return res.status(400).json({
+          success: false,
+          message: "Job Name is required",
+        });
+      }
+      updateData.jobName = updateData.jobName.trim();
+    }
     if (
       updateData.designer &&
       updateData.designer !== orderData.designer?.toString()
@@ -1365,13 +1398,6 @@ exports.updateOrder = async (req, res) => {
     ) {
       updateData.bookletBindingStartedAt = new Date();
     }
-    if (!orderData) {
-      return res.status(404).json({
-        success: false,
-        message: "Order not found",
-      });
-    }
-
     const actorRole =
       (req.user && typeof req.user.role === "string"
         ? req.user.role.toLowerCase()
@@ -1421,6 +1447,7 @@ exports.updateOrder = async (req, res) => {
         assignTo: req.body.deliveryStaff,
         companyName: orderget.companyName,
         partyName: orderget.party,
+        orderId: orderget._id,
         reasonForVisit: "Delivery",
         remarks: req.body.remarks || "",
       });
@@ -2447,6 +2474,7 @@ exports.getOrdersByStaffId = async (req, res) => {
     if (search) {
       const directOr = [
         { orderNumber: { $regex: search, $options: "i" } },
+        { jobName: { $regex: search, $options: "i" } },
         { remarks: { $regex: search, $options: "i" } },
         { size: { $regex: search, $options: "i" } },
         { status: { $regex: search, $options: "i" } },
@@ -2573,6 +2601,10 @@ exports.getOrdersByStaffId = async (req, res) => {
     // Order Number filter
     if (filters.orderNumber && filters.orderNumber.length > 0) {
       query.orderNumber = { $in: filters.orderNumber };
+    }
+
+    if (filters.jobName && filters.jobName.length > 0) {
+      query.jobName = { $in: filters.jobName };
     }
 
     // Remarks filter
